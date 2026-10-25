@@ -124,6 +124,7 @@ pub const RUNTIME_OWNERSHIP: &[(&str, &str, Ret)] = &[
     ("__mdh_dns_lookup", "b", Ret::Fresh),
     ("__mdh_dns_naptr", "b", Ret::Fresh),
     ("__mdh_dns_srv", "bb", Ret::Fresh),
+    ("__mdh_drap", "bb", Ret::Fresh), // shares elements of arg 1
     ("__mdh_dreich", "b", Ret::None),
     ("__mdh_drookit", "b", Ret::None),
     ("__mdh_dtls_handshake", "bb", Ret::Fresh), // int handles; copies dup(fd)

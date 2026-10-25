@@ -928,3 +928,89 @@ blether cannie({"a": 1})
         ]
     );
 }
+
+// ---------- MDH-BUG-FLU-00139: tak/drap take strings, as the prelude does ----------
+
+#[test]
+fn tak_and_drap_take_strings_as_character_lists() {
+    // The interpreter's prelude tak/drap index their argument, so a string comes back as
+    // a list of its characters (codepoints, not bytes).
+    let out = run_ok(
+        r#"
+blether tak("Hello", 3)
+blether tak("Hello", -1)
+blether tak("Hello", 99)
+blether tak("héllo", 2)
+blether drap("Hello", 2)
+blether drap("Hello", 99)
+blether drap("héllo", 1)
+blether tak([1, 2, 3], 2)
+blether drap([1, 2, 3], 1)
+"#,
+    );
+    assert_eq!(
+        out,
+        vec![
+            "[H, e, l]",
+            "[]",
+            "[H, e, l, l, o]",
+            "[h, é]",
+            "[l, l, o]",
+            "[]",
+            "[é, l, l, o]",
+            "[1, 2]",
+            "[2, 3]",
+        ]
+    );
+}
+
+// ---------- MDH-BUG-FLU-00140: backside_forrit reverses lists ----------
+
+#[test]
+fn backside_forrit_reverses_lists() {
+    let out = run_ok(
+        r#"
+blether backside_forrit([1, 2, 3])
+blether backside_forrit([])
+blether backside_forrit(["a", [1, 2]])
+blether backside_forrit("hello")
+"#,
+    );
+    assert_eq!(out, vec!["[3, 2, 1]", "[]", "[[1, 2], a]", "olleh"]);
+}
+
+// ---------- MDH-BUG-FLU-00141: a module's own function wins over a nested import's ----------
+
+#[test]
+fn module_function_shadowing_a_nested_imports_function_is_defined() {
+    let dir = tempdir().expect("temp dir");
+    std::fs::write(
+        dir.path().join("inner.braw"),
+        "dae rep(c, n) {\n    gie \"inner\"\n}\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.path().join("outer.braw"),
+        "fetch \"inner\"\ndae rep(c, n) {\n    gie c + \"outer\"\n}\ndae banner() {\n    gie rep(\"x\", 2)\n}\n",
+    )
+    .unwrap();
+    let main_path = dir.path().join("main.braw");
+    let source = "fetch \"outer\"\nblether banner()\n";
+    std::fs::write(&main_path, source).unwrap();
+    let program = parse(source).expect("parse");
+    let exe_path = dir.path().join("exe");
+    LLVMCompiler::new()
+        .compile_to_native_with_source(&program, &exe_path, 2, Some(&main_path))
+        .expect("compile to native");
+    let output = Command::new(&exe_path)
+        .stdin(Stdio::null())
+        .output()
+        .expect("run executable");
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "xouter");
+}

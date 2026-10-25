@@ -5669,7 +5669,14 @@ MdhValue __mdh_wee(MdhValue a, MdhValue b) {
 }
 
 MdhValue __mdh_tak(MdhValue list, MdhValue n) {
-    /* Take first n elements from list */
+    /* Take first n elements from list; a string is taken as a list of its characters
+     * (the interpreter's prelude tak does the same: tak("Hello", 3) is [H, e, l]). */
+    if (list.tag == MDH_TAG_STRING) {
+        MdhValue chars = __mdh_chars(list);
+        MdhValue taken = __mdh_tak(chars, n);
+        __mdh_release(chars);
+        return taken;
+    }
     if (list.tag != MDH_TAG_LIST || n.tag != MDH_TAG_INT) {
         return __mdh_make_list(0);
     }
@@ -5684,6 +5691,23 @@ MdhValue __mdh_tak(MdhValue list, MdhValue n) {
         __mdh_list_push(result, src->items[i]);
     }
     return result;
+}
+
+MdhValue __mdh_drap(MdhValue list, MdhValue n) {
+    /* Drop first n elements from a list (or from the characters of a string); a negative n
+     * drops nothing. */
+    if (list.tag == MDH_TAG_STRING) {
+        MdhValue chars = __mdh_chars(list);
+        MdhValue rest = __mdh_drap(chars, n);
+        __mdh_release(chars);
+        return rest;
+    }
+    if (list.tag != MDH_TAG_LIST || n.tag != MDH_TAG_INT) {
+        __mdh_type_error("drap", list.tag, 0);
+        return __mdh_make_list(0);
+    }
+    int64_t start = n.data < 0 ? 0 : n.data;
+    return __mdh_list_slice(list, start, __mdh_get_list(list)->length);
 }
 
 MdhValue __mdh_pair_up(MdhValue list1, MdhValue list2) {
@@ -5883,7 +5907,15 @@ MdhValue __mdh_rtrim(MdhValue str) {
 MdhValue __mdh_slice_string(MdhValue str, MdhValue start_opt, MdhValue end_opt, MdhValue step_opt);
 
 MdhValue __mdh_reverse_str(MdhValue str) {
-    /* Reverse a string: "hello" -> "olleh" */
+    /* Reverse a string: "hello" -> "olleh"; a list reverses into a new list. */
+    if (str.tag == MDH_TAG_LIST) {
+        MdhList *src = __mdh_get_list(str);
+        MdhValue out = __mdh_make_list((int32_t)src->length);
+        for (int64_t i = src->length - 1; i >= 0; i--) {
+            __mdh_list_push(out, src->items[i]);
+        }
+        return out;
+    }
     if (str.tag != MDH_TAG_STRING) {
         __mdh_type_error("reverse_str", str.tag, 0);
         return __mdh_make_string("");

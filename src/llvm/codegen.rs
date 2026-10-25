@@ -402,6 +402,7 @@ struct LibcFunctions<'ctx> {
     och: FunctionValue<'ctx>,
     wee: FunctionValue<'ctx>,
     tak: FunctionValue<'ctx>,
+    drap: FunctionValue<'ctx>,
     pair_up: FunctionValue<'ctx>,
     tae_binary: FunctionValue<'ctx>,
     fae_binary: FunctionValue<'ctx>,
@@ -3337,6 +3338,9 @@ impl<'ctx> CodeGen<'ctx> {
             .fn_type(&[types.value_type.into(), types.value_type.into()], false);
         let tak = module.add_function("__mdh_tak", tak_type, Some(Linkage::External));
 
+        // __mdh_drap(list_or_string, n) -> MdhValue (list)
+        let drap = module.add_function("__mdh_drap", tak_type, Some(Linkage::External));
+
         // __mdh_pair_up(list1, list2) -> MdhValue (list of pairs)
         let pair_up_type = types
             .value_type
@@ -4131,6 +4135,7 @@ impl<'ctx> CodeGen<'ctx> {
             och,
             wee,
             tak,
+            drap,
             pair_up,
             tae_binary,
             fae_binary,
@@ -18852,9 +18857,22 @@ impl<'ctx> CodeGen<'ctx> {
                         .types
                         .i8_type
                         .const_int(ValueTag::List.as_u8() as u64, false);
-                    let is_list = self
+                    let str_tag = self
+                        .types
+                        .i8_type
+                        .const_int(ValueTag::String.as_u8() as u64, false);
+                    let is_list_only = self
                         .builder
                         .build_int_compare(IntPredicate::EQ, tag, list_tag, "tak_is_list")
+                        .unwrap();
+                    let is_str = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, tag, str_tag, "tak_is_str")
+                        .unwrap();
+                    // A string is taken as a list of its characters (as the interpreter does).
+                    let is_list = self
+                        .builder
+                        .build_or(is_list_only, is_str, "tak_is_listy")
                         .unwrap();
 
                     let function = self.current_function.unwrap();
@@ -24146,7 +24164,7 @@ impl<'ctx> CodeGen<'ctx> {
                     return Ok(self.make_bool(result_i64));
                 }
                 "drap" | "drop" => {
-                    // drap(list, n) - drop first n elements
+                    // drap(list, n) - drop first n elements (a string drops from its characters)
                     if args.len() != 2 {
                         return Err(HaversError::CompileError(
                             "drap expects 2 arguments".to_string(),
@@ -24160,9 +24178,21 @@ impl<'ctx> CodeGen<'ctx> {
                         .types
                         .i8_type
                         .const_int(ValueTag::List.as_u8() as u64, false);
-                    let is_list = self
+                    let str_tag = self
+                        .types
+                        .i8_type
+                        .const_int(ValueTag::String.as_u8() as u64, false);
+                    let is_list_only = self
                         .builder
                         .build_int_compare(IntPredicate::EQ, tag, list_tag, "drap_is_list")
+                        .unwrap();
+                    let is_str = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, tag, str_tag, "drap_is_str")
+                        .unwrap();
+                    let is_list = self
+                        .builder
+                        .build_or(is_list_only, is_str, "drap_is_listy")
                         .unwrap();
 
                     let function = self.current_function.unwrap();
@@ -24175,34 +24205,19 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap();
 
                     self.builder.position_at_end(ok_block);
-                    // Get list length (end index for slice).
-                    let list_data = self.extract_data(list_val).unwrap();
-                    let list_len = self.get_list_length(list_data).unwrap();
-
-                    // Coerce n (int/float) and clamp negatives to zero (drap means "drop first n").
                     let n_raw = self.coerce_i64(n_val, "drap");
-                    let zero = self.types.i64_type.const_int(0, false);
-                    let n_lt0 = self
-                        .builder
-                        .build_int_compare(IntPredicate::SLT, n_raw, zero, "drap_n_lt0")
-                        .unwrap();
-                    let start = self
-                        .builder
-                        .build_select(n_lt0, zero, n_raw, "drap_start")
-                        .unwrap()
-                        .into_int_value();
-
+                    let n_int = self.make_int(n_raw);
                     let ok_val = self
                         .builder
                         .build_call(
-                            self.libc.list_slice,
-                            &[list_val.into(), start.into(), list_len.into()],
-                            "drap_slice",
+                            self.libc.drap,
+                            &[list_val.into(), n_int.into()],
+                            "drap_result_call",
                         )
                         .unwrap()
                         .try_as_basic_value()
                         .basic()
-                        .compile_ok_or("list_slice returned void")
+                        .compile_ok_or("drap returned void")
                         .unwrap();
                     self.builder
                         .build_unconditional_branch(merge_block)
@@ -35809,12 +35824,24 @@ impl<'ctx> CodeGen<'ctx> {
         let saved_unstable_vars = std::mem::take(&mut self.unstable_vars);
         self.unstable_vars = self.unstable_vars_of(&bindings);
 
+        // Snapshot this module's own declarations before any nested `fetch` runs: a nested
+        // import of a module that declares the same name rebinds `self.functions` (MDH-BUG-FLU-00141).
+        let declared_here: HashMap<String, FunctionValue<'ctx>> = program
+            .statements
+            .iter()
+            .filter_map(|stmt| match stmt {
+                Stmt::Function { name, .. } | Stmt::Struct { name, .. } => {
+                    self.functions.get(name).map(|func| (name.clone(), *func))
+                }
+                _ => None,
+            })
+            .collect();
+
         for stmt in &program.statements {
             match stmt {
                 // Declarations are only "defined" when the runtime reaches them (match interpreter semantics).
                 Stmt::Function { name, .. } | Stmt::Struct { name, .. } => {
-                    let func = self
-                        .functions
+                    let func = declared_here
                         .get(name)
                         .copied()
                         .expect("Module init missing declaration binding");
