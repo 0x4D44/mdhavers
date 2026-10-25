@@ -5969,8 +5969,8 @@ impl<'ctx> CodeGen<'ctx> {
                     | BinaryOp::GreaterEqual => {
                         let left_type = self.infer_expr_type(left);
                         let right_type = self.infer_expr_type(right);
-                        let left_fast = matches!(left_type, VarType::Int | VarType::Bool);
-                        let right_fast = matches!(right_type, VarType::Int | VarType::Bool);
+                        let left_fast = matches!(left_type, VarType::Int);
+                        let right_fast = matches!(right_type, VarType::Int);
                         if !left_fast || !right_fast {
                             return Ok(None);
                         }
@@ -8010,10 +8010,6 @@ impl<'ctx> CodeGen<'ctx> {
         let other_block = self.context.append_basic_block(function, "lt_other");
         let merge_block = self.context.append_basic_block(function, "lt_merge");
 
-        let bool_tag = self
-            .types
-            .i8_type
-            .const_int(ValueTag::Bool.as_u8() as u64, false);
         let int_tag = self
             .types
             .i8_type
@@ -8040,14 +8036,6 @@ impl<'ctx> CodeGen<'ctx> {
             .build_and(left_is_string, right_is_string, "both_str")
             .unwrap();
 
-        let left_is_bool = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, left_tag, bool_tag, "l_bool")
-            .unwrap();
-        let right_is_bool = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, right_tag, bool_tag, "r_bool")
-            .unwrap();
         let left_is_int = self
             .builder
             .build_int_compare(IntPredicate::EQ, left_tag, int_tag, "l_int")
@@ -8065,14 +8053,8 @@ impl<'ctx> CodeGen<'ctx> {
             .build_int_compare(IntPredicate::EQ, right_tag, float_tag, "rf")
             .unwrap();
 
-        let left_is_intlike = self
-            .builder
-            .build_or(left_is_int, left_is_bool, "l_intlike")
-            .unwrap();
-        let right_is_intlike = self
-            .builder
-            .build_or(right_is_int, right_is_bool, "r_intlike")
-            .unwrap();
+        let left_is_intlike = left_is_int;
+        let right_is_intlike = right_is_int;
         let left_is_numeric = self
             .builder
             .build_or(left_is_intlike, left_is_float, "l_numeric")
@@ -8248,10 +8230,6 @@ impl<'ctx> CodeGen<'ctx> {
         let other_block = self.context.append_basic_block(function, "le_other");
         let merge_block = self.context.append_basic_block(function, "le_merge");
 
-        let bool_tag = self
-            .types
-            .i8_type
-            .const_int(ValueTag::Bool.as_u8() as u64, false);
         let int_tag = self
             .types
             .i8_type
@@ -8278,14 +8256,6 @@ impl<'ctx> CodeGen<'ctx> {
             .build_and(left_is_string, right_is_string, "both_str")
             .unwrap();
 
-        let left_is_bool = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, left_tag, bool_tag, "l_bool")
-            .unwrap();
-        let right_is_bool = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, right_tag, bool_tag, "r_bool")
-            .unwrap();
         let left_is_int = self
             .builder
             .build_int_compare(IntPredicate::EQ, left_tag, int_tag, "l_int")
@@ -8303,14 +8273,8 @@ impl<'ctx> CodeGen<'ctx> {
             .build_int_compare(IntPredicate::EQ, right_tag, float_tag, "rf")
             .unwrap();
 
-        let left_is_intlike = self
-            .builder
-            .build_or(left_is_int, left_is_bool, "l_intlike")
-            .unwrap();
-        let right_is_intlike = self
-            .builder
-            .build_or(right_is_int, right_is_bool, "r_intlike")
-            .unwrap();
+        let left_is_intlike = left_is_int;
+        let right_is_intlike = right_is_int;
         let left_is_numeric = self
             .builder
             .build_or(left_is_intlike, left_is_float, "l_numeric")
@@ -8485,10 +8449,6 @@ impl<'ctx> CodeGen<'ctx> {
         let other_block = self.context.append_basic_block(function, "gt_other");
         let merge_block = self.context.append_basic_block(function, "gt_merge");
 
-        let bool_tag = self
-            .types
-            .i8_type
-            .const_int(ValueTag::Bool.as_u8() as u64, false);
         let int_tag = self
             .types
             .i8_type
@@ -8515,14 +8475,6 @@ impl<'ctx> CodeGen<'ctx> {
             .build_and(left_is_string, right_is_string, "both_str")
             .unwrap();
 
-        let left_is_bool = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, left_tag, bool_tag, "l_bool")
-            .unwrap();
-        let right_is_bool = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, right_tag, bool_tag, "r_bool")
-            .unwrap();
         let left_is_int = self
             .builder
             .build_int_compare(IntPredicate::EQ, left_tag, int_tag, "l_int")
@@ -8540,14 +8492,8 @@ impl<'ctx> CodeGen<'ctx> {
             .build_int_compare(IntPredicate::EQ, right_tag, float_tag, "rf")
             .unwrap();
 
-        let left_is_intlike = self
-            .builder
-            .build_or(left_is_int, left_is_bool, "l_intlike")
-            .unwrap();
-        let right_is_intlike = self
-            .builder
-            .build_or(right_is_int, right_is_bool, "r_intlike")
-            .unwrap();
+        let left_is_intlike = left_is_int;
+        let right_is_intlike = right_is_int;
         let left_is_numeric = self
             .builder
             .build_or(left_is_intlike, left_is_float, "l_numeric")
@@ -8722,10 +8668,6 @@ impl<'ctx> CodeGen<'ctx> {
         let other_block = self.context.append_basic_block(function, "ge_other");
         let merge_block = self.context.append_basic_block(function, "ge_merge");
 
-        let bool_tag = self
-            .types
-            .i8_type
-            .const_int(ValueTag::Bool.as_u8() as u64, false);
         let int_tag = self
             .types
             .i8_type
@@ -8752,14 +8694,6 @@ impl<'ctx> CodeGen<'ctx> {
             .build_and(left_is_string, right_is_string, "both_str")
             .unwrap();
 
-        let left_is_bool = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, left_tag, bool_tag, "l_bool")
-            .unwrap();
-        let right_is_bool = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, right_tag, bool_tag, "r_bool")
-            .unwrap();
         let left_is_int = self
             .builder
             .build_int_compare(IntPredicate::EQ, left_tag, int_tag, "l_int")
@@ -8777,14 +8711,8 @@ impl<'ctx> CodeGen<'ctx> {
             .build_int_compare(IntPredicate::EQ, right_tag, float_tag, "rf")
             .unwrap();
 
-        let left_is_intlike = self
-            .builder
-            .build_or(left_is_int, left_is_bool, "l_intlike")
-            .unwrap();
-        let right_is_intlike = self
-            .builder
-            .build_or(right_is_int, right_is_bool, "r_intlike")
-            .unwrap();
+        let left_is_intlike = left_is_int;
+        let right_is_intlike = right_is_int;
         let left_is_numeric = self
             .builder
             .build_or(left_is_intlike, left_is_float, "l_numeric")

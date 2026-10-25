@@ -1461,3 +1461,102 @@ fn tls_builtins_raise_where_the_interpreter_does() {
     assert!(out[3].contains("tls_connect"), "{}", out[3]);
     assert!(out[4].contains("tls_close"), "{}", out[4]);
 }
+
+// ---------- MDH-BUG-FLU-00149: ordering comparisons type-check like the interpreter ----------
+
+/// Every type pair x every comparison operator, passed through function parameters so the
+/// comparison is dynamically typed. Native must print what the interpreter prints, including
+/// the "Cannae compare X wi' Y" type error (a bool is not an integer for ordering), and
+/// `==` / `!=` must stay structural and never raise.
+#[test]
+fn ordering_comparisons_match_the_interpreter_for_every_type_pair() {
+    let vals = [
+        ("int", "1"),
+        ("float", "2.5"),
+        ("bool", "aye"),
+        ("string", "\"a\""),
+        ("naething", "naething"),
+        ("list", "[1]"),
+        ("dict", "{\"a\": 1}"),
+        ("creel", "creel([1])"),
+        ("function", "g"),
+        ("instance", "Foo()"),
+        ("bytes", "bytes(2)"),
+    ];
+    let ops = [
+        ("<", "lt"),
+        ("<=", "le"),
+        (">", "gt"),
+        (">=", "ge"),
+        ("==", "eq"),
+        ("!=", "ne"),
+    ];
+    let mut src = String::from("dae g() { gie 1 }\nkin Foo { dae init() { masel.x = 1 } }\n");
+    for (op, name) in ops {
+        src.push_str(&format!("dae c_{name}(a, b) {{ gie a {op} b }}\n"));
+    }
+    for (op, name) in ops {
+        for (ln, lv) in vals {
+            for (rn, rv) in vals {
+                src.push_str(&format!(
+                    "hae_a_bash {{\n  ken l = {lv}\n  ken r = {rv}\n  blether \"{ln}|{op}|{rn}|\" + tae_string(c_{name}(l, r))\n}} gin_it_gangs_wrang e {{\n  blether \"{ln}|{op}|{rn}|ERR \" + e\n}}\n"
+                ));
+            }
+        }
+    }
+
+    let program = parse(&src).expect("parse");
+    let mut interp = mdhavers::Interpreter::new();
+    interp.interpret(&program).expect("interpret");
+    let expected: Vec<String> = interp.get_output().to_vec();
+    assert_eq!(expected.len(), vals.len() * vals.len() * ops.len());
+
+    let native = run_ok(&src);
+    assert_eq!(native.len(), expected.len());
+    for (n, e) in native.iter().zip(expected.iter()) {
+        assert_eq!(n, e);
+    }
+    // Guard against the matrix passing vacuously.
+    assert!(expected
+        .iter()
+        .any(|l| l.starts_with("bool|<|int|ERR") && l.contains("Cannae compare bool wi' integer")));
+    assert!(expected.iter().any(|l| l == "int|<|float|aye"));
+    assert!(expected.iter().any(|l| l == "bool|==|bool|aye"));
+}
+
+/// Statically typed operands take the direct-compare path; a bool there must still raise,
+/// and int/int stays a plain compare.
+#[test]
+fn statically_typed_bool_ordering_raises_and_int_ordering_still_works() {
+    let out = run_ok(
+        r#"
+dae atween(x, lo, hi) { gie x >= lo an x <= hi }
+hae_a_bash {
+  ken a = aye
+  ken b = 1
+  gin a < b { blether "yes" } ither { blether "no" }
+} gin_it_gangs_wrang e {
+  blether "ERR " + e
+}
+hae_a_bash {
+  blether atween(aye, 0, 2)
+} gin_it_gangs_wrang e {
+  blether "ERR " + e
+}
+ken i = 3
+ken j = 4
+gin i < j { blether "int-ok" }
+"#,
+    );
+    assert!(
+        out[0].contains("Cannae compare bool wi' integer"),
+        "{}",
+        out[0]
+    );
+    assert!(
+        out[1].contains("Cannae compare bool wi' integer"),
+        "{}",
+        out[1]
+    );
+    assert_eq!(out[2], "int-ok");
+}
