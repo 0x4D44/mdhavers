@@ -1301,24 +1301,6 @@ impl<'ctx> CodeGen<'ctx> {
             .inline_is_char_class(digit_arg, CharClass::Digit)
             .expect("inline digit class check");
 
-        // Builtin fallback for test globals: drive the compile_call builtin arms by ensuring the
-        // names are not shadowed by predeclared globals/locals.
-        let _ = self.globals.remove("__current_suite");
-        let _ = self.globals.remove("_tick_counter");
-        let _ = self.globals.remove("_global_bus");
-        let _ = self.variables.remove("__current_suite");
-        let _ = self.variables.remove("_tick_counter");
-        let _ = self.variables.remove("_global_bus");
-        for name in ["__current_suite", "_tick_counter", "_global_bus"] {
-            let callee = Expr::Variable {
-                name: name.to_string(),
-                span,
-            };
-            let _ = self
-                .compile_call(&callee, &[])
-                .expect("compile_call builtin failed for coverage");
-        }
-
         // ensure_module_initialized error branches: missing init fn and missing flag.
         let missing_init_path = PathBuf::from("__coverage_missing_module_init_fn.braw");
         let _ = self
@@ -20035,25 +20017,6 @@ impl<'ctx> CodeGen<'ctx> {
                     return Ok(phi.as_basic_value());
                 }
                 // Global test variables - return reasonable defaults
-                "__current_suite" => {
-                    let global = Self::create_global_string(
-                        &self.module,
-                        self.context,
-                        self.rc_enabled,
-                        "",
-                        "current_suite_default",
-                    );
-                    let str_ptr = self.get_string_ptr(global);
-                    return Ok(self.make_string(str_ptr));
-                }
-                "_tick_counter" | "_msg_counter" | "_verbose" | "__prop_passed" => {
-                    let zero = self.types.i64_type.const_int(0, false);
-                    return Ok(self.make_int(zero));
-                }
-                "_global_bus" | "_global_logger" => {
-                    // Return nil for global objects
-                    return Ok(self.make_nil());
-                }
                 // More missing builtins
                 "maxaw" => {
                     // Maximum of list
@@ -22208,16 +22171,6 @@ impl<'ctx> CodeGen<'ctx> {
                     );
                     return self.inline_tae_int(arg);
                 }
-                "frac" => {
-                    if args.len() != 1 {
-                        return Err(HaversError::CompileError(
-                            "frac expects 1 argument".to_string(),
-                        ));
-                    }
-                    // Minimal implementation: return a positive value.
-                    let one = self.types.i64_type.const_int(1, false);
-                    return Ok(self.make_int(one));
-                }
                 "atan2" => {
                     if args.len() != 2 {
                         return Err(HaversError::CompileError(
@@ -23556,17 +23509,6 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap();
                     return Ok(result);
                 }
-                "template_render" => {
-                    // template_render(template, ctx) - render template with context (placeholder)
-                    if args.len() != 2 {
-                        return Err(HaversError::CompileError(
-                            "template_render expects 2 arguments".to_string(),
-                        ));
-                    }
-                    let template = self.compile_expr(&args[0])?;
-                    let _ = self.compile_expr(&args[1])?;
-                    return Ok(template);
-                }
                 "title" | "title_case" => {
                     // title(str) - title case a string
                     if args.len() != 1 {
@@ -23795,10 +23737,6 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap();
                     return Ok(self.make_int(secs));
                 }
-                "gen_int" | "gen_a" | "gen_b" | "gen_bool" | "gen_string" | "gen_list" => {
-                    // Property testing generators - return simple placeholder values
-                    return Ok(self.make_nil());
-                }
                 "screen_open"
                 | "screen_close"
                 | "screen_should_close"
@@ -23848,10 +23786,6 @@ impl<'ctx> CodeGen<'ctx> {
                         .compile_ok_or("cannie returned void")
                         .unwrap();
                     return Ok(result);
-                }
-                "pass" => {
-                    // pass() - no-op placeholder for tests
-                    return Ok(self.make_nil());
                 }
                 "bit_coont" | "bit_count" | "popcount" => {
                     // bit_coont(n) - count set bits using Kernighan's algorithm
@@ -24724,7 +24658,7 @@ impl<'ctx> CodeGen<'ctx> {
                     phi.add_incoming(&[(&ok_val, ok_end), (&err_val, err_end)]);
                     return Ok(phi.as_basic_value());
                 }
-                "screen_width" | "screen_height" | "get_screen_width" | "get_screen_height" => {
+                "screen_width" | "screen_height" => {
                     // Graphics screen dimensions (placeholder: return 800/600)
                     let val = if name.contains("width") {
                         800u64
@@ -24931,10 +24865,6 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap();
                     return Ok(result);
                 }
-                "property" | "prop" => {
-                    // property(name, fn) - property test (placeholder)
-                    return Ok(self.make_nil());
-                }
                 "wrang_sort" | "wrong_type" => {
                     // wrang_sort(value, type_name) - true if value is NOT the given type
                     if args.len() != 2 {
@@ -25022,14 +24952,10 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap();
                     return Ok(result);
                 }
-                "key_down" | "key_pressed" | "key_up" | "key_released" => {
+                "key_down" | "key_pressed" => {
                     // Keyboard input (placeholder: return false)
                     let zero = self.types.i64_type.const_int(0, false);
                     return Ok(self.make_bool(zero));
-                }
-                "gen_c" | "gen_d" | "gen_e" | "gen_f" => {
-                    // More property testing generators
-                    return Ok(self.make_nil());
                 }
                 "tattie_scone" | "potato" => {
                     if args.len() != 2 {
@@ -25089,7 +25015,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap();
                     return Ok(result);
                 }
-                "dae_times" | "times" | "repeat_n" => {
+                "dae_times" => {
                     // dae_times(n, fn) - repeat fn n times (placeholder)
                     return Ok(self.make_nil());
                 }
@@ -25113,7 +25039,7 @@ impl<'ctx> CodeGen<'ctx> {
                     let arg = self.compile_expr(&args[0])?;
                     return Ok(self.inline_bum(arg));
                 }
-                "screen_end" | "end_graphics" => {
+                "screen_end" => {
                     // Graphics cleanup placeholder
                     return Ok(self.make_nil());
                 }
@@ -25161,7 +25087,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap();
                     return Ok(result);
                 }
-                "efter" | "after" => {
+                "efter" => {
                     // efter(list, idx) - elements after index (placeholder: return as-is)
                     if args.len() != 2 {
                         return Err(HaversError::CompileError(
@@ -25180,10 +25106,6 @@ impl<'ctx> CodeGen<'ctx> {
                     let list_arg = self.compile_expr(&args[0])?;
                     let func_arg = self.compile_expr(&args[1])?;
                     return self.inline_each(list_arg, func_arg);
-                }
-                "matrix_skip" => {
-                    // matrix_skip - test skip marker (placeholder)
-                    return Ok(self.make_nil());
                 }
                 "creels_baith" | "set_intersection" => {
                     if args.len() != 2 {
@@ -25295,7 +25217,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap();
                     return Ok(result);
                 }
-                "assert_that" | "assert_eq" | "assert_ne" | "assert_true" | "assert_false" => {
+                "assert_that" => {
                     // Test assertions - placeholder: do nothing
                     return Ok(self.make_nil());
                 }
@@ -25642,7 +25564,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap();
                     return Ok(result);
                 }
-                "scots_miles_tae_km" | "miles_to_km" => {
+                "scots_miles_tae_km" => {
                     // Convert miles to km (1.609344)
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
@@ -25669,11 +25591,11 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap();
                     return Ok(result);
                 }
-                "hex_group" | "group_by" => {
+                "group_by" => {
                     // Group items (placeholder: return nil)
                     return Ok(self.make_nil());
                 }
-                "scots_pints_tae_litres" | "pints_to_litres" => {
+                "scots_pints_tae_litres" => {
                     // Convert pints to litres (0.568)
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
@@ -25765,7 +25687,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap();
                     return Ok(result);
                 }
-                "stanes_tae_kg" | "stones_to_kg" => {
+                "stanes_tae_kg" => {
                     // Convert stones to kilograms (1 stone = 6.35 kg)
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
@@ -25773,138 +25695,6 @@ impl<'ctx> CodeGen<'ctx> {
                         ));
                     }
                     return self.compile_expr(&args[0]);
-                }
-                "matrix_new" | "matrix_create" => {
-                    // Create new matrix (placeholder: return nil)
-                    return Ok(self.make_nil());
-                }
-                "matrix_get" => {
-                    // Get matrix element (placeholder: return 0)
-                    let zero = self.types.i64_type.const_int(0, false);
-                    return Ok(self.make_int(zero));
-                }
-                "matrix_set" => {
-                    // Set matrix element (placeholder: return nil)
-                    return Ok(self.make_nil());
-                }
-                "matrix_add" | "matrix_sub" | "matrix_mul" => {
-                    // Matrix operations (placeholder: return first arg or nil)
-                    if !args.is_empty() {
-                        return self.compile_expr(&args[0]);
-                    }
-                    return Ok(self.make_nil());
-                }
-                "matrix_transpose" => {
-                    // Transpose matrix (placeholder: return as-is)
-                    if args.len() != 1 {
-                        return Err(HaversError::CompileError(
-                            "matrix_transpose expects 1 argument".to_string(),
-                        ));
-                    }
-                    return self.compile_expr(&args[0]);
-                }
-                "matrix_determinant" => {
-                    // Calculate determinant (placeholder: return 0)
-                    let zero = self.types.i64_type.const_int(0, false);
-                    return Ok(self.make_int(zero));
-                }
-                "matrix_inverse" => {
-                    // Calculate inverse (placeholder: return as-is)
-                    if args.len() != 1 {
-                        return Err(HaversError::CompileError(
-                            "matrix_inverse expects 1 argument".to_string(),
-                        ));
-                    }
-                    return self.compile_expr(&args[0]);
-                }
-                "matrix_identity" => {
-                    // Create identity matrix (placeholder: return nil)
-                    return Ok(self.make_nil());
-                }
-                "matrix_zeros" | "matrix_ones" => {
-                    // Create matrix of zeros/ones (placeholder: return nil)
-                    return Ok(self.make_nil());
-                }
-                "config_load" | "config_get" | "config_set" | "config_save" => {
-                    // Config operations (placeholder: return nil or arg)
-                    if !args.is_empty() {
-                        return self.compile_expr(&args[0]);
-                    }
-                    return Ok(self.make_nil());
-                }
-                "log_debug" | "log_info" | "log_warn" | "log_error" => {
-                    // Logging functions: no-op (but still evaluate the argument for side effects)
-                    if !args.is_empty() {
-                        let _ = self.compile_expr(&args[0])?;
-                    }
-                    return Ok(self.make_nil());
-                }
-                "promise_new" | "promise_resolve" | "promise_reject" | "promise_then"
-                | "promise_await" => {
-                    // Promise functions (placeholder: return arg or nil)
-                    if !args.is_empty() {
-                        return self.compile_expr(&args[0]);
-                    }
-                    return Ok(self.make_nil());
-                }
-                "event_on" | "event_emit" | "event_off" | "event_once" => {
-                    // Event emitter functions (placeholder: return nil)
-                    return Ok(self.make_nil());
-                }
-                "cli_arg" | "cli_flag" | "cli_option" => {
-                    // CLI parsing (placeholder: return nil)
-                    return Ok(self.make_nil());
-                }
-                "cli_args" => {
-                    // Get all CLI args (placeholder: return empty list)
-                    return Ok(self.make_nil());
-                }
-                "http_get" | "http_post" | "http_put" | "http_delete" => {
-                    // HTTP functions (placeholder: return nil)
-                    return Ok(self.make_nil());
-                }
-                "store_new" | "store_get" | "store_set" | "store_subscribe" => {
-                    // State store functions (placeholder: return nil or arg)
-                    if !args.is_empty() {
-                        return self.compile_expr(&args[0]);
-                    }
-                    return Ok(self.make_nil());
-                }
-                "chance" | "gen_chance" | "random_chance" => {
-                    // Random chance/probability (placeholder: return true)
-                    let one = self.types.i64_type.const_int(1, false);
-                    return Ok(self.make_bool(one));
-                }
-                "gen_pick" | "random_pick" => {
-                    // Pick random element from list (placeholder: return nil)
-                    return Ok(self.make_nil());
-                }
-                "gen_shuffle" => {
-                    // gen_shuffle(list) - shuffle list (placeholder: return as-is)
-                    if !args.is_empty() {
-                        return self.compile_expr(&args[0]);
-                    }
-                    return Ok(self.make_nil());
-                }
-                "gen_uuid" | "uuid" => {
-                    // Generate UUID (placeholder: return placeholder string)
-                    return Ok(self.compile_string_literal("00000000-0000-0000-0000-000000000000"));
-                }
-                "try_catch" | "catch" => {
-                    // Try-catch error handling (placeholder: return nil)
-                    return Ok(self.make_nil());
-                }
-                "throw" | "raise" => {
-                    // Throw error (placeholder: return nil)
-                    return Ok(self.make_nil());
-                }
-                "runtime_version" => {
-                    // Get runtime version
-                    return Ok(self.compile_string_literal("1.0.0"));
-                }
-                "runtime_platform" => {
-                    // Get platform
-                    return Ok(self.compile_string_literal("linux"));
                 }
                 "runtime_args" => {
                     if !args.is_empty() {
@@ -26007,10 +25797,6 @@ impl<'ctx> CodeGen<'ctx> {
                     phi.add_incoming(&[(&s, has_end), (&n, no_end)]);
                     return Ok(phi.as_basic_value());
                 }
-                "runtime_exit" => {
-                    // Exit program (placeholder: return nil)
-                    return Ok(self.make_nil());
-                }
                 "exit" => {
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
@@ -26043,15 +25829,6 @@ impl<'ctx> CodeGen<'ctx> {
                         .compile_ok_or("runtime_cwd returned void")
                         .unwrap();
                     return Ok(result);
-                }
-                "proptesting_forall" | "forall" => {
-                    // Property-based testing (placeholder: return true)
-                    let one = self.types.i64_type.const_int(1, false);
-                    return Ok(self.make_bool(one));
-                }
-                "gen_dict" => {
-                    // gen_dict() - generator placeholder for property testing
-                    return Ok(self.make_nil());
                 }
                 "zip_up" | "zip" => {
                     // zip(list1, list2) - combine two lists into list of pairs
@@ -26198,10 +25975,6 @@ impl<'ctx> CodeGen<'ctx> {
                     let list2 = self.compile_expr(&args[2])?;
                     return self.inline_zipwith(fn_val, list1, list2);
                 }
-                "unzip" | "unzip_list" => {
-                    // unzip a list of pairs (placeholder: return nil)
-                    return Ok(self.make_nil());
-                }
                 "partition" | "split_by" => {
                     if args.len() != 2 {
                         return Err(HaversError::CompileError(
@@ -26224,14 +25997,6 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap();
                     return Ok(result);
                 }
-                "groupby" => {
-                    // groupby(list, key_fn) - group by key (placeholder: return nil)
-                    return Ok(self.make_nil());
-                }
-                "freq" | "frequencies" => {
-                    // frequencies(list) - count occurrences (placeholder: return nil)
-                    return Ok(self.make_nil());
-                }
                 "unique" | "dedupe" => {
                     // unique(list) - remove duplicates
                     if args.len() != 1 {
@@ -26249,10 +26014,6 @@ impl<'ctx> CodeGen<'ctx> {
                         .compile_ok_or("unique returned void")
                         .unwrap();
                     return Ok(result);
-                }
-                "scan" | "running_total" => {
-                    // scan(list, init, fn) - running accumulator (placeholder: return nil)
-                    return Ok(self.make_nil());
                 }
                 "window" | "sliding_window" => {
                     // window(str, size) - sliding window
@@ -26277,10 +26038,6 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap();
                     return Ok(result);
                 }
-                "weave" => {
-                    // weave(list1, list2) - alternate elements (placeholder: return nil)
-                    return Ok(self.make_nil());
-                }
                 "chunk" | "batch" => {
                     // chunk/batch(list, size) - split list into chunks
                     if args.len() != 2 {
@@ -26303,37 +26060,6 @@ impl<'ctx> CodeGen<'ctx> {
                         .compile_ok_or("chunks returned void")
                         .unwrap();
                     return Ok(result);
-                }
-                "rotate" | "rotate_list" => {
-                    // rotate(list, n) - rotate elements (placeholder: return as-is)
-                    if !args.is_empty() {
-                        return self.compile_expr(&args[0]);
-                    }
-                    return Ok(self.make_nil());
-                }
-                "table_new" | "table_create" => {
-                    // Create new table (placeholder: return nil)
-                    return Ok(self.make_nil());
-                }
-                "table_add_row" | "table_row" => {
-                    // Add row to table (placeholder: return nil)
-                    return Ok(self.make_nil());
-                }
-                "table_render" | "render_table" => {
-                    // Render table to string (placeholder: return empty string)
-                    return Ok(self.compile_string_literal(""));
-                }
-                "test_suite" | "describe" => {
-                    // Testing framework (placeholder: return nil)
-                    return Ok(self.make_nil());
-                }
-                "test_case" | "it" => {
-                    // Test case (placeholder: return nil)
-                    return Ok(self.make_nil());
-                }
-                "run_tests" | "run_suite" => {
-                    // Run test suite (placeholder: return nil)
-                    return Ok(self.make_nil());
                 }
                 "mony" | "replicate" => {
                     // mony(value, count) - create list with n copies
@@ -26463,16 +26189,8 @@ impl<'ctx> CodeGen<'ctx> {
                     // Get random Scots insult (playful)
                     return Ok(self.compile_string_literal("Awa' and bile yer heid!"));
                 }
-                "compose" | "pipe" => {
+                "compose" => {
                     // Function composition (placeholder: return nil)
-                    return Ok(self.make_nil());
-                }
-                "curry" | "partial" => {
-                    // Currying/partial application (placeholder: return nil)
-                    return Ok(self.make_nil());
-                }
-                "memoize" | "cache" => {
-                    // Memoization (placeholder: return nil)
                     return Ok(self.make_nil());
                 }
                 "identity" | "id" => {
@@ -26480,22 +26198,6 @@ impl<'ctx> CodeGen<'ctx> {
                     if !args.is_empty() {
                         return self.compile_expr(&args[0]);
                     }
-                    return Ok(self.make_nil());
-                }
-                "constantly" | "always" => {
-                    // Always return the same value (placeholder: return nil)
-                    return Ok(self.make_nil());
-                }
-                "once" | "call_once" => {
-                    // Call function once, cache result (placeholder: return nil)
-                    return Ok(self.make_nil());
-                }
-                "throttle" | "rate_limit" => {
-                    // Rate limiting (placeholder: return nil)
-                    return Ok(self.make_nil());
-                }
-                "debounce" | "delay_call" => {
-                    // Debouncing (placeholder: return nil)
                     return Ok(self.make_nil());
                 }
                 "fae_pairs" | "from_pairs" | "dict_from_pairs" => {
@@ -26630,36 +26332,6 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap();
                     return Ok(result);
                 }
-                "encode_base64" | "base64_encode" => {
-                    // Base64 encode (placeholder: return empty string)
-                    return Ok(self.compile_string_literal(""));
-                }
-                "decode_base64" | "base64_decode" => {
-                    // Base64 decode (placeholder: return empty string)
-                    return Ok(self.compile_string_literal(""));
-                }
-                "url_encode" | "encode_uri" => {
-                    // URL encode (placeholder: return as-is)
-                    if !args.is_empty() {
-                        return self.compile_expr(&args[0]);
-                    }
-                    return Ok(self.compile_string_literal(""));
-                }
-                "url_decode" | "decode_uri" => {
-                    // URL decode (placeholder: return as-is)
-                    if !args.is_empty() {
-                        return self.compile_expr(&args[0]);
-                    }
-                    return Ok(self.compile_string_literal(""));
-                }
-                "hash_md5" | "md5" => {
-                    // MD5 hash (placeholder: return empty string)
-                    return Ok(self.compile_string_literal(""));
-                }
-                "hash_sha256" | "sha256" => {
-                    // SHA256 hash (placeholder: return empty string)
-                    return Ok(self.compile_string_literal(""));
-                }
                 "center" | "centre" | "center_text" | "pad_center" => {
                     // center(str, width, fill?) - center-pad string (defaults to space fill)
                     if args.len() < 2 || args.len() > 3 {
@@ -26768,34 +26440,6 @@ impl<'ctx> CodeGen<'ctx> {
                         .compile_ok_or("rightpad returned void")
                         .unwrap();
                     return Ok(result);
-                }
-                "abbreviate" | "ellipsis" => {
-                    // abbreviate(str, max_len) - truncate with ellipsis (placeholder: return as-is)
-                    if !args.is_empty() {
-                        return self.compile_expr(&args[0]);
-                    }
-                    return Ok(self.compile_string_literal(""));
-                }
-                "slug" | "slugify" => {
-                    // slugify(str) - convert to URL slug (placeholder: return as-is)
-                    if !args.is_empty() {
-                        return self.compile_expr(&args[0]);
-                    }
-                    return Ok(self.compile_string_literal(""));
-                }
-                "camelize" | "camel_case" => {
-                    // camelize(str) - convert to camelCase (placeholder: return as-is)
-                    if !args.is_empty() {
-                        return self.compile_expr(&args[0]);
-                    }
-                    return Ok(self.compile_string_literal(""));
-                }
-                "underscore" | "snake_case" => {
-                    // underscore(str) - convert to snake_case (placeholder: return as-is)
-                    if !args.is_empty() {
-                        return self.compile_expr(&args[0]);
-                    }
-                    return Ok(self.compile_string_literal(""));
                 }
                 "is_upper" | "is_uppercase" => {
                     // is_upper(str) - check if string is all uppercase letters
@@ -27149,11 +26793,6 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap();
                     return Ok(result);
                 }
-                "find_str" | "str_find" => {
-                    // find_str(str, substr) - find first occurrence (-1 if not found)
-                    let neg_one = self.types.i64_type.const_int((-1i64) as u64, true);
-                    return Ok(self.make_int(neg_one));
-                }
                 "last_index_of" | "rfind" => {
                     // last_index_of(str, substr) - find last occurrence (-1 if not found)
                     if args.len() != 2 {
@@ -27176,13 +26815,6 @@ impl<'ctx> CodeGen<'ctx> {
                         .compile_ok_or("last_index_of returned void")
                         .unwrap();
                     return Ok(result);
-                }
-                "insert_at" | "list_insert" => {
-                    // insert_at(list, index, value) - insert at index (placeholder: return as-is)
-                    if !args.is_empty() {
-                        return self.compile_expr(&args[0]);
-                    }
-                    return Ok(self.make_nil());
                 }
                 "index" | "list_index" | "find_value" => {
                     // index(list, value) - find index of value (-1 if not found)
@@ -27230,7 +26862,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap();
                     return Ok(result);
                 }
-                "clear" | "list_clear" | "dict_clear" | "toom" => {
+                "clear" | "list_clear" | "toom" => {
                     // clear(collection) - clear all elements
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
@@ -27266,24 +26898,6 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap();
                     return Ok(result);
                 }
-                "deep_copy" | "deepcopy" => {
-                    // deep_copy(val) - deep copy (placeholder: return as-is)
-                    if !args.is_empty() {
-                        return self.compile_expr(&args[0]);
-                    }
-                    return Ok(self.make_nil());
-                }
-                "update" | "dict_update" => {
-                    // update(dict1, dict2) - merge dicts (placeholder: return first)
-                    if !args.is_empty() {
-                        return self.compile_expr(&args[0]);
-                    }
-                    return Ok(self.make_nil());
-                }
-                "setdefault" | "get_or_set" => {
-                    // setdefault(dict, key, default) - get or set default (placeholder: return nil)
-                    return Ok(self.make_nil());
-                }
                 "pop" | "list_pop" => {
                     // pop(list) - remove and return last element (same as yank)
                     if args.len() != 1 {
@@ -27293,14 +26907,6 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     let list = self.compile_expr(&args[0])?;
                     return self.inline_yank(list);
-                }
-                "dict_pop" => {
-                    // dict_pop(dict, key) - remove and return value (placeholder: return nil)
-                    return Ok(self.make_nil());
-                }
-                "popitem" | "dict_popitem" => {
-                    // popitem(dict) - remove and return arbitrary item (placeholder: return nil)
-                    return Ok(self.make_nil());
                 }
                 "is_somethin" | "is_something" | "is_some" => {
                     // is_somethin(val) - check if value is not nil (inverse of is_nowt)
@@ -27442,19 +27048,6 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap();
                     return Ok(result);
                 }
-                "from_char_code" => {
-                    // from_char_code(code) - character from code (placeholder)
-                    return Ok(self.compile_string_literal(""));
-                }
-                "char_code_at" => {
-                    // char_code_at(char) - code from character (placeholder)
-                    let zero = self.types.i64_type.const_int(0, false);
-                    return Ok(self.make_int(zero));
-                }
-                "get_char" => {
-                    // get_char(str, index) - get character at index (placeholder)
-                    return Ok(self.compile_string_literal(""));
-                }
                 "lerp" | "linear_interpolate" => {
                     // lerp(a, b, t) - linear interpolation: a + t * (b - a), always a float
                     if args.len() != 3 {
@@ -27519,11 +27112,6 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap()
                         .into_int_value();
                     return Ok(self.make_int(clamped));
-                }
-                "middle_value" => {
-                    // middle_value(list) - get median value (placeholder: return 0)
-                    let zero = self.types.i64_type.const_int(0, false);
-                    return Ok(self.make_int(zero));
                 }
                 "avg" | "mean" => {
                     // avg/mean(list) - get average (sum / length)
@@ -27705,13 +27293,6 @@ impl<'ctx> CodeGen<'ctx> {
                         .into_int_value();
                     return Ok(self.make_int(final_result));
                 }
-                "xor_cipher" | "xor_encrypt" => {
-                    // xor_cipher(str, key) - XOR encryption (placeholder: return as-is)
-                    if !args.is_empty() {
-                        return self.compile_expr(&args[0]);
-                    }
-                    return Ok(self.compile_string_literal(""));
-                }
                 "assert_nae_equal" | "assert_not_equal" => {
                     // Interpreter: assert_nae_equal(a, b) -> aye (or aborts).
                     if args.len() != 2 {
@@ -27766,44 +27347,30 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     return Ok(self.make_nil());
                 }
-                "same" | "identical" => {
+                "same" => {
                     // same(a, b) - check if values are identical (placeholder: return false)
                     let zero = self.types.i64_type.const_int(0, false);
                     return Ok(self.make_bool(zero));
                 }
-                "nae_that" | "not_that" | "unless" => {
+                "nae_that" => {
                     // nae_that(condition, value) - return value unless condition (placeholder)
                     if args.len() >= 2 {
                         return self.compile_expr(&args[1]);
                     }
                     return Ok(self.make_nil());
                 }
-                "swatch" | "case" | "switch" => {
+                "swatch" => {
                     // swatch(val, cases) - switch/case (placeholder: return nil)
                     return Ok(self.make_nil());
                 }
-                "small" | "mini" => {
-                    // small/mini(n) - make smaller (placeholder: return as-is)
-                    if !args.is_empty() {
-                        return self.compile_expr(&args[0]);
-                    }
-                    return Ok(self.make_nil());
-                }
-                "big" | "large" => {
-                    // big/large(n) - make bigger (placeholder: return as-is)
-                    if !args.is_empty() {
-                        return self.compile_expr(&args[0]);
-                    }
-                    return Ok(self.make_nil());
-                }
-                "constant" | "const" => {
+                "constant" => {
                     // constant(val) - create constant function (placeholder: return val)
                     if !args.is_empty() {
                         return self.compile_expr(&args[0]);
                     }
                     return Ok(self.make_nil());
                 }
-                "apply_n" | "apply_times" => {
+                "apply_n" => {
                     // apply_n(fn, n, val) - apply fn n times (placeholder: return val)
                     if args.len() >= 3 {
                         return self.compile_expr(&args[2]);
