@@ -4,6 +4,18 @@
 fetch "lib/colors"
 fetch "lib/scots_lang"
 
+# Ask for a line; if the input has ended (speir gives back naething), say cheerio and stop.
+dae speir_or_awa(prompt) {
+    ken answer = speir(prompt)
+    gin answer == naething {
+        blether ""
+        blether "Input's ended - cheerio, and haste ye back!"
+        exit(0)
+    }
+    gie answer
+}
+
+
 blether ""
 blether red("╔════════════════════════════════════════════════╗")
 blether red("║              HIGHLAND HEIST                    ║")
@@ -200,21 +212,21 @@ blether ""
 blether "Steal whit ye can an' escape before the alarm reaches 100%!"
 blether ""
 
-speir("Press Enter tae begin yer heist...")
+speir_or_awa("Press Enter tae begin yer heist...")
 
 # Main game loop
 whiles nae player["caught"] an nae player["escaped"] {
     show_stats()
     show_menu()
 
-    ken choice = wheesht(speir("Yer choice (1-6): "))
+    ken choice = wheesht(speir_or_awa("Yer choice (1-6): "))
 
     gin choice == "1" {
         ken available = show_treasures()
         gin len(available) == 0 {
             blether yellow("There's naething left tae steal!")
         } ither {
-            ken pick = wheesht(speir("Which treasure? (number or 'back'): "))
+            ken pick = wheesht(speir_or_awa("Which treasure? (number or 'back'): "))
             gin pick != "back" {
                 ken idx = tae_int(pick) - 1
                 gin idx >= 0 an idx < len(castle["treasures"]) {

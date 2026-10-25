@@ -4,6 +4,18 @@
 fetch "lib/scots_lang"
 fetch "lib/colors"
 
+# Ask for a line; if the input has ended (speir gives back naething), say cheerio and stop.
+dae speir_or_awa(prompt) {
+    ken answer = speir(prompt)
+    gin answer == naething {
+        blether ""
+        blether "Input's ended - cheerio, and haste ye back!"
+        exit(0)
+    }
+    gie answer
+}
+
+
 blether ""
 blether green("═══════════════════════════════════════════════════")
 blether green("    THE WEE SCOTTISH PUB QUIZ")
@@ -104,7 +116,7 @@ dae show_question(q) {
 }
 
 dae get_answer() {
-    ken answer = speir("Yer answer (1-4): ")
+    ken answer = speir_or_awa("Yer answer (1-4): ")
     ken num = tae_int(wheesht(answer))
     gin num < 1 or num > 4 {
         blether red("That's no' a valid choice! Pick 1-4.")

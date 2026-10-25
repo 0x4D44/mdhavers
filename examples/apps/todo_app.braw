@@ -3,6 +3,18 @@
 
 fetch "lib/colors"
 
+# Ask for a line; if the input has ended (speir gives back naething), say cheerio and stop.
+dae speir_or_awa(prompt) {
+    ken answer = speir(prompt)
+    gin answer == naething {
+        blether ""
+        blether "Input's ended - cheerio, and haste ye back!"
+        exit(0)
+    }
+    gie answer
+}
+
+
 blether ""
 blether blue("=============================================")
 blether blue("   THE SCOTS TODO LIST")
@@ -247,7 +259,7 @@ blether ""
 
 ken running = aye
 whiles running {
-    ken input = speir(blue("todo> "))
+    ken input = speir_or_awa(blue("todo> "))
     ken result = process_command(input)
 
     gin result == "quit" {

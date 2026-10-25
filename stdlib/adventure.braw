@@ -8,6 +8,18 @@
 # Direction Constants
 # ===============================================================
 
+# Ask for a line; if the input has ended (speir gives back naething), say cheerio and stop.
+dae adventure_speir_or_awa(prompt) {
+    ken answer = speir(prompt)
+    gin answer == naething {
+        blether ""
+        blether "Input's ended - cheerio, and haste ye back!"
+        exit(0)
+    }
+    gie answer
+}
+
+
 ken NORTH = "north"
 ken SOUTH = "south"
 ken EAST = "east"
@@ -755,7 +767,7 @@ kin AdventureGame {
 
         whiles masel.running {
             blether ""
-            ken input = speir("> ")
+            ken input = adventure_speir_or_awa("> ")
             ken response = masel.process_command(input)
             gin response != "" {
                 blether response

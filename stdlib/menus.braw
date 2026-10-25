@@ -7,6 +7,18 @@
 # Simple Menu
 # ===============================================================
 
+# Ask for a line; if the input has ended (speir gives back naething), say cheerio and stop.
+dae menus_speir_or_awa(prompt) {
+    ken answer = speir(prompt)
+    gin answer == naething {
+        blether ""
+        blether "Input's ended - cheerio, and haste ye back!"
+        exit(0)
+    }
+    gie answer
+}
+
+
 kin Menu {
     dae init(title = "Menu") {
         masel.title = title
@@ -46,7 +58,7 @@ kin Menu {
         }
         blether ""
 
-        ken choice = speir("Enter yer choice: ")
+        ken choice = menus_speir_or_awa("Enter yer choice: ")
         ken idx = tae_int(choice) - 1
 
         gin idx >= 0 an idx < len(masel.options) {
@@ -78,7 +90,7 @@ kin Menu {
 
 dae confirm(question, default = nae) {
     ken default_hint = gin default than "[Y/n]" ither "[y/N]"
-    ken answer = speir(f"{question} {default_hint} ")
+    ken answer = menus_speir_or_awa(f"{question} {default_hint} ")
     ken lower_answer = lower(wheesht(answer))
 
     gin lower_answer == "" {
@@ -145,7 +157,7 @@ kin TextInput {
         }
         prompt_text = prompt_text + ": "
 
-        ken value = speir(prompt_text)
+        ken value = menus_speir_or_awa(prompt_text)
 
         gin wheesht(value) == "" {
             gin masel.default != naething {
@@ -213,7 +225,7 @@ kin NumberInput {
         }
         prompt_text = prompt_text + ": "
 
-        ken value = speir(prompt_text)
+        ken value = menus_speir_or_awa(prompt_text)
 
         gin wheesht(value) == "" an masel.default != naething {
             gie masel.default
@@ -277,7 +289,7 @@ kin ChoiceInput {
             blether f"  {i + 1}. {choice['label']}{marker}"
         }
 
-        ken value = speir("Enter choice: ")
+        ken value = menus_speir_or_awa("Enter choice: ")
 
         gin wheesht(value) == "" an masel.default_idx != naething {
             gie masel.choices[masel.default_idx - 1]["value"]
@@ -564,7 +576,7 @@ kin Table {
 # ===============================================================
 
 dae ask(prompt) {
-    gie speir(prompt + ": ")
+    gie menus_speir_or_awa(prompt + ": ")
 }
 
 dae ask_int(prompt) {

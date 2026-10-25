@@ -2,6 +2,18 @@
 # Uses speir tae get input fae the user
 # Note: This uses a "random" number that's just fixed fer noo
 
+# Ask for a line; if the input has ended (speir gives back naething), say cheerio and stop.
+dae speir_or_awa(prompt) {
+    ken answer = speir(prompt)
+    gin answer == naething {
+        blether ""
+        blether "Input's ended - cheerio, and haste ye back!"
+        exit(0)
+    }
+    gie answer
+}
+
+
 ken secret = 42  # The answer tae life, the universe, an' everything!
 ken max_guesses = 7
 ken guesses = 0
@@ -17,7 +29,7 @@ blether ""
 
 whiles guesses < max_guesses an nae won {
     ken remaining = max_guesses - guesses
-    ken guess_str = speir "Guess #" + tae_string(guesses + 1) + " (" + tae_string(remaining) + " left): "
+    ken guess_str = speir_or_awa("Guess #" + tae_string(guesses + 1) + " (" + tae_string(remaining) + " left): ")
     ken guess = tae_int(guess_str)
     guesses = guesses + 1
 

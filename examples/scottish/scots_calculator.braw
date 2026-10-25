@@ -3,6 +3,18 @@
 
 fetch "lib/colors"
 
+# Ask for a line; if the input has ended (speir gives back naething), say cheerio and stop.
+dae speir_or_awa(prompt) {
+    ken answer = speir(prompt)
+    gin answer == naething {
+        blether ""
+        blether "Input's ended - cheerio, and haste ye back!"
+        exit(0)
+    }
+    gie answer
+}
+
+
 blether ""
 blether cyan("=============================================")
 blether cyan("   THE SCOTS CALCULATOR")
@@ -171,7 +183,7 @@ blether "Type an expression like '5 + 3' or 'help' fer mair options."
 blether ""
 
 whiles running {
-    ken input = speir(cyan("calc> "))
+    ken input = speir_or_awa(cyan("calc> "))
     ken result = process_command(input)
 
     gin result == "quit" {

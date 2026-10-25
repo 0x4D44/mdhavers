@@ -1,6 +1,18 @@
 # adventure.braw - A wee Scottish text adventure game
 # "The Haggis Hunt" - Can ye find the legendary Golden Haggis?
 
+# Ask for a line; if the input has ended (speir gives back naething), say cheerio and stop.
+dae speir_or_awa(prompt) {
+    ken answer = speir(prompt)
+    gin answer == naething {
+        blether ""
+        blether "Input's ended - cheerio, and haste ye back!"
+        exit(0)
+    }
+    gie answer
+}
+
+
 blether ""
 blether "═══════════════════════════════════════════════════════════════"
 blether "    THE HAGGIS HUNT"
@@ -326,7 +338,7 @@ dae play_game() {
     ken playing = aye
     whiles playing an nae has_won an health > 0 {
         blether ""
-        ken cmd = speir("> ")
+        ken cmd = speir_or_awa("> ")
         playing = process_command(cmd)
     }
 

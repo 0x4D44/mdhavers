@@ -8,6 +8,18 @@
 # Text Styling (without color module dependency)
 # ===============================================================
 
+# Ask for a line; if the input has ended (speir gives back naething), say cheerio and stop.
+dae cli_speir_or_awa(prompt) {
+    ken answer = speir(prompt)
+    gin answer == naething {
+        blether ""
+        blether "Input's ended - cheerio, and haste ye back!"
+        exit(0)
+    }
+    gie answer
+}
+
+
 dae _style(text, code) {
     gie f"\x1b[{code}m{text}\x1b[0m"
 }
@@ -466,7 +478,7 @@ dae prompt_text(message, default = naething) {
         prompt = prompt + f" [{default}]"
     }
     prompt = prompt + ": "
-    ken answer = wheesht(speir(prompt))
+    ken answer = wheesht(cli_speir_or_awa(prompt))
     gin answer == "" an default != naething {
         gie default
     }
@@ -475,7 +487,7 @@ dae prompt_text(message, default = naething) {
 
 dae prompt_confirm(message, default = aye) {
     ken hint = gin default than "[Y/n]" ither "[y/N]"
-    ken answer = lower(wheesht(speir(f"{message} {hint}: ")))
+    ken answer = lower(wheesht(cli_speir_or_awa(f"{message} {hint}: ")))
 
     gin answer == "" {
         gie default
@@ -497,7 +509,7 @@ dae prompt_choice(message, choices) {
     ken valid = nae
     ken choice = 0
     whiles nae valid {
-        ken answer = wheesht(speir("Enter number: "))
+        ken answer = wheesht(cli_speir_or_awa("Enter number: "))
         hae_a_bash {
             choice = tae_int(answer)
             gin choice >= 1 an choice <= len(choices) {
@@ -514,7 +526,7 @@ dae prompt_choice(message, choices) {
 
 dae prompt_password(message) {
     # Note: This is just a regular prompt since we can't disable echo
-    ken answer = wheesht(speir(message + ": "))
+    ken answer = wheesht(cli_speir_or_awa(message + ": "))
     gie answer
 }
 

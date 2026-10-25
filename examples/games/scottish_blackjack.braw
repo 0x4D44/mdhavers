@@ -4,6 +4,18 @@
 fetch "lib/colors"
 fetch "lib/scots_lang"
 
+# Ask for a line; if the input has ended (speir gives back naething), say cheerio and stop.
+dae speir_or_awa(prompt) {
+    ken answer = speir(prompt)
+    gin answer == naething {
+        blether ""
+        blether "Input's ended - cheerio, and haste ye back!"
+        exit(0)
+    }
+    gie answer
+}
+
+
 blether ""
 blether yellow("╔════════════════════════════════════════════════════════╗")
 blether yellow("║            SCOTTISH BLACKJACK                          ║")
@@ -167,7 +179,7 @@ dae push() {
 dae play_round() {
     # Get bet
     blether ""
-    ken bet_input = wheesht(speir(f"How much dae ye want tae bet? (1-{player_chips}): "))
+    ken bet_input = wheesht(speir_or_awa(f"How much dae ye want tae bet? (1-{player_chips}): "))
     
     hae_a_bash {
         current_bet = tae_int(bet_input)
@@ -226,7 +238,7 @@ dae play_round() {
         }
         blether ""
 
-        ken action = lower(wheesht(speir("Yer choice: ")))
+        ken action = lower(wheesht(speir_or_awa("Yer choice: ")))
 
         gin action == "h" or action == "hit" {
             shove(player_hand, deal_card())
@@ -308,7 +320,7 @@ whiles playing an player_chips > 0 {
         playing = nae
     } ither {
         blether ""
-        ken again = lower(wheesht(speir("Play another round? (aye/nae): ")))
+        ken again = lower(wheesht(speir_or_awa("Play another round? (aye/nae): ")))
         gin again != "aye" an again != "y" an again != "yes" {
             playing = nae
         }

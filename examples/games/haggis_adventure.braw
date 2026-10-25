@@ -4,6 +4,18 @@
 fetch "lib/colors"
 fetch "lib/scots_lang"
 
+# Ask for a line; if the input has ended (speir gives back naething), say cheerio and stop.
+dae speir_or_awa(prompt) {
+    ken answer = speir(prompt)
+    gin answer == naething {
+        blether ""
+        blether "Input's ended - cheerio, and haste ye back!"
+        exit(0)
+    }
+    gie answer
+}
+
+
 blether ""
 blether cyan("╔══════════════════════════════════════════════════╗")
 blether cyan("║        THE ADVENTURE O' THE LOST HAGGIS          ║")
@@ -234,7 +246,7 @@ blether "Legends say it grants wisdom tae whoever finds it."
 blether "Will ye be the one tae find it?"
 blether ""
 
-player["name"] = speir("Whit's yer name, brave adventurer? ")
+player["name"] = speir_or_awa("Whit's yer name, brave adventurer? ")
 blether ""
 blether f"Welcome, {bold(player['name'])}! Yer adventure begins..."
 
@@ -243,7 +255,7 @@ show_location()
 
 whiles nae player["has_won"] {
     blether ""
-    ken command = lower(wheesht(speir("> ")))
+    ken command = lower(wheesht(speir_or_awa("> ")))
 
     gin command == "quit" or command == "exit" {
         blether ""
