@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00149 — Native ordering comparisons accept a bool against an int; the interpreter raises
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** native
 - **Raised:** 2026-10-25T09:01:03Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261025T090823Z-73018e88
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00149-run-fix-20261025T090823Z-73018e88
-- **Owner base:** 479cd4bc38160c71ecc5cf8d225a17b0fcc4126e
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-25T09:08:23Z
-- **Owner until:** 2026-10-25T13:08:23Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-25T09:01:03Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-25T09:01:03Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-25T09:30:50Z, deltic:auto role=fix run=fix-20261025T090823Z-73018e88 branch=task/bug-MDH-BUG-FLU-00149-run-fix-20261025T090823Z-73018e88 code=eccfe2e gate=manual)
 
 ## Observation
 
