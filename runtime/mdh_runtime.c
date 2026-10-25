@@ -1581,13 +1581,20 @@ MdhValue __mdh_speir(MdhValue prompt) {
     MdhStrBuf sb;
     __mdh_sb_init(&sb);
     char chunk[1024];
+    int got_any = 0;
     while (fgets(chunk, sizeof(chunk), stdin) != NULL) {
+        got_any = 1;
         size_t len = strlen(chunk);
         if (len > 0 && chunk[len - 1] == '\n') {
             __mdh_sb_append_n(&sb, chunk, len - 1);
             break;
         }
         __mdh_sb_append_n(&sb, chunk, len);
+    }
+    if (!got_any) {
+        /* End of input (not an empty line): naething (MDH-BUG-FLU-00136). */
+        __mdh_release(__mdh_string_from_buf(sb.buf));
+        return __mdh_make_nil();
     }
     return __mdh_string_from_buf(sb.buf);
 }

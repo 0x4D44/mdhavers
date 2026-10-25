@@ -12514,9 +12514,14 @@ impl Interpreter {
             io::stdout().flush().unwrap();
 
             let mut input = String::new();
-            io::stdin()
+            let read = io::stdin()
                 .read_line(&mut input)
                 .map_err(|e| HaversError::InternalError(e.to_string()))?;
+
+            // End of input is naething; an empty line is still "" (MDH-BUG-FLU-00136).
+            if read == 0 {
+                return Ok(Value::Nil);
+            }
 
             Ok(Value::String(input.trim().to_string()))
         }

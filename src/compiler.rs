@@ -1233,7 +1233,11 @@ impl Compiler {
         self.emit_line("const fs = require('fs');");
         self.emit_line("process.stdout.write(String(prompt));");
         self.emit_line("const buf = Buffer.alloc(1024);");
-        self.emit_line("const n = fs.readSync(0, buf);");
+        self.emit_line("let n = 0;");
+        self.emit_line(
+            "try { n = fs.readSync(0, buf); } catch (e) { if (e.code !== 'EOF') throw e; }",
+        );
+        self.emit_line("if (n === 0) return null;");
         self.emit_line("return buf.toString('utf8', 0, n).trim();");
         self.indent -= 1;
         self.emit_line("},");

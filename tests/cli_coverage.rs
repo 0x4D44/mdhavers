@@ -1273,3 +1273,73 @@ fn cli_prelude_does_not_shadow_native_pad_builtins() {
     assert_eq!(code, 0, "stderr: {err}");
     assert_eq!(out, "[ab   ]\n[ab***]\n[   ab]\n[000ab]\n");
 }
+
+#[test]
+fn cli_speir_at_end_of_input_is_naething_but_blank_line_is_empty() {
+    // MDH-BUG-FLU-00136: EOF must be distinguishable from an empty line.
+    let dir = tempdir().unwrap();
+    let prog = dir.path().join("eof.braw");
+    write_file(
+        &prog,
+        "ken a = speir \"\"\n\
+         ken b = speir \"\"\n\
+         blether a == \"\"\n\
+         blether b == naething\n",
+    );
+    let (code, out, err) = run_mdhavers(&["run", prog.to_str().unwrap()], Some("\n"), dir.path());
+    assert_eq!(code, 0, "stderr: {err}");
+    assert_eq!(out, "aye\naye\n");
+
+    // Closed (empty) stdin: the first read is already naething.
+    let prog2 = dir.path().join("eof2.braw");
+    write_file(&prog2, "ken v = speir \"\"\nblether v == naething\n");
+    let (code, out, err) = run_mdhavers(&["run", prog2.to_str().unwrap()], None, dir.path());
+    assert_eq!(code, 0, "stderr: {err}");
+    assert_eq!(out, "aye\n");
+}
+
+#[test]
+fn cli_compiled_js_speir_at_end_of_input_is_null() {
+    // MDH-BUG-FLU-00136 on the JS backend (skipped when node is missing).
+    if Command::new("node").arg("--version").output().is_err() {
+        return;
+    }
+    let dir = tempdir().unwrap();
+    let prog = dir.path().join("eof.braw");
+    let js = dir.path().join("eof.js");
+    write_file(
+        &prog,
+        "ken a = speir \"\"\nken b = speir \"\"\nblether a == \"\"\nblether b == naething\n",
+    );
+    let (code, _o, err) = run_mdhavers(
+        &[
+            "compile",
+            prog.to_str().unwrap(),
+            "-o",
+            js.to_str().unwrap(),
+        ],
+        None,
+        dir.path(),
+    );
+    assert_eq!(code, 0, "stderr: {err}");
+    let mut child = Command::new("node")
+        .arg(&js)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    {
+        use std::io::Write;
+        child.stdin.as_mut().unwrap().write_all(b"\n").unwrap();
+    }
+    drop(child.stdin.take());
+    let output = child.wait_with_output().unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(stdout, "aye\naye\n");
+}

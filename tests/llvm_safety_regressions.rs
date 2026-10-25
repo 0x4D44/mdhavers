@@ -765,3 +765,26 @@ blether second
     let lines: Vec<&str> = run.stdout.trim().lines().collect();
     assert_eq!(lines, vec!["5000", "next"]);
 }
+
+// ---------- MDH-BUG-FLU-00136: speir at end of input is naething ----------
+
+#[test]
+fn speir_at_end_of_input_is_naething_but_blank_line_is_empty_string() {
+    let src = r#"
+ken a = speir ""
+ken b = speir ""
+ken c = speir ""
+blether a == ""
+blether b == naething
+blether c == naething
+"#;
+    let run = compile_and_run_with_input(src, "\n");
+    assert_eq!(run.code, Some(0), "stderr={:?}", run.stderr);
+    let lines: Vec<&str> = run.stdout.trim().lines().collect();
+    assert_eq!(lines, vec!["aye", "aye", "aye"]);
+
+    // Completely closed stdin: the first read is already naething.
+    let run = compile_and_run_with_input("ken v = speir \"\"\nblether v == naething\n", "");
+    assert_eq!(run.code, Some(0), "stderr={:?}", run.stderr);
+    assert_eq!(run.stdout.trim(), "aye");
+}
