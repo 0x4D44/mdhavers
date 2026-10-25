@@ -74,6 +74,7 @@ pub const RUNTIME_OWNERSHIP: &[(&str, &str, Ret)] = &[
     ("__mdh_bytes_slice", "bbb", Ret::Fresh), // byte copy, no MdhValue elements
     ("__mdh_bytes_write_u16be", "mbb", Ret::Arg), // returns bytes arg; mutated in place
     ("__mdh_bytes_write_u32be", "mbb", Ret::Arg), // returns bytes arg; mutated in place
+    ("__mdh_cannie", "b", Ret::None),
     ("__mdh_capitalize", "b", Ret::Fresh),
     ("__mdh_center", "bb", Ret::Fresh), // R1: +1 on every path
     ("__mdh_chan_close", "b", Ret::None),

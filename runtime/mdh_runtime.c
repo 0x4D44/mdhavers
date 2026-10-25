@@ -10224,6 +10224,32 @@ MdhValue __mdh_scunner(MdhValue v) {
     }
 }
 
+/* cannie(val): is it safe/valid? Mirrors the interpreter: nil -> nae,
+ * numbers -> not negative (NaN is nae), strings/lists -> not empty,
+ * bools -> themselves, anything else -> aye. */
+MdhValue __mdh_cannie(MdhValue v) {
+    switch (v.tag) {
+        case MDH_TAG_NIL:
+            return __mdh_make_bool(false);
+        case MDH_TAG_INT:
+            return __mdh_make_bool(v.data >= 0);
+        case MDH_TAG_FLOAT:
+            return __mdh_make_bool(__mdh_get_float(v) >= 0.0);
+        case MDH_TAG_STRING: {
+            const char *s = __mdh_get_string(v);
+            return __mdh_make_bool(s && s[0] != '\0');
+        }
+        case MDH_TAG_LIST: {
+            MdhList *l = __mdh_get_list(v);
+            return __mdh_make_bool(l && l->length > 0);
+        }
+        case MDH_TAG_BOOL:
+            return __mdh_make_bool(v.data != 0);
+        default:
+            return __mdh_make_bool(true);
+    }
+}
+
 MdhValue __mdh_scunner_check(MdhValue val, MdhValue expected_type) {
     if (expected_type.tag != MDH_TAG_STRING) {
         __mdh_type_error("scunner_check", expected_type.tag, 0);

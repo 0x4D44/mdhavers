@@ -371,6 +371,7 @@ struct LibcFunctions<'ctx> {
     banter: FunctionValue<'ctx>,
     capitalize: FunctionValue<'ctx>,
     scunner: FunctionValue<'ctx>,
+    cannie: FunctionValue<'ctx>,
     scunner_check: FunctionValue<'ctx>,
     clype: FunctionValue<'ctx>,
     stoater: FunctionValue<'ctx>,
@@ -3168,6 +3169,7 @@ impl<'ctx> CodeGen<'ctx> {
         let capitalize =
             module.add_function("__mdh_capitalize", scottify_type, Some(Linkage::External));
         let scunner = module.add_function("__mdh_scunner", scottify_type, Some(Linkage::External));
+        let cannie = module.add_function("__mdh_cannie", scottify_type, Some(Linkage::External));
         let clype = module.add_function("__mdh_clype", scottify_type, Some(Linkage::External));
         let stoater = module.add_function("__mdh_stoater", scottify_type, Some(Linkage::External));
         let redd_up = module.add_function("__mdh_redd_up", scottify_type, Some(Linkage::External));
@@ -4100,6 +4102,7 @@ impl<'ctx> CodeGen<'ctx> {
             banter,
             capitalize,
             scunner,
+            cannie,
             scunner_check,
             clype,
             stoater,
@@ -20019,7 +20022,8 @@ impl<'ctx> CodeGen<'ctx> {
                     phi.add_incoming(&[(&ok_val, ok_end), (&err_val, err_end)]);
                     return Ok(phi.as_basic_value());
                 }
-                "wheesht" | "trim" | "sneck" => {
+                // careful: native-only alias for wheesht (the interpreter has no such builtin)
+                "wheesht" | "trim" | "sneck" | "careful" => {
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
                             "wheesht/trim expects 1 argument".to_string(),
@@ -23355,15 +23359,23 @@ impl<'ctx> CodeGen<'ctx> {
                     self.inline_blether(arg);
                     return Ok(self.make_nil());
                 }
-                "cannie" | "careful" => {
-                    // cannie(str) - trim string (alias for wheesht)
+                "cannie" => {
+                    // cannie(val) - is it safe/valid? (not nil, not empty, not negative)
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
                             "cannie expects 1 argument".to_string(),
                         ));
                     }
-                    let arg = self.compile_expr(&args[0])?;
-                    return self.inline_wheesht(arg);
+                    let val = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.cannie, &[val.into()], "cannie_result")
+                        .unwrap()
+                        .try_as_basic_value()
+                        .basic()
+                        .compile_ok_or("cannie returned void")
+                        .unwrap();
+                    return Ok(result);
                 }
                 "pass" => {
                     // pass() - no-op placeholder for tests

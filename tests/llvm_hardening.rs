@@ -896,3 +896,35 @@ blether a()
     );
     assert_eq!(out, vec!["6", "6", "10", "8", "42", "121", "8", "10"]);
 }
+
+// ---------- MDH-BUG-FLU-00137: cannie is a validity check, not a trim ----------
+
+#[test]
+fn cannie_checks_validity_like_the_interpreter() {
+    // Native used to compile cannie as wheesht (trim), so cannie(42) ran strlen on an
+    // integer and segfaulted.
+    let out = run_ok(
+        r#"
+blether cannie(42)
+blether cannie(0)
+blether cannie(-5)
+blether cannie(2.5)
+blether cannie(-0.5)
+blether cannie("hello")
+blether cannie("")
+blether cannie([1])
+blether cannie([])
+blether cannie(naething)
+blether cannie(aye)
+blether cannie(nae)
+blether cannie({"a": 1})
+"#,
+    );
+    assert_eq!(
+        out,
+        vec![
+            "aye", "aye", "nae", "aye", "nae", "aye", "nae", "aye", "nae", "nae", "aye", "nae",
+            "aye"
+        ]
+    );
+}

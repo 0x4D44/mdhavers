@@ -50825,7 +50825,7 @@ mod math_scots_cov {
 
     #[test]
     fn test_cannie() {
-        // cannie - trim string (alias for wheesht)
+        // cannie - is it safe/valid?
         let code = r#"blether cannie("  hello  ")"#;
         let binding = run(code);
         let output = binding.trim();
@@ -73800,10 +73800,11 @@ mod string_funcs_coverage_extra {
 
     #[test]
     fn test_cannie() {
+        // cannie is a validity check (interpreter semantics), not a trim
         let code = r#"blether cannie("  hello  ")"#;
         let binding = run(code);
         let output = binding.trim();
-        assert_eq!(output, "hello");
+        assert_eq!(output, "aye");
     }
 
     #[test]
