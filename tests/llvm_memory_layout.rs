@@ -1,7 +1,7 @@
 #![cfg(feature = "llvm")]
 //! Native backend: memory-layout prerequisites for reference counting (stage R0 of
 //! `wrk_docs/2026.10.23 - DES - LLVM 18-19 upgrade and reference counting.md`, 3.8).
-//! R0.1 one allocator, R0.2 stable instance identity.
+//! R0.1 one allocator, R0.2 stable instance identity, R0.3 immortal static strings.
 
 use std::fmt::Write as _;
 use std::process::{Command, Stdio};
@@ -123,5 +123,64 @@ blether b.n
     assert_eq!(
         out,
         vec!["40", "40", "40", "40", "40", "39", "39", "late", "late", "42", "42"]
+    );
+}
+
+// ---------- R0.3: string literals and class names are immortal objects ----------
+
+/// `{ i64 refcount = IMMORTAL, i32 kind = String, i32 flags = IMMORTAL, chars }` (DES 3.2).
+fn immortal_string_constant(text: &str) -> String {
+    format!(
+        "{{ i64 {}, i32 1, i32 1, [{} x i8] c\"{text}\\00\" }}",
+        i64::MAX / 2,
+        text.len() + 1
+    )
+}
+
+#[test]
+fn string_literals_and_class_names_carry_an_immortal_header() {
+    let src = r#"
+kin Wee {
+    dae init() { masel.k = "field" }
+}
+ken w = Wee()
+ken s = "literal"
+s = s + "!"
+blether s
+blether "literal"
+blether w
+blether w.k
+blether f"interp {s}"
+"#;
+    let ir = ir_of(src);
+    for text in ["literal", "Wee", "field", "interp "] {
+        let constant = immortal_string_constant(text);
+        let line = ir
+            .lines()
+            .find(|l| l.contains(&constant))
+            .unwrap_or_else(|| panic!("no immortal constant for {text:?}: want {constant}"));
+        assert!(
+            line.contains(" constant "),
+            "{text:?} is not read-only: {line}"
+        );
+        assert!(
+            line.contains("align 16"),
+            "{text:?} is not 16-byte aligned: {line}"
+        );
+    }
+    // Values point at the chars, 16 bytes past the header.
+    assert!(
+        ir.contains("i64 16)"),
+        "no pointer to the chars after a header"
+    );
+    assert_eq!(
+        run_ok(src),
+        vec![
+            "literal!",
+            "literal",
+            "<Wee instance>",
+            "field",
+            "interp literal!"
+        ]
     );
 }

@@ -36,7 +36,9 @@ use crate::ast::{
 };
 use crate::error::HaversError;
 
-use super::types::{MdhTypes, ObjKind, ValueTag};
+use super::types::{
+    MdhTypes, ObjKind, ValueTag, IMMORTAL_REFCOUNT, OBJ_FLAG_IMMORTAL, OBJ_HEADER_SIZE,
+};
 
 /// Hurled when a string size computation would overflow or cannot be allocated.
 /// Keep in step with MDH_STRING_TOO_BIG_MSG in runtime/mdh_runtime.c.
@@ -537,7 +539,7 @@ struct ImportBindings<'ctx> {
     function_defaults: HashMap<String, Vec<Option<Expr>>>,
     function_captures: HashMap<String, Vec<String>>,
     function_param_names: HashMap<String, Vec<String>>,
-    class_bindings: HashMap<String, inkwell::values::GlobalValue<'ctx>>,
+    class_bindings: HashMap<String, PointerValue<'ctx>>,
     class_method_bindings: HashMap<String, Vec<(String, FunctionValue<'ctx>)>>,
 }
 
@@ -677,7 +679,8 @@ pub struct CodeGen<'ctx> {
     import_unique_counter: usize,
 
     /// Class definitions: name -> global variable holding class data pointer
-    classes: HashMap<String, inkwell::values::GlobalValue<'ctx>>,
+    /// Class name -> chars of its immortal class-name string (the class value's data).
+    classes: HashMap<String, PointerValue<'ctx>>,
 
     /// Class inheritance: class_name -> superclass_name
     class_superclasses: HashMap<String, String>,
@@ -4144,27 +4147,59 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
+    /// A static string as an immortal object (DES F6 3.2): a constant global
+    /// `{ i64 refcount, i32 kind, i32 flags, [n x i8] }` whose header marks it immortal, so
+    /// reference counting never writes to it. Use `get_string_ptr` / `immortal_str` for the
+    /// chars pointer that a string value holds; the chars sit `OBJ_HEADER_SIZE` bytes in.
     fn create_global_string(
         module: &Module<'ctx>,
         context: &'ctx Context,
         s: &str,
         name: &str,
     ) -> inkwell::values::GlobalValue<'ctx> {
-        let bytes: Vec<u8> = s.bytes().chain(std::iter::once(0)).collect();
-        let arr_type = context.i8_type().array_type(bytes.len() as u32);
-        let global = module.add_global(arr_type, Some(AddressSpace::default()), name);
+        let i32_type = context.i32_type();
+        let init = context.const_struct(
+            &[
+                context
+                    .i64_type()
+                    .const_int(IMMORTAL_REFCOUNT, false)
+                    .into(),
+                i32_type.const_int(ObjKind::String as u64, false).into(),
+                i32_type.const_int(OBJ_FLAG_IMMORTAL, false).into(),
+                context.const_string(s.as_bytes(), true).into(),
+            ],
+            false,
+        );
+        let global = module.add_global(init.get_type(), Some(AddressSpace::default()), name);
         global.set_linkage(Linkage::Private);
         global.set_constant(true);
-        let values: Vec<_> = bytes
-            .iter()
-            .map(|b| context.i8_type().const_int(*b as u64, false))
-            .collect();
-        global.set_initializer(&context.i8_type().const_array(&values));
+        global.set_alignment(16);
+        global.set_initializer(&init);
         global
     }
 
+    /// The chars of a `create_global_string` global: what a string value points at.
+    fn string_global_chars(
+        context: &'ctx Context,
+        global: inkwell::values::GlobalValue<'ctx>,
+    ) -> PointerValue<'ctx> {
+        let offset = context.i64_type().const_int(OBJ_HEADER_SIZE, false);
+        // SAFETY: the offset is the header size, inside the global.
+        unsafe {
+            global
+                .as_pointer_value()
+                .const_in_bounds_gep(context.i8_type(), &[offset])
+        }
+    }
+
     fn get_string_ptr(&self, global: inkwell::values::GlobalValue<'ctx>) -> PointerValue<'ctx> {
-        global.as_pointer_value()
+        Self::string_global_chars(self.context, global)
+    }
+
+    /// An immortal static string (see `create_global_string`); returns its chars pointer.
+    fn immortal_str(&self, s: &str, name: &str) -> PointerValue<'ctx> {
+        let global = Self::create_global_string(&self.module, self.context, s, name);
+        self.get_string_ptr(global)
     }
 
     /// `__mdh_hurl_at(msg, line)`: hurl a user error with the interpreter's
@@ -4575,11 +4610,8 @@ impl<'ctx> CodeGen<'ctx> {
 
                 // Ensure __current_suite is an empty string by default (prints as empty output).
                 if name == "__current_suite" {
-                    let empty_ptr = self
-                        .builder
-                        .build_global_string_ptr("", "__current_suite_empty")
-                        .unwrap();
-                    let empty = self.make_string(empty_ptr.as_pointer_value());
+                    let empty_ptr = self.immortal_str("", "__current_suite_empty");
+                    let empty = self.make_string(empty_ptr);
                     self.builder.build_store(global_ptr, empty).unwrap();
                 }
             }
@@ -4834,10 +4866,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Store class and method table
         self.class_methods.insert(name.to_string(), method_list);
-        let class_name_global = self
-            .builder
-            .build_global_string_ptr(name, &format!("class_{}", name))
-            .unwrap();
+        let class_name_global = self.immortal_str(name, &format!("class_{}", name));
         self.classes.insert(name.to_string(), class_name_global);
     }
 
@@ -6995,11 +7024,8 @@ impl<'ctx> CodeGen<'ctx> {
 
         // count == 0 -> empty string
         self.builder.position_at_end(str_zero);
-        let empty_ptr = self
-            .builder
-            .build_global_string_ptr("", "empty_repeat")
-            .unwrap();
-        let empty_result = self.make_string(empty_ptr.as_pointer_value());
+        let empty_ptr = self.immortal_str("", "empty_repeat");
+        let empty_result = self.make_string(empty_ptr);
         self.builder.build_unconditional_branch(merge).unwrap();
         let empty_block = self.builder.get_insert_block().unwrap();
 
@@ -8803,24 +8829,15 @@ impl<'ctx> CodeGen<'ctx> {
 
         // nil -> "naething"
         self.builder.position_at_end(str_nil);
-        let nil_str = self
-            .builder
-            .build_global_string_ptr("naething", "nil_str")
-            .unwrap();
-        let nil_result = self.make_string(nil_str.as_pointer_value());
+        let nil_str = self.immortal_str("naething", "nil_str");
+        let nil_result = self.make_string(nil_str);
         self.builder.build_unconditional_branch(str_merge).unwrap();
         let nil_block = self.builder.get_insert_block().unwrap();
 
         // bool -> "aye" or "nae"
         self.builder.position_at_end(str_bool);
-        let true_str = self
-            .builder
-            .build_global_string_ptr("aye", "true_str")
-            .unwrap();
-        let false_str = self
-            .builder
-            .build_global_string_ptr("nae", "false_str")
-            .unwrap();
+        let true_str = self.immortal_str("aye", "true_str");
+        let false_str = self.immortal_str("nae", "false_str");
         let zero = self.types.i64_type.const_int(0, false);
         let is_true = self
             .builder
@@ -8828,12 +8845,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         let bool_ptr = self
             .builder
-            .build_select(
-                is_true,
-                true_str.as_pointer_value(),
-                false_str.as_pointer_value(),
-                "bool_ptr",
-            )
+            .build_select(is_true, true_str, false_str, "bool_ptr")
             .unwrap();
         let bool_result = self.make_string(bool_ptr.into_pointer_value());
         self.builder.build_unconditional_branch(str_merge).unwrap();
@@ -13511,8 +13523,7 @@ impl<'ctx> CodeGen<'ctx> {
 
                     // Capture class metadata so aliased imports can construct instances and
                     // dispatch methods even after we restore the pre-import bindings.
-                    let mut class_exports: HashMap<String, inkwell::values::GlobalValue<'ctx>> =
-                        HashMap::new();
+                    let mut class_exports: HashMap<String, PointerValue<'ctx>> = HashMap::new();
                     let mut class_method_tables: HashMap<
                         String,
                         Vec<(String, FunctionValue<'ctx>)>,
@@ -14086,7 +14097,7 @@ impl<'ctx> CodeGen<'ctx> {
                     self.guard_global_defined_flag(flag, name, "class_value_defined");
 
                     let class_global = *self.classes.get(name).expect("missing class global");
-                    Ok(self.make_class(class_global.as_pointer_value()))
+                    Ok(self.make_class(class_global))
                 } else if name == "PI" {
                     // Built-in constant: PI
                     let pi_val = self.context.f64_type().const_float(std::f64::consts::PI);
@@ -14548,8 +14559,8 @@ impl<'ctx> CodeGen<'ctx> {
             }
 
             Literal::String(s) => {
-                let str_ptr = self.builder.build_global_string_ptr(s, "str").unwrap();
-                self.make_string(str_ptr.as_pointer_value())
+                let str_ptr = self.immortal_str(s, "str");
+                self.make_string(str_ptr)
             }
         }
     }
@@ -14701,7 +14712,7 @@ impl<'ctx> CodeGen<'ctx> {
             // the resolved method function to call.
             let mut candidate_classes: Vec<(
                 String,
-                GlobalValue<'ctx>,
+                PointerValue<'ctx>,
                 FunctionValue<'ctx>,
                 String,
             )> = Vec::new();
@@ -14804,7 +14815,7 @@ impl<'ctx> CodeGen<'ctx> {
                     let class_ptr_int = self
                         .builder
                         .build_ptr_to_int(
-                            class_global.as_pointer_value(),
+                            *class_global,
                             self.types.i64_type,
                             &format!("{}_class_ptr_int", class_name),
                         )
@@ -31035,11 +31046,8 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Empty list - return empty string
         self.builder.position_at_end(empty_block);
-        let empty_str = self
-            .builder
-            .build_global_string_ptr("", "empty_str")
-            .unwrap();
-        let empty_result = self.make_string(empty_str.as_pointer_value());
+        let empty_str = self.immortal_str("", "empty_str");
+        let empty_result = self.make_string(empty_str);
         self.builder.build_unconditional_branch(done_block).unwrap();
         let empty_block_end = self.builder.get_insert_block().unwrap();
 
@@ -32502,7 +32510,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let class_int = self
                     .builder
                     .build_ptr_to_int(
-                        class_global.as_pointer_value(),
+                        class_global,
                         self.types.i64_type,
                         &format!("class_int_{}", idx),
                     )
@@ -35126,21 +35134,15 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
         if parts.is_empty() {
             // Empty f-string -> empty string
-            let empty = self
-                .builder
-                .build_global_string_ptr("", "empty_fstr")
-                .unwrap();
-            return Ok(self.make_string(empty.as_pointer_value()));
+            let empty = self.immortal_str("", "empty_fstr");
+            return Ok(self.make_string(empty));
         }
 
         // Start with the first part
         let mut result = match &parts[0] {
             FStringPart::Text(s) => {
-                let text = self
-                    .builder
-                    .build_global_string_ptr(s, "fstr_text")
-                    .unwrap();
-                self.make_string(text.as_pointer_value())
+                let text = self.immortal_str(s, "fstr_text");
+                self.make_string(text)
             }
             FStringPart::Expr(expr) => {
                 let val = self.compile_expr(expr)?;
@@ -35153,11 +35155,8 @@ impl<'ctx> CodeGen<'ctx> {
         for part in parts.iter().skip(1) {
             let part_val = match part {
                 FStringPart::Text(s) => {
-                    let text = self
-                        .builder
-                        .build_global_string_ptr(s, "fstr_text")
-                        .unwrap();
-                    self.make_string(text.as_pointer_value())
+                    let text = self.immortal_str(s, "fstr_text");
+                    self.make_string(text)
                 }
                 FStringPart::Expr(expr) => {
                     let val = self.compile_expr(expr)?;
@@ -36897,11 +36896,9 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
 
         self.builder.position_at_end(too_short_block);
-        let msg_ptr = self
-            .builder
-            .build_global_string_ptr("Cannae destructure: no' enough elements", "destructure_msg")
-            .unwrap();
-        let msg_val = self.make_string(msg_ptr.as_pointer_value());
+        let msg_ptr =
+            self.immortal_str("Cannae destructure: no' enough elements", "destructure_msg");
+        let msg_val = self.make_string(msg_ptr);
         self.builder
             .build_call(self.libc.hurl, &[msg_val.into()], "")
             .unwrap();
@@ -37358,7 +37355,7 @@ impl<'ctx> CodeGen<'ctx> {
         let key_val = self.compile_string_literal(property);
 
         // Resolve method by runtime class, using the class name pointer stored in the instance data.
-        let mut candidates: Vec<(String, GlobalValue<'ctx>, FunctionValue<'ctx>)> = Vec::new();
+        let mut candidates: Vec<(String, PointerValue<'ctx>, FunctionValue<'ctx>)> = Vec::new();
         let mut class_names: Vec<String> = self.classes.keys().cloned().collect();
         class_names.sort();
         for class_name in class_names {
@@ -37433,7 +37430,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let class_ptr_int = self
                     .builder
                     .build_ptr_to_int(
-                        class_global.as_pointer_value(),
+                        *class_global,
                         self.types.i64_type,
                         &format!("{}_class_ptr_int", class_name),
                     )
@@ -38508,10 +38505,7 @@ impl<'ctx> CodeGen<'ctx> {
             // Store method table and class name early so methods can be looked up.
             self.class_methods
                 .insert(name.to_string(), method_list.clone());
-            let class_name_global = self
-                .builder
-                .build_global_string_ptr(name, &format!("class_{}", name))
-                .unwrap();
+            let class_name_global = self.immortal_str(name, &format!("class_{}", name));
             self.classes.insert(name.to_string(), class_name_global);
         }
 
@@ -38710,7 +38704,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Store class name pointer
         let class_name_global = match self.classes.get(class_name) {
-            Some(g) => g,
+            Some(g) => *g,
             None => {
                 return Err(HaversError::CompileError(format!(
                     "Unknown class: {class_name}"
@@ -38720,11 +38714,7 @@ impl<'ctx> CodeGen<'ctx> {
         let class_name_ptr_slot = instance_ptr;
         let class_name_int = self
             .builder
-            .build_ptr_to_int(
-                class_name_global.as_pointer_value(),
-                self.types.i64_type,
-                "class_name_int",
-            )
+            .build_ptr_to_int(class_name_global, self.types.i64_type, "class_name_int")
             .unwrap();
         self.builder
             .build_store(class_name_ptr_slot, class_name_int)
@@ -39123,7 +39113,7 @@ impl<'ctx> CodeGen<'ctx> {
         // If we still don't know the receiver's class statically, dispatch at runtime using the
         // instance's class name pointer (stored at offset 0 in the instance header).
         if found_method.is_none() {
-            let mut candidates: Vec<(String, GlobalValue<'ctx>, FunctionValue<'ctx>, String)> =
+            let mut candidates: Vec<(String, PointerValue<'ctx>, FunctionValue<'ctx>, String)> =
                 Vec::new();
 
             let mut class_names: Vec<String> = self.classes.keys().cloned().collect();
@@ -39204,7 +39194,7 @@ impl<'ctx> CodeGen<'ctx> {
                     let class_ptr_int = self
                         .builder
                         .build_ptr_to_int(
-                            class_global.as_pointer_value(),
+                            *class_global,
                             self.types.i64_type,
                             &format!("{}_class_ptr_int", class_name),
                         )
@@ -42863,7 +42853,7 @@ impl<'ctx> CodeGen<'ctx> {
             &format!("str.literal.{}", self.lambda_counter),
         );
         self.lambda_counter += 1;
-        let str_ptr = global.as_pointer_value();
+        let str_ptr = self.get_string_ptr(global);
         self.make_string(str_ptr)
     }
 }
@@ -44824,7 +44814,7 @@ dae f() { gie 32 }
 
         codegen.preregister_class("Box", None, &[]);
         let class_global = *codegen.classes.get("Box").expect("class global");
-        let _ = codegen.make_class(class_global.as_pointer_value());
+        let _ = codegen.make_class(class_global);
     }
 
     #[test]
@@ -45476,7 +45466,9 @@ dae f() { gie 32 }
                 .module
                 .add_global(codegen.types.value_type, None, name);
             global.set_initializer(&codegen.types.value_type.const_zero());
-            codegen.classes.insert(name.to_string(), global);
+            codegen
+                .classes
+                .insert(name.to_string(), global.as_pointer_value());
         }
 
         // Cycle without methods to exercise visited-break.
@@ -45544,7 +45536,9 @@ dae f() { gie 32 }
                 .module
                 .add_global(codegen.types.value_type, None, name);
             global.set_initializer(&codegen.types.value_type.const_zero());
-            codegen.classes.insert(name.to_string(), global);
+            codegen
+                .classes
+                .insert(name.to_string(), global.as_pointer_value());
         }
         codegen
             .class_superclasses
@@ -46067,7 +46061,9 @@ dae f() { gie 32 }
             .module
             .add_global(codegen.types.value_type, None, "Widget");
         class_global.set_initializer(&codegen.types.value_type.const_zero());
-        codegen.classes.insert("Widget".to_string(), class_global);
+        codegen
+            .classes
+            .insert("Widget".to_string(), class_global.as_pointer_value());
 
         let span = Span::new(1, 1);
         let callee = Expr::Variable {
@@ -46210,7 +46206,9 @@ dae f() { gie 32 }
             .module
             .add_global(codegen.types.value_type, None, "Hidden");
         class_global.set_initializer(&codegen.types.value_type.const_zero());
-        codegen.classes.insert("Hidden".to_string(), class_global);
+        codegen
+            .classes
+            .insert("Hidden".to_string(), class_global.as_pointer_value());
         codegen.hidden_imported_classes.insert("Hidden".to_string());
 
         let ctor_type = codegen.types.value_type.fn_type(&[], false);
@@ -46247,7 +46245,7 @@ dae f() { gie 32 }
         class_global.set_initializer(&codegen.types.value_type.const_zero());
         codegen
             .classes
-            .insert("HiddenVal".to_string(), class_global);
+            .insert("HiddenVal".to_string(), class_global.as_pointer_value());
         codegen
             .hidden_imported_classes
             .insert("HiddenVal".to_string());
@@ -46278,7 +46276,9 @@ dae f() { gie 32 }
             .module
             .add_global(codegen.types.value_type, None, "C");
         class_global.set_initializer(&codegen.types.value_type.const_zero());
-        codegen.classes.insert("C".to_string(), class_global);
+        codegen
+            .classes
+            .insert("C".to_string(), class_global.as_pointer_value());
 
         let alias_ptr = codegen.create_entry_block_alloca("m");
         codegen.variables.insert("m".to_string(), alias_ptr);
@@ -47052,7 +47052,9 @@ dae f() { gie 32 }
             "C",
             "coverage_class_C_predecl",
         );
-        codegen.classes.insert("C".to_string(), class_global);
+        codegen
+            .classes
+            .insert("C".to_string(), codegen.get_string_ptr(class_global));
 
         let methods = vec![Stmt::Function {
             name: "m".to_string(),
@@ -47458,7 +47460,9 @@ dae f() { gie 32 }
             .builder
             .build_global_string_ptr("C", "coverage_import_alias_class_C")
             .unwrap();
-        codegen.classes.insert("C".to_string(), class_global);
+        codegen
+            .classes
+            .insert("C".to_string(), class_global.as_pointer_value());
 
         let span = Span::new(1, 1);
         codegen
@@ -47524,7 +47528,9 @@ dae f() { gie 32 }
             .module
             .add_global(codegen.types.value_type, None, "C");
         class_global.set_initializer(&codegen.types.value_type.const_zero());
-        codegen.classes.insert("C".to_string(), class_global);
+        codegen
+            .classes
+            .insert("C".to_string(), class_global.as_pointer_value());
 
         let span = Span::new(1, 1);
         let make_stmt = |name: &str, alias: &str, property: &str| Stmt::VarDecl {
@@ -47812,25 +47818,33 @@ dae f() { gie 32 }
             .module
             .add_global(codegen.types.value_type, None, "A");
         class_a.set_initializer(&codegen.types.value_type.const_zero());
-        codegen.classes.insert("A".to_string(), class_a);
+        codegen
+            .classes
+            .insert("A".to_string(), class_a.as_pointer_value());
 
         let class_b = codegen
             .module
             .add_global(codegen.types.value_type, None, "B");
         class_b.set_initializer(&codegen.types.value_type.const_zero());
-        codegen.classes.insert("B".to_string(), class_b);
+        codegen
+            .classes
+            .insert("B".to_string(), class_b.as_pointer_value());
 
         let class_c = codegen
             .module
             .add_global(codegen.types.value_type, None, "C");
         class_c.set_initializer(&codegen.types.value_type.const_zero());
-        codegen.classes.insert("C".to_string(), class_c);
+        codegen
+            .classes
+            .insert("C".to_string(), class_c.as_pointer_value());
 
         let class_d = codegen
             .module
             .add_global(codegen.types.value_type, None, "D");
         class_d.set_initializer(&codegen.types.value_type.const_zero());
-        codegen.classes.insert("D".to_string(), class_d);
+        codegen
+            .classes
+            .insert("D".to_string(), class_d.as_pointer_value());
 
         codegen
             .class_superclasses
@@ -48255,7 +48269,9 @@ dae f() { gie 32 }
             .module
             .add_global(codegen.types.value_type, None, "Widget");
         class_global.set_initializer(&codegen.types.value_type.const_zero());
-        codegen.classes.insert("Widget".to_string(), class_global);
+        codegen
+            .classes
+            .insert("Widget".to_string(), class_global.as_pointer_value());
 
         let obj_alloca = codegen.create_entry_block_alloca("obj");
         codegen.variables.insert("obj".to_string(), obj_alloca);
@@ -48292,7 +48308,9 @@ dae f() { gie 32 }
             .module
             .add_global(codegen.types.value_type, None, "C_class");
         class_global.set_initializer(&codegen.types.value_type.const_zero());
-        codegen.classes.insert("C".to_string(), class_global);
+        codegen
+            .classes
+            .insert("C".to_string(), class_global.as_pointer_value());
 
         let overload_type = codegen.types.value_type.fn_type(
             &[
@@ -48681,8 +48699,12 @@ dae f() { gie 32 }
             .module
             .add_global(codegen.types.value_type, None, "B_class");
         class_b.set_initializer(&codegen.types.value_type.const_zero());
-        codegen.classes.insert("A".to_string(), class_a);
-        codegen.classes.insert("B".to_string(), class_b);
+        codegen
+            .classes
+            .insert("A".to_string(), class_a.as_pointer_value());
+        codegen
+            .classes
+            .insert("B".to_string(), class_b.as_pointer_value());
 
         let method_type = codegen
             .types
@@ -48721,7 +48743,9 @@ dae f() { gie 32 }
             .module
             .add_global(codegen.types.value_type, None, "C_class");
         class_global.set_initializer(&codegen.types.value_type.const_zero());
-        codegen.classes.insert("C".to_string(), class_global);
+        codegen
+            .classes
+            .insert("C".to_string(), class_global.as_pointer_value());
 
         let init_type = codegen.types.value_type.fn_type(
             &[
@@ -48769,7 +48793,9 @@ dae f() { gie 32 }
             .module
             .add_global(codegen.types.value_type, None, "C_class_dyn");
         class_global.set_initializer(&codegen.types.value_type.const_zero());
-        codegen.classes.insert("C".to_string(), class_global);
+        codegen
+            .classes
+            .insert("C".to_string(), class_global.as_pointer_value());
 
         let method_type = codegen.types.value_type.fn_type(
             &[

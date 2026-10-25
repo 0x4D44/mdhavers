@@ -46,6 +46,14 @@ pub enum ObjKind {
     BoundMethod = 7,
 }
 
+/// Size of the object header in front of a counted payload (DES F6 3.2):
+/// `{ i64 refcount, u32 kind, u32 flags }` - must match MdhObjHeader in runtime/mdh_runtime.h.
+pub const OBJ_HEADER_SIZE: u64 = 16;
+/// Header `flags` bit for static objects: retain/release leave them alone.
+pub const OBJ_FLAG_IMMORTAL: u64 = 1;
+/// The count an immortal header carries - must match MDH_REFCOUNT_IMMORTAL.
+pub const IMMORTAL_REFCOUNT: u64 = (i64::MAX / 2) as u64;
+
 /// LLVM types used throughout codegen
 pub struct MdhTypes<'ctx> {
     /// The main MdhValue struct type: { i8 tag, i64 data }

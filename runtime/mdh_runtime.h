@@ -96,6 +96,21 @@ typedef enum {
     MDH_KIND_COUNT = 9,
 } MdhObjKind;
 
+/* The object header (DES F6 3.2) sits immediately before the payload that an
+ * MdhValue's data points at, so data is unchanged. So far only static objects carry
+ * one: string literals and class-name strings are emitted as constant globals
+ * { MdhObjHeader, chars } with MDH_OBJ_IMMORTAL set, which reference counting must
+ * never write. Heap objects get their header when counting starts (stage R1).
+ * Must match OBJ_HEADER_SIZE / OBJ_FLAG_IMMORTAL / IMMORTAL_REFCOUNT in src/llvm/types.rs. */
+typedef struct {
+    int64_t refcount;
+    uint32_t kind; /* MdhObjKind */
+    uint32_t flags;
+} MdhObjHeader;
+
+#define MDH_OBJ_IMMORTAL 0x1u
+#define MDH_REFCOUNT_IMMORTAL (INT64_MAX / 2)
+
 void *__mdh_obj_alloc(uint32_t kind, size_t size);
 void *__mdh_obj_realloc(void *obj, size_t size);
 char *__mdh_obj_strdup(const char *s);

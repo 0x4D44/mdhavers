@@ -14,6 +14,8 @@
 
 #include "mdh_runtime.h"
 
+_Static_assert(sizeof(MdhObjHeader) == 16, "the object header keeps payloads 16-byte aligned");
+
 #ifdef MDH_ALLOC_STATS
 static int64_t __mdh_alloc_counts[MDH_KIND_COUNT];
 
