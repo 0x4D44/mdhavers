@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00131 — Native dtls_handshake: probable double close of the dup fd on a failed handshake
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** native
 - **Raised:** 2026-10-25T01:32:22Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261025T020015Z-990f2c0f
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00131-run-fix-20261025T020015Z-990f2c0f
-- **Owner base:** eb244602852300eaa2d7efc56aa6732035949537
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-25T02:00:15Z
-- **Owner until:** 2026-10-25T06:00:15Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-25T01:32:22Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-25T01:32:22Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-25T02:15:59Z, deltic:auto role=fix run=fix-20261025T020015Z-990f2c0f branch=task/bug-MDH-BUG-FLU-00131-run-fix-20261025T020015Z-990f2c0f code=6a72241 gate=manual)
 
 ## Observation
 
