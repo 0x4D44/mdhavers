@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00191 — stdlib input helpers exit(0) at end of input instead of returning naething
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** stdlib
 - **Raised:** 2026-10-26T15:32:33Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261026T222536Z-ea4f2380
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00191-run-fix-20261026T222536Z-ea4f2380
-- **Owner base:** e048d5c83235a33282b10f9f210d567729ec19b4
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-26T22:25:36Z
-- **Owner until:** 2026-10-27T02:25:36Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-26T15:32:33Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-26T15:32:33Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T22:26:23Z, deltic:auto role=fix run=fix-20261026T222536Z-ea4f2380 branch=task/bug-MDH-BUG-FLU-00191-run-fix-20261026T222536Z-ea4f2380 code=cc02a5f gate=manual)
 
 ## Observation
 
