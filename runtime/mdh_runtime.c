@@ -2178,6 +2178,11 @@ static void __mdh_value_to_string_sb(MdhStrBuf *out, MdhValue v) {
         case MDH_TAG_FUNCTION:
         case MDH_TAG_CLOSURE: {
             const char *fname = __mdh_function_name(v);
+            /* A builtin used as a value is registered as its whole display. */
+            if (fname && strncmp(fname, "<native dae ", 12) == 0) {
+                __mdh_sb_append(out, fname);
+                return;
+            }
             __mdh_sb_append(out, "<dae ");
             __mdh_sb_append(out, fname ? fname : "<lambda>");
             __mdh_sb_append_char(out, '>');

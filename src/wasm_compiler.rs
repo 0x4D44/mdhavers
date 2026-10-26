@@ -102,7 +102,7 @@ pub const HOF_BUILTINS: &[(&str, usize)] = &[
 ];
 
 /// The arity o' an interpreter builtin the WASM host can call, if `name` is one.
-fn builtin_arity(name: &str) -> Option<usize> {
+pub(crate) fn builtin_arity(name: &str) -> Option<usize> {
     if let Some((_, arity)) = HOF_BUILTINS.iter().find(|(hof, _)| *hof == name) {
         return Some(*arity);
     }

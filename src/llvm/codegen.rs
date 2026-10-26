@@ -5154,6 +5154,43 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(())
     }
 
+    /// A builtin referenced as a value: a lambda of the builtin's interpreter arity that
+    /// calls it, shown as `<native dae name>` like the interpreter does. A variadic
+    /// builtin (arity `usize::MAX`: pad_left, pad_right, center, log_*) has no fixed arity
+    /// to wrap, so it is a compile error rather than a guess (MDH-BUG-FLU-00158).
+    fn compile_builtin_value(
+        &mut self,
+        name: &str,
+        arity: usize,
+    ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        if arity == usize::MAX {
+            return Err(HaversError::CompileError(format!(
+                "'{name}' takes a varying number o' arguments, so it cannae be used as a value in a native build; wrap it in a dae"
+            )));
+        }
+        let span = Span::new(0, 0);
+        let params: Vec<String> = (0..arity).map(|i| format!("__bi_arg{i}")).collect();
+        let body = Expr::Call {
+            callee: Box::new(Expr::Variable {
+                name: name.to_string(),
+                span,
+            }),
+            arguments: params
+                .iter()
+                .map(|p| Expr::Variable {
+                    name: p.clone(),
+                    span,
+                })
+                .collect(),
+            span,
+        };
+        let value = self.compile_lambda(&params, &body)?;
+        if let Some(entry) = self.fn_value_names.last_mut() {
+            entry.1 = format!("<native dae {name}>");
+        }
+        Ok(value)
+    }
+
     /// Record that `func` becomes a function value shown as `<dae display>` (BUG 146).
     fn note_fn_value(&mut self, func: FunctionValue<'ctx>, display: &str) {
         if !self.fn_value_names.iter().any(|(f, _)| *f == func) {
@@ -14658,6 +14695,10 @@ impl<'ctx> CodeGen<'ctx> {
                         .builder
                         .build_load(self.types.value_type, global, &format!("{}_global", name))
                         .unwrap())
+                } else if let Some(arity) = crate::wasm_compiler::builtin_arity(name) {
+                    // A builtin used as a value that no user binding shadows
+                    // (MDH-BUG-FLU-00158).
+                    self.compile_builtin_value(name, arity)
                 } else {
                     Err(HaversError::CompileError(format!(
                         "Undefined variable: {}",
