@@ -641,6 +641,7 @@ MdhValue __mdh_clype(MdhValue val);
 MdhValue __mdh_stoater(MdhValue list);
 MdhValue __mdh_dicht(MdhValue list, MdhValue index);
 MdhValue __mdh_redd_up(MdhValue list);
+MdhValue __mdh_sclaff(MdhValue list, int64_t full);
 MdhValue __mdh_split_by(MdhValue list, MdhValue pred);
 MdhValue __mdh_grup_runs(MdhValue list);
 MdhValue __mdh_range_o(MdhValue list);

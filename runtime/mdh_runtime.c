@@ -9450,7 +9450,7 @@ static bool __mdh_char_in_set(unsigned char c, const char *set) {
 
 MdhValue __mdh_is_a(MdhValue value, MdhValue type_name) {
     if (type_name.tag != MDH_TAG_STRING) {
-        __mdh_type_error("is_a", type_name.tag, 0);
+        __mdh_builtin_error("is_a() needs a type name string");
         return __mdh_make_bool(false);
     }
     const char *t = __mdh_get_string(type_name);
@@ -10761,7 +10761,7 @@ MdhValue __mdh_stoater(MdhValue list) {
     }
     MdhList *l = __mdh_get_list(list);
     if (!l || l->length == 0) {
-        __mdh_hurl_owned(__mdh_make_string("Cannae find a stoater in an empty list!"));
+        __mdh_builtin_error("Cannae find a stoater in an empty list!");
         return __mdh_make_nil();
     }
     MdhValue best = l->items[0];
@@ -10800,6 +10800,80 @@ MdhValue __mdh_dicht(MdhValue list, MdhValue index) {
         __mdh_type_error("dicht", index.tag, 0);
         return __mdh_make_list(0);
     }
+/* sclaff(list) flattens every level, flatten(list) one (`full` = 0). Iterative, with an
+ * explicit stack of (list, next index) frames, so nesting depth never uses the C stack.
+ * The interpreter's limits and messages: a list inside itself, and more than 512 open
+ * lists. The result is a new list whose elements the list_push calls retain. */
+#define MDH_SCLAFF_MAX_DEPTH 512
+typedef struct {
+    MdhList *list;
+    int64_t next;
+} MdhSclaffFrame;
+
+MdhValue __mdh_sclaff(MdhValue list, int64_t full) {
+    if (list.tag != MDH_TAG_LIST) {
+        __mdh_builtin_error(full ? "sclaff needs a list" : "flatten() needs a list");
+        return __mdh_make_nil();
+    }
+    MdhValue result = __mdh_make_list(0);
+    size_t cap = 16;
+    size_t depth = 0;
+    MdhSclaffFrame *stack = (MdhSclaffFrame *)malloc(cap * sizeof(*stack));
+    if (!stack) {
+        __mdh_release(result);
+        __mdh_builtin_error("sclaff: oot o' memory");
+        return __mdh_make_nil();
+    }
+    stack[depth].list = __mdh_get_list(list);
+    stack[depth].next = 0;
+    depth++;
+    const char *failure = NULL;
+    while (depth > 0 && !failure) {
+        MdhSclaffFrame *top = &stack[depth - 1];
+        if (top->next >= top->list->length) {
+            depth--;
+            continue;
+        }
+        MdhValue item = top->list->items[top->next++];
+        /* flatten() goes in one level only: the inner lists' items are kept as they are. */
+        if (item.tag != MDH_TAG_LIST || (!full && depth > 1)) {
+            __mdh_list_push(result, item);
+            continue;
+        }
+        MdhList *inner = __mdh_get_list(item);
+        for (size_t i = 0; i < depth; i++) {
+            if (stack[i].list == inner) {
+                failure = "sclaff cannae flatten a list that's inside itsel!";
+                break;
+            }
+        }
+        if (failure) break;
+        if (depth >= MDH_SCLAFF_MAX_DEPTH) {
+            failure = "sclaff: yer lists are nested ower deep!";
+            break;
+        }
+        if (depth == cap) {
+            MdhSclaffFrame *grown = (MdhSclaffFrame *)realloc(stack, cap * 2 * sizeof(*stack));
+            if (!grown) {
+                failure = "sclaff: oot o' memory";
+                break;
+            }
+            stack = grown;
+            cap *= 2;
+        }
+        stack[depth].list = inner;
+        stack[depth].next = 0;
+        depth++;
+    }
+    free(stack);
+    if (failure) {
+        __mdh_release(result);
+        __mdh_builtin_error(failure);
+        return __mdh_make_nil();
+    }
+    return result;
+}
+
 
     MdhList *src = __mdh_get_list(list);
     int64_t len = src ? src->length : 0;
@@ -10821,6 +10895,7 @@ MdhValue __mdh_dicht(MdhValue list, MdhValue index) {
     return out;
 }
 
+        /* The interpreter reports the wrapped (unsigned) index of a negative one. */
 MdhValue __mdh_redd_up(MdhValue list) {
     if (list.tag != MDH_TAG_LIST) {
         __mdh_type_error("redd_up", list.tag, 0);

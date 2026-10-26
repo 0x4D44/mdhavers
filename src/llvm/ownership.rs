@@ -311,6 +311,7 @@ pub const RUNTIME_OWNERSHIP: &[(&str, &str, Ret)] = &[
     ("__mdh_reverse_str", "b", Ret::Fresh),
     ("__mdh_rightpad", "bbb", Ret::Fresh), // R1: +1 on every path
     ("__mdh_rtrim", "b", Ret::Fresh),      // R1: +1 on every path
+    ("__mdh_sclaff", "b-", Ret::Fresh),    // a new list; list_push retains the items
     ("__mdh_scottify", "b", Ret::Fresh),   // R1: +1 on every path
     ("__mdh_scrieve", "bb", Ret::None),
     ("__mdh_scrieve_append", "bb", Ret::None),
@@ -447,6 +448,7 @@ blether join(["a"], ",")
 blether aw([1], |x| x)
 mak_siccar 1 == 1, "one"
 blether screen_width()
+blether sclaff([[1]])
 "#;
 
     /// Every `__mdh_*` function declared (not defined) in a compiled module, with its
