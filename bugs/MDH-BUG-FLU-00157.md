@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00157 — Native build of examples/stdlib/game_demo.braw times out after 120 seconds
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** native
 - **Raised:** 2026-10-25T23:04:55Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261025T230506Z-6b2db5bc
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00157-run-fix-20261025T230506Z-6b2db5bc
-- **Owner base:** ce8941947a4674f55a88360030d631b9820621fc
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-25T23:05:06Z
-- **Owner until:** 2026-10-26T03:05:06Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-25T23:04:55Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-25T23:04:55Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T01:31:35Z, deltic:auto role=fix run=fix-20261025T230506Z-6b2db5bc branch=task/bug-MDH-BUG-FLU-00157-run-fix-20261025T230506Z-6b2db5bc code=8b0ec87 gate=manual)
 
 ## Observation
 
