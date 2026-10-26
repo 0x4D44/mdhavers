@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00147 — CLI interpreter and library interpreter disagree on prelude-overridden builtins
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** interpreter
 - **Raised:** 2026-10-25T08:13:42Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T224201Z-5247ae18
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00147-run-verify-20261026T224201Z-5247ae18
-- **Owner base:** 5122a4de097a3cb949560c57a78e74948858cacb
-- **Owner fingerprint:** sha256:778260bd92865eba1f14f49955267a4f3fc01b42e01bb7a24f1ac33697c81a33
-- **Owner since:** 2026-10-26T22:42:01Z
-- **Owner until:** 2026-10-27T02:42:01Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-25T08:13:42Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-25T23:04:14Z, deltic:auto role=fix run=fix-20261025T184736Z-e297099e branch=task/bug-MDH-BUG-FLU-00147-run-fix-20261025T184736Z-e297099e code=7ad654d gate=manual)
+- **State history:** Open (2026-10-25T08:13:42Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-25T23:04:14Z, deltic:auto role=fix run=fix-20261025T184736Z-e297099e branch=task/bug-MDH-BUG-FLU-00147-run-fix-20261025T184736Z-e297099e code=7ad654d gate=manual) -> Closed (2026-10-26T23:48:13Z, deltic:manual role=verify run=verify-20261026T224201Z-5247ae18 verified_fix_run=fix-20261025T184736Z-e297099e verdict=close)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:cli-interpreter-and-library-interpreter-disagre
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T23:48:13Z, deltic:manual run=verify-20261026T224201Z-5247ae18 verified_fix_run=fix-20261025T184736Z-e297099e verdict=close)
+
+Verifier note: Manual verify: [la luna] 7ad654d; cli_prelude_does_not_shadow_native_builtins selected 1 pass, including native outputs and empty average/median errors. Reapplying removed prelude definitions made it fail output assertion: `[c, b, a]` vs `cba` (and wrong string kind), reproducing CLI/library mismatch. Restored; source diff clean.
 
 ## Notes

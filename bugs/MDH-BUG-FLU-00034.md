@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00034 — REPL `vars` panics on non-ASCII values
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** cli
 - **Raised:** 2026-10-22T23:24:09Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T224201Z-50bd7d8f
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00034-run-verify-20261026T224201Z-50bd7d8f
-- **Owner base:** 5122a4de097a3cb949560c57a78e74948858cacb
-- **Owner fingerprint:** sha256:67f22314bcd529e6b75a07f8fb63802bb4fe1ac6bffd19e7a83531f5b306e5d6
-- **Owner since:** 2026-10-26T22:42:01Z
-- **Owner until:** 2026-10-27T02:42:01Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-22T23:24:09Z, raised via `deltic bugs new` model=claude-opus-5-5@medium) -> Fixed (2026-10-23T02:48:57Z, deltic:auto role=fix run=fix-20261023T024851Z-16839b1a branch=task/bug-MDH-BUG-FLU-00034-run-fix-20261023T024851Z-16839b1a code=77f950a gate=manual)
+- **State history:** Open (2026-10-22T23:24:09Z, raised via `deltic bugs new` model=claude-opus-5-5@medium) -> Fixed (2026-10-23T02:48:57Z, deltic:auto role=fix run=fix-20261023T024851Z-16839b1a branch=task/bug-MDH-BUG-FLU-00034-run-fix-20261023T024851Z-16839b1a code=77f950a gate=manual) -> Closed (2026-10-26T23:48:13Z, deltic:manual role=verify run=verify-20261026T224201Z-50bd7d8f verified_fix_run=fix-20261023T024851Z-16839b1a verdict=close)
 
 ## Observation
 
@@ -28,5 +28,9 @@ Inferred (high confidence): main.rs:1151 slices &value[..47] by bytes; panics wh
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T23:48:13Z, deltic:manual run=verify-20261026T224201Z-50bd7d8f verified_fix_run=fix-20261023T024851Z-16839b1a verdict=close)
+
+Verifier note: Manual verify: [la luna] 77f950a; REPL with 60 `é` characters and :vars exits 0 and displays truncation. cargo test --bin mdhavers tests selected 30 pass; byte-slice mutant failed truncate_for_display_cuts_on_char_boundary: byte 47 is inside é. Source restored clean.
 
 ## Notes

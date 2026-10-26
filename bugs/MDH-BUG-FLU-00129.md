@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00129 — benchmarks/large_scale: tick() deltas mislabelled as ms, and fib_large overflows natively
 
-- **State:** Fixed
+- **State:** Open
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** benchmarks
 - **Raised:** 2026-10-24T22:25:42Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T224201Z-9f60c95c
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00129-run-verify-20261026T224201Z-9f60c95c
-- **Owner base:** 5122a4de097a3cb949560c57a78e74948858cacb
-- **Owner fingerprint:** sha256:f0faf62ac23230713d2220b3ac21fe0d6b281c64a2a3886fc5d17d3b7eec27e3
-- **Owner since:** 2026-10-26T22:42:01Z
-- **Owner until:** 2026-10-27T02:42:01Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
-- **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-24T22:25:42Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-25T00:08:10Z, deltic:auto role=fix run=fix-20261024T224248Z-86473bee branch=task/bug-MDH-BUG-FLU-00129-run-fix-20261024T224248Z-86473bee code=7af9b14 gate=manual)
+- **Attempts:** fix=0, doubt=1, indeterminate=0
+- **State history:** Open (2026-10-24T22:25:42Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-25T00:08:10Z, deltic:auto role=fix run=fix-20261024T224248Z-86473bee branch=task/bug-MDH-BUG-FLU-00129-run-fix-20261024T224248Z-86473bee code=7af9b14 gate=manual) -> Open (2026-10-26T23:48:13Z, deltic:manual role=verify run=verify-20261026T224201Z-9f60c95c verified_fix_run=fix-20261024T224248Z-86473bee verdict=doubt reason=reopen-regression-assertion-exists-to-run-or-mutate)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:benchmarks-large-scale-tick-deltas-mislabelled-
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T23:48:13Z, deltic:manual run=verify-20261026T224201Z-9f60c95c verified_fix_run=fix-20261024T224248Z-86473bee verdict=doubt)
+
+Verifier note: Manual verify: [la luna] 7af9b14 changed 13 benchmark files but added no tests; rg found no benchmark references under tests/. Interpreter primes_large exits 0 (1M: 66,629 ms); native fib_large exits 0 with capped values. No regression assertion exists to run or mutate.
 
 ## Notes

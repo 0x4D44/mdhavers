@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00156 — Interactive examples crash with a type error at end of input instead of ending cleanly
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** examples
 - **Raised:** 2026-10-25T23:04:51Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T224201Z-e0422feb
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00156-run-verify-20261026T224201Z-e0422feb
-- **Owner base:** 5122a4de097a3cb949560c57a78e74948858cacb
-- **Owner fingerprint:** sha256:08cdc1d10ed8a6d7256f11c86abe6ed182d1daba90ed61b38e3f185af50a8f56
-- **Owner since:** 2026-10-26T22:42:01Z
-- **Owner until:** 2026-10-27T02:42:01Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-25T23:04:51Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T01:31:41Z, deltic:auto role=fix run=fix-20261025T230506Z-6ac0a8b4 branch=task/bug-MDH-BUG-FLU-00156-run-fix-20261025T230506Z-6ac0a8b4 code=7d8a875 gate=manual)
+- **State history:** Open (2026-10-25T23:04:51Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T01:31:41Z, deltic:auto role=fix run=fix-20261025T230506Z-6ac0a8b4 branch=task/bug-MDH-BUG-FLU-00156-run-fix-20261025T230506Z-6ac0a8b4 code=7d8a875 gate=manual) -> Closed (2026-10-26T23:48:13Z, deltic:manual role=verify run=verify-20261026T224201Z-e0422feb verified_fix_run=fix-20261025T230506Z-6ac0a8b4 verdict=close)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:interactive-examples-crash-with-a-type-error-at
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T23:48:13Z, deltic:manual run=verify-20261026T224201Z-e0422feb verified_fix_run=fix-20261025T230506Z-6ac0a8b4 verdict=close)
+
+Verifier note: Manual verify: [la luna] 7d8a875; selected examples_end_cleanly_at_end_of_input_in_the_interpreter. Recorded EOF examples returned 0 and said cheerio once; run later fails only the 00191 trailing-output assertion for word_scramble, not the original type-error symptom.
 
 ## Notes

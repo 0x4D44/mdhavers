@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00115 — stdlib prelude pad_left/pad_right shadow the native builtins with a stricter, different signature
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** interpreter
 - **Raised:** 2026-10-24T03:17:12Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T224201Z-daf70e4d
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00115-run-verify-20261026T224201Z-daf70e4d
-- **Owner base:** 5122a4de097a3cb949560c57a78e74948858cacb
-- **Owner fingerprint:** sha256:96c78f02a0499a10652e35a86a208a95abb0bb8f8b2811857094185b1ef3387a
-- **Owner since:** 2026-10-26T22:42:01Z
-- **Owner until:** 2026-10-27T02:42:01Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-24T03:17:12Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T21:56:47Z, deltic:auto role=fix run=fix-20261024T213341Z-cebe72f1 branch=task/bug-MDH-BUG-FLU-00115-run-fix-20261024T213341Z-cebe72f1 code=f207ce5 gate=manual)
+- **State history:** Open (2026-10-24T03:17:12Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T21:56:47Z, deltic:auto role=fix run=fix-20261024T213341Z-cebe72f1 branch=task/bug-MDH-BUG-FLU-00115-run-fix-20261024T213341Z-cebe72f1 code=f207ce5 gate=manual) -> Closed (2026-10-26T23:48:13Z, deltic:manual role=verify run=verify-20261026T224201Z-daf70e4d verified_fix_run=fix-20261024T213341Z-cebe72f1 verdict=close)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:stdlib-prelude-pad-left-pad-right-shadow-the-na
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T23:48:13Z, deltic:manual run=verify-20261026T224201Z-daf70e4d verified_fix_run=fix-20261024T213341Z-cebe72f1 verdict=close)
+
+Verifier note: Manual verify: [la luna] f207ce5; cli_prelude_does_not_shadow_native_pad_builtins selected 1 pass with `[ab ]`, `[ab***]`, `[ ab]`, `[000ab]`. Re-adding the old 3-arg prelude functions made the test fail its exit-code assertion; stderr says pad_right expects 3 args but got 2. Restored; source diff clean.
 
 ## Notes

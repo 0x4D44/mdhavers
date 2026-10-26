@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00059 — Makefile and setup-deps.sh are Linux-only
 
-- **State:** Fixed
+- **State:** Open
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** build
 - **Raised:** 2026-10-22T23:24:12Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T224201Z-7c468c3a
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00059-run-verify-20261026T224201Z-7c468c3a
-- **Owner base:** 5122a4de097a3cb949560c57a78e74948858cacb
-- **Owner fingerprint:** sha256:d1f015c23976ed674f78d75323078e08ad1ec89dd07b90df2b2db6f1f12bbfa9
-- **Owner since:** 2026-10-26T22:42:01Z
-- **Owner until:** 2026-10-27T02:42:01Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
-- **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-22T23:24:12Z, raised via `deltic bugs new` model=claude-opus-5-5@medium) -> Fixed (2026-10-23T02:50:07Z, deltic:auto role=fix run=fix-20261023T025001Z-c9390bf4 branch=task/bug-MDH-BUG-FLU-00059-run-fix-20261023T025001Z-c9390bf4 code=77f950a gate=manual)
+- **Attempts:** fix=0, doubt=1, indeterminate=0
+- **State history:** Open (2026-10-22T23:24:12Z, raised via `deltic bugs new` model=claude-opus-5-5@medium) -> Fixed (2026-10-23T02:50:07Z, deltic:auto role=fix run=fix-20261023T025001Z-c9390bf4 branch=task/bug-MDH-BUG-FLU-00059-run-fix-20261023T025001Z-c9390bf4 code=77f950a gate=manual) -> Open (2026-10-26T23:48:13Z, deltic:manual role=verify run=verify-20261026T224201Z-7c468c3a verified_fix_run=fix-20261023T025001Z-c9390bf4 verdict=doubt reason=reopen-regression-test-exists-rg-found-none-help-would-not-exercise-installation)
 
 ## Observation
 
@@ -28,5 +28,9 @@ Inferred: Makefile:10 zstd detection uses /usr/lib/x86_64-linux-gnu so macOS alw
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T23:48:13Z, deltic:manual run=verify-20261026T224201Z-7c468c3a verified_fix_run=fix-20261023T025001Z-c9390bf4 verdict=doubt)
+
+Verifier note: Manual verify: [la luna] 77f950a adds Darwin/Homebrew branches; make status on this Mac reports LLVM 19 enabled and zstd yes. No Makefile/setup-deps regression test exists (rg found none); --help would not exercise installation detection. Fix appears plausible but its platform behavior is untested.
 
 ## Notes

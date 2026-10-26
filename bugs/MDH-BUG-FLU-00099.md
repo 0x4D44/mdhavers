@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00099 — Five interpreter test_audio_* lib tests fail in the default full build (raylib audio stub)
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** audio
 - **Raised:** 2026-10-23T22:22:13Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T224201Z-44e6448f
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00099-run-verify-20261026T224201Z-44e6448f
-- **Owner base:** 5122a4de097a3cb949560c57a78e74948858cacb
-- **Owner fingerprint:** sha256:b8aeaf41fa34808bf41825fad2fb14c45edabded8829e02e886fe3e426b7cb83
-- **Owner since:** 2026-10-26T22:42:01Z
-- **Owner until:** 2026-10-27T02:42:01Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-23T22:22:13Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T01:48:50Z, deltic:auto role=fix run=fix-20261024T014845Z-02a6565f branch=task/bug-MDH-BUG-FLU-00099-run-fix-20261024T014845Z-02a6565f code=e3865f0 gate=manual)
+- **State history:** Open (2026-10-23T22:22:13Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T01:48:50Z, deltic:auto role=fix run=fix-20261024T014845Z-02a6565f branch=task/bug-MDH-BUG-FLU-00099-run-fix-20261024T014845Z-02a6565f code=e3865f0 gate=manual) -> Closed (2026-10-26T23:48:13Z, deltic:manual role=verify run=verify-20261026T224201Z-44e6448f verified_fix_run=fix-20261024T014845Z-02a6565f verdict=close)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:five-interpreter-test-audio-lib-tests-fail-in-t
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T23:48:13Z, deltic:manual run=verify-20261026T224201Z-44e6448f verified_fix_run=fix-20261024T014845Z-02a6565f verdict=close)
+
+Verifier note: Manual verify: [la luna] b76f3c7 (record code=e3865f0); cargo test --lib test_audio: 7 selected pass after fix. Re-enabled the 3 graphics-gated tests; device_controls failed `(v-0.7)`, music_cycle/sfx_cycle failed `playing == true` assertions. Restored gates; source diff clean.
 
 ## Notes

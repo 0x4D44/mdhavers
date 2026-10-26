@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00108 — brak/haud inside a block expression: interpreter ignores them, JS emits an illegal break
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** interpreter
 - **Raised:** 2026-10-24T02:38:53Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T224201Z-c98d2575
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00108-run-verify-20261026T224201Z-c98d2575
-- **Owner base:** 5122a4de097a3cb949560c57a78e74948858cacb
-- **Owner fingerprint:** sha256:03734cfa1423d7341eb95e6c81e7f0d276a802b8ff675618450d1778be228172
-- **Owner since:** 2026-10-26T22:42:01Z
-- **Owner until:** 2026-10-27T02:42:01Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-24T02:38:53Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T21:56:40Z, deltic:auto role=fix run=fix-20261024T213341Z-2e4fee5b branch=task/bug-MDH-BUG-FLU-00108-run-fix-20261024T213341Z-2e4fee5b code=f207ce5 gate=manual)
+- **State history:** Open (2026-10-24T02:38:53Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T21:56:40Z, deltic:auto role=fix run=fix-20261024T213341Z-2e4fee5b branch=task/bug-MDH-BUG-FLU-00108-run-fix-20261024T213341Z-2e4fee5b code=f207ce5 gate=manual) -> Closed (2026-10-26T23:48:13Z, deltic:manual role=verify run=verify-20261026T224201Z-c98d2575 verified_fix_run=fix-20261024T213341Z-2e4fee5b verdict=close)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:brak-haud-inside-a-block-expression-interpreter
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T23:48:13Z, deltic:manual run=verify-20261026T224201Z-c98d2575 verified_fix_run=fix-20261024T213341Z-2e4fee5b verdict=close)
+
+Verifier note: Manual verify: [la luna] f207ce5; brak_in_block_expression_is_rejected_before_any_backend selected 1 pass; parser::tests::test_brak_haud_in_block_expression_is_a_parse_error selected 1 pass. Repro now errors `brak` cannot jump out of a block expression. Removing both parser guards made the unit test fail: it parsed the recorded repro as Ok. Restored; source diff clean.
 
 ## Notes

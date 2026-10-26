@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00094 — gie inside a block expression sets the block value instead of returning from the function
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** interpreter
 - **Raised:** 2026-10-23T21:37:10Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T224201Z-c4d70db0
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00094-run-verify-20261026T224201Z-c4d70db0
-- **Owner base:** 5122a4de097a3cb949560c57a78e74948858cacb
-- **Owner fingerprint:** sha256:d5f2952ca6f2904b58cfeb9f5992016e1e52e44afd4459669472199754a36705
-- **Owner since:** 2026-10-26T22:42:01Z
-- **Owner until:** 2026-10-27T02:42:01Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-23T21:37:10Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-23T22:21:39Z, deltic:auto role=fix run=fix-20261023T222133Z-85f54b47 branch=task/bug-MDH-BUG-FLU-00094-run-fix-20261023T222133Z-85f54b47 code=8b1d2ff gate=manual)
+- **State history:** Open (2026-10-23T21:37:10Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-23T22:21:39Z, deltic:auto role=fix run=fix-20261023T222133Z-85f54b47 branch=task/bug-MDH-BUG-FLU-00094-run-fix-20261023T222133Z-85f54b47 code=8b1d2ff gate=manual) -> Closed (2026-10-26T23:48:13Z, deltic:manual role=verify run=verify-20261026T224201Z-c4d70db0 verified_fix_run=fix-20261023T222133Z-85f54b47 verdict=close)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:gie-inside-a-block-expression-sets-the-block-va
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T23:48:13Z, deltic:manual run=verify-20261026T224201Z-c4d70db0 verified_fix_run=fix-20261023T222133Z-85f54b47 verdict=close)
+
+Verifier note: Manual verify: [la luna] 883d221 (recorded 8b1d2ff is version-only); parity_js_gie_in_block_expression_returns_from_function_mdh_bug_flu_00094 and top_level_gie_is_return_outside_function_decision_f4 selected and passed. Repros: 4,51,3,5,-1,oot,42. Returning block gie as a value failed parity assertion (9 vs 4); parser mutant accepted top-level gie and failed. Restored clean.
 
 ## Notes
