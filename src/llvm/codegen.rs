@@ -94,7 +94,6 @@ struct LibcFunctions<'ctx> {
     // Objects are what a value's data points at; buffers are owned by one object.
     obj_alloc: FunctionValue<'ctx>,
     obj_realloc: FunctionValue<'ctx>,
-    obj_strdup: FunctionValue<'ctx>,
     // Reference counting (runtime/gc_stub.c): retain/release of an object's data (after
     // the inline tag test) and of a whole value (tag tested in C).
     rc_retain_obj: FunctionValue<'ctx>,
@@ -1944,8 +1943,10 @@ impl<'ctx> CodeGen<'ctx> {
             "__mdh_obj_realloc",
             i8_ptr.fn_type(&[i8_ptr.into(), i64_type.into()], false),
         );
-        // __mdh_obj_strdup(const char*) -> char* (a new string object)
-        let obj_strdup = declare_alloc("__mdh_obj_strdup", i8_ptr.fn_type(&[i8_ptr.into()], false));
+        // __mdh_obj_strdup(const char*) -> char* (a new string object). Nothing calls it now
+        // (compiled code uses __mdh_obj_strdup_checked, MDH-BUG-FLU-00189), but it stays
+        // declared here so the IR of every other program is unchanged.
+        declare_alloc("__mdh_obj_strdup", i8_ptr.fn_type(&[i8_ptr.into()], false));
         // Reference counting: __mdh_rc_retain_obj / __mdh_rc_release_obj (int64_t data) and
         // __mdh_retain / __mdh_release (MdhValue). They never unwind (release never hurls).
         let rc_obj_type = void_type.fn_type(&[i64_type.into()], false);
@@ -3900,7 +3901,6 @@ impl<'ctx> CodeGen<'ctx> {
             printf,
             obj_alloc,
             obj_realloc,
-            obj_strdup,
             rc_retain_obj,
             rc_release_obj,
             rc_retain,
@@ -4371,6 +4371,35 @@ impl<'ctx> CodeGen<'ctx> {
         let fn_type = self.types.void_type.fn_type(&params, false);
         self.module
             .add_function(name, fn_type, Some(Linkage::External))
+    }
+
+    /// Copy a C string into a new string object with `__mdh_obj_strdup_checked`, which
+    /// raises the "ower muckle" error instead of returning NULL (MDH-BUG-FLU-00189).
+    /// Declared on first use, so programs that never copy a string this way keep their IR.
+    fn build_obj_strdup_checked(&self, s: PointerValue<'ctx>, name: &str) -> PointerValue<'ctx> {
+        let fname = "__mdh_obj_strdup_checked";
+        let f = self.module.get_function(fname).unwrap_or_else(|| {
+            let i8_ptr = self.context.ptr_type(AddressSpace::default());
+            let f = self.module.add_function(
+                fname,
+                i8_ptr.fn_type(&[i8_ptr.into()], false),
+                Some(Linkage::External),
+            );
+            // A fresh allocation aliases nothing, as __mdh_obj_strdup's result.
+            let noalias = self
+                .context
+                .create_enum_attribute(Attribute::get_named_enum_kind_id("noalias"), 0);
+            f.add_attribute(AttributeLoc::Return, noalias);
+            f
+        });
+        self.builder
+            .build_call(f, &[s.into()], name)
+            .unwrap()
+            .try_as_basic_value()
+            .basic()
+            .compile_ok_or("strdup returned void")
+            .unwrap()
+            .into_pointer_value()
     }
 
     /// Emit a call to `__mdh_index_oob(index, size)` followed by `unreachable`.
@@ -26000,15 +26029,7 @@ impl<'ctx> CodeGen<'ctx> {
                     self.builder.position_at_end(has_val);
                     // getenv points into the environment block, which a later env_set
                     // may overwrite in place: the value owns a copy.
-                    let env_copy = self
-                        .builder
-                        .build_call(self.libc.obj_strdup, &[env_ptr.into()], "env_copy")
-                        .unwrap()
-                        .try_as_basic_value()
-                        .basic()
-                        .compile_ok_or("strdup returned void")
-                        .unwrap()
-                        .into_pointer_value();
+                    let env_copy = self.build_obj_strdup_checked(env_ptr, "env_copy");
                     let s = self.make_string(env_copy);
                     self.builder.build_unconditional_branch(merge).unwrap();
                     let has_end = self.builder.get_insert_block().unwrap();
@@ -31817,14 +31838,7 @@ impl<'ctx> CodeGen<'ctx> {
         };
 
         // Duplicate the rest of the string
-        let rest_copy = self
-            .builder
-            .build_call(self.libc.obj_strdup, &[rest_ptr.into()], "rest_copy")
-            .unwrap()
-            .try_as_basic_value()
-            .basic()
-            .unwrap()
-            .into_pointer_value();
+        let rest_copy = self.build_obj_strdup_checked(rest_ptr, "rest_copy");
 
         let rest_value = self.make_string(rest_copy);
         self.builder
@@ -39514,18 +39528,8 @@ impl<'ctx> CodeGen<'ctx> {
         };
         let new_key_typed_ptr = new_key_ptr;
         // Create string key value
-        let key_str = self
-            .builder
-            .build_call(
-                self.libc.obj_strdup,
-                &[field_name_global.as_pointer_value().into()],
-                "key_str_dup",
-            )
-            .unwrap()
-            .try_as_basic_value()
-            .basic()
-            .unwrap()
-            .into_pointer_value();
+        let key_str =
+            self.build_obj_strdup_checked(field_name_global.as_pointer_value(), "key_str_dup");
         let key_val = self.make_string(key_str);
         self.rc_take(key_val);
         self.builder

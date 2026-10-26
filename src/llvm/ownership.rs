@@ -281,6 +281,7 @@ pub const RUNTIME_OWNERSHIP: &[(&str, &str, Ret)] = &[
     ("__mdh_obj_alloc", "--", Ret::None),
     ("__mdh_obj_realloc", "--", Ret::None),
     ("__mdh_obj_strdup", "-", Ret::None),
+    ("__mdh_obj_strdup_checked", "-", Ret::None), // raises "ower muckle"; declared on first use
     ("__mdh_och", "b", Ret::Fresh),
     ("__mdh_ord", "b", Ret::None),
     ("__mdh_pair_adjacent", "b", Ret::Fresh), // shares elements of arg 1
@@ -435,7 +436,7 @@ mod tests {
     use inkwell::context::Context;
 
     /// Uses the runtime helpers codegen declares only on first use: division (by
-    /// zero), indexing (out of bounds) and `hurl` with a line.
+    /// zero), indexing (out of bounds), `hurl` with a line and split's string copy.
     const LAZY_DECLS: &str = r#"
 dae f(xs, n) {
     gin n == 0 {
@@ -449,6 +450,7 @@ blether aw([1], |x| x)
 mak_siccar 1 == 1, "one"
 blether screen_width()
 blether sclaff([[1]])
+blether split("a,b", ",")
 "#;
 
     /// Every `__mdh_*` function declared (not defined) in a compiled module, with its
