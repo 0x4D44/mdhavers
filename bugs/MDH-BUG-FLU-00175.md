@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00175 — Five examples use native-only builtins (str, sum, append) so the interpreter cannot run them
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** examples
 - **Raised:** 2026-10-26T05:04:22Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261026T050440Z-ffb3bf95
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00175-run-fix-20261026T050440Z-ffb3bf95
-- **Owner base:** 0ce2a5bc5cf9ba91c13f5b84148dcd8cfea0ba99
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-26T05:04:40Z
-- **Owner until:** 2026-10-26T09:04:40Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-26T05:04:22Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-26T05:04:22Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T06:25:18Z, deltic:auto role=fix run=fix-20261026T050440Z-ffb3bf95 branch=task/bug-MDH-BUG-FLU-00175-run-fix-20261026T050440Z-ffb3bf95 code=e2547ee gate=manual)
 
 ## Observation
 
