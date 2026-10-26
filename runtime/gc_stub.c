@@ -516,14 +516,16 @@ static inline void __mdh_rc_work_push(MdhRcWork *w, MdhObjHeader *h) {
     w->items[w->len++] = h;
 }
 
-/* A string that reached zero and is freed (strings hold no children and no buffers):
- * finish it at once instead of going through the work list. 1 when done. */
+/* A string that reached zero and is freed (strings hold no counted values, see
+ * __mdh_rc_children): finish it at once instead of going through the work list, by the
+ * same steps as __mdh_rc_kill. 1 when done. */
 static inline int __mdh_rc_kill_leaf(MdhObjHeader *h) {
     if (MDH_HDR_KIND(h) != MDH_KIND_STRING || !(__mdh_rc_free_kinds & (1u << MDH_KIND_STRING))) {
         return 0;
     }
     h->flags |= MDH_OBJ_DEAD;
     __mdh_counter_add(&__mdh_rc_died[MDH_KIND_STRING]);
+    __mdh_rc_free_buffers(MDH_KIND_STRING, h + 1);
     __mdh_obj_block_free(h);
     return 1;
 }
