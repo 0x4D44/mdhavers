@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00173 — stacktrace() and error texts differ by backend; JS join() accepts a number separator
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** js
 - **Raised:** 2026-10-26T05:04:04Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261026T050440Z-84a06621
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00173-run-fix-20261026T050440Z-84a06621
-- **Owner base:** 0ce2a5bc5cf9ba91c13f5b84148dcd8cfea0ba99
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-26T05:04:40Z
-- **Owner until:** 2026-10-26T09:04:40Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-26T05:04:04Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-26T05:04:04Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T05:56:40Z, deltic:auto role=fix run=fix-20261026T050440Z-84a06621 branch=task/bug-MDH-BUG-FLU-00173-run-fix-20261026T050440Z-84a06621 code=b1616f5 gate=manual)
 
 ## Observation
 
