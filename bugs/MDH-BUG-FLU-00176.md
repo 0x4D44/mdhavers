@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00176 — Native sclaff flattens only one level; native error texts differ for stoater, dicht, is_a
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** native
 - **Raised:** 2026-10-26T05:32:08Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261026T062548Z-f217470f
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00176-run-fix-20261026T062548Z-f217470f
-- **Owner base:** 4ffece3d3d26505f9de5d1c9215a722f349772f3
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-26T06:25:48Z
-- **Owner until:** 2026-10-26T10:25:48Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-26T05:32:08Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-26T05:32:08Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T08:27:58Z, deltic:auto role=fix run=fix-20261026T062548Z-f217470f branch=task/bug-MDH-BUG-FLU-00176-run-fix-20261026T062548Z-f217470f code=2a21715 gate=manual)
 
 ## Observation
 
