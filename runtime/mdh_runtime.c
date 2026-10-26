@@ -142,6 +142,8 @@ void __mdh_list_push_owned(MdhValue list, MdhValue value);
 MdhValue __mdh_dict_set_owned(MdhValue dict, MdhValue key, MdhValue value);
 /* Hurl a message the caller hands over (__mdh_last_error takes its reference). */
 static void __mdh_hurl_owned(MdhValue msg);
+static void __mdh_stack_guard_init(void);
+static void __mdh_stack_guard_fini(void);
 
 /* `v` retained: a borrowed value handed to an `_owned` helper. */
 static MdhValue __mdh_retained(MdhValue v) {
@@ -4096,6 +4098,8 @@ static void *__mdh_thread_entry(void *arg) {
     MdhThread *t = (MdhThread *)arg;
     /* The worker's line starts as the spawning statement's (MDH-BUG-FLU-00090). */
     __mdh_thread_line = t->line;
+    /* Each thread gets its own stack tripwire (MDH-BUG-FLU-00164). */
+    __mdh_stack_guard_init();
     /* An uncaught hurl in the worker lands here (the try stack is per thread) and is
      * re-raised by thread_join in the joining thread, instead of exiting the process. */
     jmp_buf env;
@@ -4116,6 +4120,7 @@ static void *__mdh_thread_entry(void *arg) {
     __mdh_release(t->args);
     t->func = __mdh_make_nil();
     t->args = __mdh_make_nil();
+    __mdh_stack_guard_fini();
     t->done = 1;
     return NULL;
 }
@@ -8029,6 +8034,7 @@ void __mdh_set_args(int32_t argc, char **argv) {
     __mdh_argv = argv;
     /* Compiled main calls this first, so it is also where reference counting starts. */
     __mdh_rc_init();
+    __mdh_stack_guard_init();
 }
 
 MdhValue __mdh_args(void) {
@@ -11224,6 +11230,145 @@ static void __mdh_hurl_owned(MdhValue msg) {
     fprintf(stderr, "%s\n", __mdh_get_string(s));
     exit(1);
 }
+
+/* ========== Stack overflow (MDH-BUG-FLU-00164) ==========
+ *
+ * Unbounded recursion raises the interpreter's catchable "Stack's fair puggled!" error
+ * instead of crashing. Nothing is checked on the hot path. Every compiled function's
+ * prologue loads one byte MDH_STACK_PROBE below its frame (keep in step with
+ * STACK_PROBE_DISTANCE in src/llvm/codegen.rs), and each thread's stack ends in a
+ * PROT_NONE tripwire. A probe therefore reaches the tripwire while the frames above still
+ * have MDH_STACK_PROBE bytes to spare, so the fault is taken in compiled code, never inside
+ * malloc or stdio (runtime calls use far less stack than that). The SIGSEGV/SIGBUS handler
+ * runs on an alternate stack and raises the error like any other: it longjmps to the
+ * innermost hae_a_bash, or prints it and exits 1. A fault anywhere else keeps the default
+ * action. */
+#define MDH_STACK_PROBE ((uintptr_t)128 * 1024)
+#define MDH_STACK_TRIP ((uintptr_t)64 * 1024)
+#define MDH_ALT_STACK_SIZE ((size_t)256 * 1024)
+
+#ifndef _WIN32
+#include <signal.h>
+#include <sys/mman.h>
+
+static __thread uintptr_t __mdh_trip_lo = 0;
+static __thread uintptr_t __mdh_trip_hi = 0;
+/* The pages made PROT_NONE (0 when the kernel's own guard gap is the tripwire). */
+static __thread uintptr_t __mdh_trip_prot = 0;
+static __thread void *__mdh_alt_stack = NULL;
+
+static void __mdh_stack_fault(int sig, siginfo_t *info, void *ctx) {
+    (void)ctx;
+    uintptr_t addr = (uintptr_t)info->si_addr;
+    if (__mdh_trip_hi == 0 || addr < __mdh_trip_lo || addr >= __mdh_trip_hi) {
+        /* Not a stack overflow: let it fault again with the default action. */
+        signal(sig, SIG_DFL);
+        return;
+    }
+    /* Leaving the handler by longjmp: the signal must not stay blocked. */
+    sigset_t set;
+    sigemptyset(&set);
+    sigaddset(&set, SIGSEGV);
+    sigaddset(&set, SIGBUS);
+    pthread_sigmask(SIG_UNBLOCK, &set, NULL);
+    char text[160];
+    snprintf(text, sizeof(text),
+             "Stack's fair puggled! Too many nested calls at line %lld - yer recursion's gone radge!",
+             (long long)__mdh_err_line());
+    __mdh_hurl_owned(__mdh_make_string(text));
+}
+
+static void __mdh_stack_bounds(uintptr_t *lo, uintptr_t *hi) {
+    *lo = 0;
+    *hi = 0;
+#if defined(__APPLE__)
+    pthread_t self = pthread_self();
+    uintptr_t top = (uintptr_t)pthread_get_stackaddr_np(self);
+    *hi = top;
+    *lo = top - (uintptr_t)pthread_get_stacksize_np(self);
+#elif defined(__linux__)
+    pthread_attr_t attr;
+    if (pthread_getattr_np(pthread_self(), &attr) == 0) {
+        void *addr = NULL;
+        size_t size = 0;
+        if (pthread_attr_getstack(&attr, &addr, &size) == 0) {
+            *lo = (uintptr_t)addr;
+            *hi = (uintptr_t)addr + size;
+        }
+        pthread_attr_destroy(&attr);
+    }
+#endif
+}
+
+static void __mdh_stack_install_handler(void) {
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_sigaction = __mdh_stack_fault;
+    sa.sa_flags = SA_SIGINFO | SA_ONSTACK;
+    sigemptyset(&sa.sa_mask);
+    sigaction(SIGSEGV, &sa, NULL);
+    sigaction(SIGBUS, &sa, NULL);
+}
+
+/* Arm the calling thread: its alternate signal stack and its tripwire. */
+static void __mdh_stack_guard_init(void) {
+    static pthread_once_t once = PTHREAD_ONCE_INIT;
+    uintptr_t lo, hi;
+    __mdh_stack_bounds(&lo, &hi);
+    if (lo == 0 || hi - lo < 2 * (MDH_STACK_PROBE + MDH_STACK_TRIP)) {
+        return;
+    }
+    void *alt = mmap(NULL, MDH_ALT_STACK_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON,
+                     -1, 0);
+    if (alt == MAP_FAILED) {
+        return;
+    }
+    stack_t ss;
+    memset(&ss, 0, sizeof(ss));
+    ss.ss_sp = alt;
+    ss.ss_size = MDH_ALT_STACK_SIZE;
+    if (sigaltstack(&ss, NULL) != 0) {
+        munmap(alt, MDH_ALT_STACK_SIZE);
+        return;
+    }
+    __mdh_alt_stack = alt;
+    uintptr_t page = (uintptr_t)sysconf(_SC_PAGESIZE);
+    uintptr_t prot_lo = (lo + page - 1) & ~(page - 1);
+    if (mprotect((void *)prot_lo, MDH_STACK_TRIP, PROT_NONE) == 0) {
+        __mdh_trip_prot = prot_lo;
+        __mdh_trip_lo = prot_lo;
+        __mdh_trip_hi = prot_lo + MDH_STACK_TRIP;
+    } else {
+        /* Not mapped yet (a Linux main stack grows on demand): the gap below the stack's
+         * limit faults instead. */
+        __mdh_trip_lo = lo - MDH_STACK_PROBE - MDH_STACK_TRIP;
+        __mdh_trip_hi = lo + page;
+    }
+    pthread_once(&once, __mdh_stack_install_handler);
+}
+
+/* A worker thread is ending: give its stack and signal stack back as they were. */
+static void __mdh_stack_guard_fini(void) {
+    if (__mdh_trip_prot != 0) {
+        mprotect((void *)__mdh_trip_prot, MDH_STACK_TRIP, PROT_READ | PROT_WRITE);
+        __mdh_trip_prot = 0;
+    }
+    __mdh_trip_lo = 0;
+    __mdh_trip_hi = 0;
+    if (__mdh_alt_stack != NULL) {
+        stack_t ss;
+        memset(&ss, 0, sizeof(ss));
+        ss.ss_flags = SS_DISABLE;
+        sigaltstack(&ss, NULL);
+        munmap(__mdh_alt_stack, MDH_ALT_STACK_SIZE);
+        __mdh_alt_stack = NULL;
+    }
+}
+#else
+/* Windows: best effort (decision F6 Q2); overflow still crashes there. */
+static void __mdh_stack_guard_init(void) {}
+static void __mdh_stack_guard_fini(void) {}
+#endif
 
 /* `msg` is borrowed: the last error takes a reference of its own. */
 void __mdh_hurl(MdhValue msg) {

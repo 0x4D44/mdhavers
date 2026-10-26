@@ -5190,8 +5190,100 @@ impl<'ctx> CodeGen<'ctx> {
         self.emit_thread_line_notes();
         self.rc_drop_unused_declarations();
         self.rc_emit_fast_paths();
+        self.emit_stack_probes();
 
         Ok(())
+    }
+
+    /// Unbounded recursion must raise "Stack's fair puggled!" rather than crash
+    /// (MDH-BUG-FLU-00164). The runtime puts a PROT_NONE tripwire at the end of each
+    /// thread's stack and turns a fault in it into that error (`__mdh_stack_fault`), which
+    /// is only safe when the fault is taken in compiled code, never inside malloc or stdio.
+    /// So before every call out of compiled code (a runtime or libc function, or an
+    /// indirect call) load one byte `STACK_PROBE_DISTANCE` below the stack pointer: whatever the
+    /// callee then uses (less than that) stays clear of the tripwire, and the probe faults
+    /// first. Compiled code that calls nothing out (the int path of a recursive function)
+    /// carries no probe at all; a frame of its own that reaches the tripwire faults in
+    /// compiled code anyway.
+    fn emit_stack_probes(&mut self) {
+        use inkwell::llvm_sys::core::{LLVMGetCalledValue, LLVMIsAFunction, LLVMIsAInlineAsm};
+        use inkwell::values::{AsValueRef, InstructionOpcode};
+        /// Keep in step with MDH_STACK_PROBE in runtime/mdh_runtime.c.
+        const STACK_PROBE_DISTANCE: i64 = 128 * 1024;
+        let ptr_type = self.context.ptr_type(AddressSpace::default());
+        // The stack pointer, without forcing a frame pointer as llvm.frameaddress would.
+        let stacksave = match self.module.get_function("llvm.stacksave.p0") {
+            Some(f) => f,
+            None => {
+                self.module
+                    .add_function("llvm.stacksave.p0", ptr_type.fn_type(&[], false), None)
+            }
+        };
+        let saved_block = self.builder.get_insert_block();
+        let functions: Vec<FunctionValue<'ctx>> = self
+            .module
+            .get_functions()
+            .filter(|f| f.count_basic_blocks() > 0)
+            .collect();
+        let offset = self
+            .types
+            .i64_type
+            .const_int(STACK_PROBE_DISTANCE.wrapping_neg() as u64, true);
+        for function in functions {
+            let mut calls_out = Vec::new();
+            for block in function.get_basic_blocks() {
+                let mut instr = block.get_first_instruction();
+                while let Some(current) = instr {
+                    instr = current.get_next_instruction();
+                    if current.get_opcode() != InstructionOpcode::Call {
+                        continue;
+                    }
+                    let callee = unsafe { LLVMGetCalledValue(current.as_value_ref()) };
+                    let outside = if callee.is_null() {
+                        true
+                    } else if unsafe { !LLVMIsAFunction(callee).is_null() } {
+                        let f = unsafe { FunctionValue::new(callee) }.expect("called function");
+                        let name = f.get_name().to_bytes();
+                        f.count_basic_blocks() == 0 && !name.starts_with(b"llvm.")
+                    } else {
+                        // Inline asm is not a call out; a function pointer may be.
+                        unsafe { LLVMIsAInlineAsm(callee).is_null() }
+                    };
+                    if outside {
+                        calls_out.push(current);
+                    }
+                }
+            }
+            for call in calls_out {
+                self.builder.position_before(&call);
+                let frame = self
+                    .builder
+                    .build_call(stacksave, &[], "stack_probe_sp")
+                    .unwrap()
+                    .try_as_basic_value()
+                    .basic()
+                    .expect("frameaddress returns a pointer")
+                    .into_pointer_value();
+                let at = unsafe {
+                    self.builder
+                        .build_gep(self.types.i8_type, frame, &[offset], "stack_probe_at")
+                        .unwrap()
+                };
+                let probe = self
+                    .builder
+                    .build_load(self.types.i8_type, at, "stack_probe")
+                    .unwrap();
+                probe
+                    .into_int_value()
+                    .as_instruction()
+                    .expect("probe load")
+                    .set_volatile(true)
+                    .unwrap();
+            }
+        }
+        if let Some(block) = saved_block {
+            self.builder.position_at_end(block);
+        }
     }
 
     /// A builtin referenced as a value: a lambda of the builtin's interpreter arity that
