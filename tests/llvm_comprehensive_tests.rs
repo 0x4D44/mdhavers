@@ -73825,13 +73825,14 @@ mod graphics_placeholder_coverage {
 
     #[test]
     fn test_screen_fps_placeholder() {
+        // Native never opens a window, so screen_fps hurls rather than returning
+        // naething (MDH-BUG-FLU-00161).
         let code = r#"
 ken fps = screen_fps()
 blether "done"
 "#;
-        let binding = run(code);
-        let output = binding.trim();
-        assert_eq!(output, "done");
+        let err = compile_and_run(code).expect_err("screen_fps must hurl natively");
+        assert!(err.contains("Nae windae"), "{err}");
     }
 }
 

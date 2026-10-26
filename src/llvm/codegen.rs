@@ -24009,8 +24009,15 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap();
                     return Ok(self.make_int(secs));
                 }
+                "screen_close" => {
+                    // The interpreter's screen_close just drops the window, if any, and
+                    // returns naething, so native keeps it a no-op like screen_end.
+                    for arg in args {
+                        self.compile_expr(arg)?;
+                    }
+                    return Ok(self.make_nil());
+                }
                 "screen_open"
-                | "screen_close"
                 | "screen_should_close"
                 | "screen_clear"
                 | "draw_pixel"
@@ -24025,7 +24032,13 @@ impl<'ctx> CodeGen<'ctx> {
                 | "is_key_pressed"
                 | "screen_fps"
                 | "set_fps" => {
-                    // Graphics placeholders - return nil
+                    // Needs a raylib window, which native code never opens: hurl rather
+                    // than silently do nothing (MDH-BUG-FLU-00161).
+                    for arg in args {
+                        self.compile_expr(arg)?;
+                    }
+                    let f = self.runtime_error_fn("__mdh_no_window", 0);
+                    self.builder.build_call(f, &[], "").unwrap();
                     return Ok(self.make_nil());
                 }
                 "log_whisper" | "log_mutter" | "log_blether" | "log_holler" | "log_roar"

@@ -186,6 +186,41 @@ fn native_screen_and_key_builtins_hurl_instead_of_returning_made_up_values() {
 }
 
 #[test]
+fn native_graphics_placeholders_hurl_nae_windae_mdh_bug_flu_00161() {
+    for call in [
+        "screen_open(800, 600, \"t\")",
+        "screen_should_close()",
+        "screen_clear(\"black\")",
+        "draw_pixel(1, 2, \"red\")",
+        "draw_rect(1, 2, 3, 4, \"red\")",
+        "draw_circle(1, 2, 3, \"red\")",
+        "draw_line(1, 2, 3, 4, \"red\")",
+        "draw_text(\"hi\", 1, 2, 10, \"red\")",
+        "screen_update()",
+        "get_mouse_x()",
+        "get_mouse_y()",
+        "is_mouse_down(0)",
+        "is_key_pressed(\"space\")",
+        "screen_fps()",
+        "set_fps(60)",
+    ] {
+        let run = compile_and_run(&format!(
+            "blether \"before\"\nblether {call}\nblether \"after\"\n"
+        ));
+        assert_ne!(run.code, Some(0), "{call} must not succeed natively");
+        assert_eq!(run.stdout.trim(), "before", "{call}");
+        assert!(run.stderr.contains("Nae windae"), "{call}: {}", run.stderr);
+        let caught = run_ok(&format!(
+            "hae_a_bash {{\n    {call}\n    blether \"not reached\"\n}} gin_it_gangs_wrang e {{\n    blether e\n}}\n"
+        ));
+        assert_eq!(caught.len(), 1, "{call}: {caught:?}");
+        assert!(caught[0].starts_with("Nae windae!"), "{call}: {caught:?}");
+    }
+    // screen_close is a no-op in the interpreter too, so native keeps it one.
+    assert_eq!(run_ok("screen_close()\nblether \"x\"\n"), vec!["x"]);
+}
+
+#[test]
 fn native_clype_names_the_class_of_an_instance_mdh_bug_flu_00159() {
     assert_native_matches_interpreter(
         r#"kin Dog {
