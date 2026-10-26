@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00185 — Native: wrong-type errors from stoater, dicht, is_a and chynge differ from the interpreter
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** native
 - **Raised:** 2026-10-26T09:14:16Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261026T091430Z-dedd0d69
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00185-run-fix-20261026T091430Z-dedd0d69
-- **Owner base:** 2779582158f149cb2371904e6f78bcaa51abc16e
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-26T09:14:30Z
-- **Owner until:** 2026-10-26T13:14:30Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-26T09:14:16Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-26T09:14:16Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T11:36:23Z, deltic:auto role=fix run=fix-20261026T091430Z-dedd0d69 branch=task/bug-MDH-BUG-FLU-00185-run-fix-20261026T091430Z-dedd0d69 code=aa422ef gate=manual)
 
 ## Observation
 
