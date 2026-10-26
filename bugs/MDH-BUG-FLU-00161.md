@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00161 — Native graphics builtins (draw_*, get_mouse_*, screen_update...) silently return nil
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** native
 - **Raised:** 2026-10-26T03:04:10Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261026T032928Z-692239a5
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00161-run-fix-20261026T032928Z-692239a5
-- **Owner base:** 3b7e24c072e14f3376217bac8d52e09e0b9c46b5
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-26T03:29:28Z
-- **Owner until:** 2026-10-26T07:29:28Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-26T03:04:10Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-26T03:04:10Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T04:10:06Z, deltic:auto role=fix run=fix-20261026T032928Z-692239a5 branch=task/bug-MDH-BUG-FLU-00161-run-fix-20261026T032928Z-692239a5 code=bbaa9fb gate=manual)
 
 ## Observation
 
