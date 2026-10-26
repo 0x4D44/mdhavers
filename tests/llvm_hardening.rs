@@ -558,6 +558,63 @@ hae_a_bash {
     );
 }
 
+#[test]
+fn dict_remove_copies_the_entries_in_blocks_instead_of_reinserting_them() {
+    // dict_remove (kept O(n) per call, as the interpreter copies) used to re-insert every
+    // entry, hashing and growing the index as it went; it now finds the key through the
+    // index and memcpys the rest. Both are linear, so compare against a baseline in the
+    // same process: one in-language rebuild (a read and an insert per entry). Each side is
+    // the best of three runs, which shrugs off a busy box. A block copy costs about a
+    // hundredth of a rebuild per call; re-insertion in C costs about half a rebuild.
+    let run = compile_and_run_within(
+        r#"
+ken d = {}
+fer i in 0..100000 {
+    d[tae_string(i)] = i
+}
+ken best_removes = 1000000000
+ken best_rebuild = 1000000000
+ken cur = d
+fer pass in 0..3 {
+    ken t0 = mono_ms()
+    fer i in 0..100 {
+        cur = dict_remove(d, "5")
+    }
+    ken t1 = mono_ms()
+    ken rebuilt = {}
+    fer k in keys(d) {
+        gin k != "5" {
+            rebuilt[k] = d[k]
+        }
+    }
+    ken t2 = mono_ms()
+    gin t1 - t0 < best_removes {
+        best_removes = t1 - t0
+    }
+    gin t2 - t1 < best_rebuild {
+        best_rebuild = t2 - t1
+    }
+}
+blether len(cur)
+blether len(d)
+blether dict_has(cur, "5")
+blether best_removes
+blether best_rebuild
+"#,
+        Duration::from_secs(300),
+    );
+    assert_eq!(run.code, Some(0), "stderr={:?}", run.stderr);
+    let lines: Vec<&str> = run.stdout.trim().lines().collect();
+    assert_eq!(&lines[..3], &["99999", "100000", "nae"], "{:?}", run.stdout);
+    let removes_ms: f64 = lines[3].parse().expect("removes ms");
+    let rebuild_ms: f64 = lines[4].parse().expect("rebuild ms");
+    // 100 block copies take about one rebuild; 100 re-insertions take about 50.
+    assert!(
+        removes_ms < 10.0 * rebuild_ms.max(1.0),
+        "100 dict_remove calls took {removes_ms} ms against {rebuild_ms} ms for one rebuild"
+    );
+}
+
 // ---------- MDH-BUG-FLU-00091: heave_oot leaves tombstones no reader sees ----------
 
 #[test]
