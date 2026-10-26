@@ -750,6 +750,11 @@ pub struct CodeGen<'ctx> {
     /// While true, the free-variable scan reports every unbound name, not only names
     /// already in `variables` (used to find the prelude functions a program needs).
     scan_all_names: bool,
+    /// Names the function being compiled binds with `ken` that hide a global of the
+    /// same name: locals for capture discovery, though they have no slot until bound
+    /// (MDH-BUG-FLU-00179).
+    /// The value says a nested function or lambda captures it, so its `ken` boxes it.
+    shadowing_locals: HashMap<String, bool>,
 
     /// Current 'masel' value (set during method execution)
     current_masel: Option<PointerValue<'ctx>>,
@@ -916,6 +921,7 @@ impl<'ctx> CodeGen<'ctx> {
             class_defined_flags: HashMap::new(),
             hidden_imported_classes: HashSet::new(),
             scan_all_names: false,
+            shadowing_locals: HashMap::new(),
             current_masel: None,
             current_class: None,
             source_path: None,
@@ -13626,6 +13632,9 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                 }
                 self.bind_block_local(name, true);
+                if self.shadowing_locals.get(name) == Some(&true) {
+                    self.boxed_vars.insert(name.clone());
+                }
                 // Boxed variables: store a 1-element list cell instead of the raw value.
                 // Reads/writes dereference/update element 0, enabling mutable captures.
                 if self.boxed_vars.contains(name) {
@@ -28505,6 +28514,7 @@ impl<'ctx> CodeGen<'ctx> {
         let saved_in_loop_body = std::mem::replace(&mut self.in_loop_body, false);
         let saved_unstable_vars = std::mem::take(&mut self.unstable_vars);
         let saved_block_functions = std::mem::take(&mut self.block_function_symbols);
+        let saved_shadowing_locals = std::mem::take(&mut self.shadowing_locals);
 
         self.builder.position_at_end(entry);
         self.current_function = Some(function);
@@ -28567,7 +28577,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
         }
         // Mark all captured locals/params as boxed in this scope (locals will be boxed at decl).
-        self.boxed_vars.extend(captured_in_body);
+        self.box_captured_names(captured_in_body);
 
         // No shadows for parameters: their static type is Unknown, and a shadow holding
         // another type's payload bits is unsound (MDH-BUG-FLU-00048).
@@ -28625,6 +28635,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.in_loop_body = saved_in_loop_body;
         self.unstable_vars = saved_unstable_vars;
         self.block_function_symbols = saved_block_functions;
+        self.shadowing_locals = saved_shadowing_locals;
 
         // Restore the builder position to where it was before compiling this function
         if let Some(block) = saved_block {
@@ -28868,7 +28879,31 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
+    /// Mark names a nested function or lambda captures as boxed in this scope. A local
+    /// that hides a global has no slot yet and reads of the global before its `ken` must
+    /// stay unboxed, so it is boxed when its `ken` binds it (MDH-BUG-FLU-00179).
+    fn box_captured_names(&mut self, names: HashSet<String>) {
+        for name in names {
+            match self.shadowing_locals.get_mut(&name) {
+                Some(captured) if !self.variables.contains_key(&name) => *captured = true,
+                _ => {
+                    self.boxed_vars.insert(name);
+                }
+            }
+        }
+    }
+
     fn predeclare_locals_for_capture(&mut self, body: &[Stmt]) {
+        // A `ken` directly in the body of a global's name makes a local that hides the
+        // global. It has no slot until bound, but a nested function or lambda reading
+        // the name reads the local, so capture discovery must see it (MDH-BUG-FLU-00179).
+        for stmt in body {
+            if let Stmt::VarDecl { name, .. } = stmt {
+                if !self.variables.contains_key(name) && self.globals.contains_key(name) {
+                    self.shadowing_locals.insert(name.clone(), false);
+                }
+            }
+        }
         for stmt in body {
             self.predeclare_locals_stmt(stmt);
         }
@@ -31977,7 +32012,9 @@ impl<'ctx> CodeGen<'ctx> {
         match expr {
             Expr::Variable { name, .. } => {
                 if !bound.contains(name)
-                    && (self.scan_all_names || self.variables.contains_key(name))
+                    && (self.scan_all_names
+                        || self.variables.contains_key(name)
+                        || self.shadowing_locals.contains_key(name))
                 {
                     free.insert(name.clone());
                 }
@@ -32579,6 +32616,7 @@ impl<'ctx> CodeGen<'ctx> {
         // (MDH-BUG-FLU-00135).
         let saved_in_user_function = std::mem::replace(&mut self.in_user_function, true);
         let saved_block_functions = std::mem::take(&mut self.block_function_symbols);
+        let saved_shadowing_locals = std::mem::take(&mut self.shadowing_locals);
         self.nested_function_scopes.push(HashMap::new());
         self.predeclare_locals_for_capture(body_stmts);
         let captured_in_body = self.predeclare_nested_functions(body_stmts);
@@ -32587,7 +32625,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let _ = self.ensure_boxed_variable(param);
             }
         }
-        self.boxed_vars.extend(captured_in_body);
+        self.box_captured_names(captured_in_body);
         self.prebox_captured_names(&param_names, &bindings, body_stmts);
 
         // Compile the lambda body
@@ -32614,6 +32652,7 @@ impl<'ctx> CodeGen<'ctx> {
         }
         self.nested_function_scopes.pop();
         self.block_function_symbols = saved_block_functions;
+        self.shadowing_locals = saved_shadowing_locals;
         self.in_user_function = saved_in_user_function;
         self.rc_leave_function(saved_rc);
 
@@ -39360,6 +39399,7 @@ impl<'ctx> CodeGen<'ctx> {
         let bindings = Self::scope_bindings_of_stmts(&unknown_bindings, body);
         let old_unstable_vars = std::mem::take(&mut self.unstable_vars);
         let old_block_functions = std::mem::take(&mut self.block_function_symbols);
+        let old_shadowing_locals = std::mem::take(&mut self.shadowing_locals);
         self.unstable_vars = self.unstable_vars_of(&bindings);
 
         self.current_function = Some(function);
@@ -39403,7 +39443,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
         }
         // Mark all captured locals/params as boxed in this scope (locals will be boxed at decl).
-        self.boxed_vars.extend(captured_in_body);
+        self.box_captured_names(captured_in_body);
         let param_names: Vec<&str> = params.iter().map(|p| p.name.as_str()).collect();
         self.prebox_captured_names(&param_names, &bindings, body);
 

@@ -159,3 +159,78 @@ blether g
 "#,
     );
 }
+
+#[test]
+fn nested_function_reads_enclosing_local_that_hides_a_global() {
+    assert_parity(
+        r#"
+ken x = 1
+dae f() {
+    ken x = 2
+    dae g() { gie x }
+    gie g()
+}
+blether f()
+blether x
+"#,
+    );
+}
+
+#[test]
+fn nested_function_and_lambda_capture_a_local_hiding_a_global() {
+    assert_parity(
+        r#"
+ken x = 1
+ken name = "glob"
+dae f(n) {
+    ken x = n * 10
+    ken name = "loc" + tae_string(n)
+    dae g() { gie x + 1 }
+    ken h = || name + "!" + tae_string(x)
+    dae deep() {
+        dae deeper() { gie x + len(name) }
+        gie deeper()
+    }
+    gie [g(), h(), deep()]
+}
+blether f(2)
+blether f(3)
+blether x
+blether name
+dae counter() {
+    ken x = 0
+    dae bump() { x = x + 1 gie x }
+    bump()
+    bump()
+    gie x
+}
+blether counter()
+blether x
+dae uses_global() {
+    dae g() { gie x }
+    gie g()
+}
+blether uses_global()
+ken total = 100
+dae mk() {
+    ken x = 0
+    ken total = 10
+    ken inc = || { x = x + 1 gie x }
+    inc()
+    inc()
+    dae add(n) { total = total + n gie total }
+    add(5)
+    gie [x, total, inc()]
+}
+blether mk()
+blether total
+dae reads_first() {
+    blether x
+    ken x = 5
+    dae g() { gie x }
+    gie g()
+}
+blether reads_first()
+"#,
+    );
+}
