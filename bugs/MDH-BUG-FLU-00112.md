@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00112 — Native: a dae nested inside a gin block cannot capture its enclosing function's parameter
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** native
 - **Raised:** 2026-10-24T02:39:09Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T182021Z-a3118833
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00112-run-verify-20261026T182021Z-a3118833
-- **Owner base:** 2f352f49ef4c71b45a0497bf81a04779c622faad
-- **Owner fingerprint:** sha256:b48adf764943257b3d540a77c054662cf9a09d45776b9eb14ebeb71d2d9bac48
-- **Owner since:** 2026-10-26T18:20:21Z
-- **Owner until:** 2026-10-26T22:20:21Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-24T02:39:09Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T03:04:18Z, deltic:auto role=fix run=fix-20261024T030413Z-e8a85c1e branch=task/bug-MDH-BUG-FLU-00112-run-fix-20261024T030413Z-e8a85c1e code=efb4bb2 gate=manual)
+- **State history:** Open (2026-10-24T02:39:09Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T03:04:18Z, deltic:auto role=fix run=fix-20261024T030413Z-e8a85c1e branch=task/bug-MDH-BUG-FLU-00112-run-fix-20261024T030413Z-e8a85c1e code=efb4bb2 gate=manual) -> Closed (2026-10-26T19:40:44Z, deltic:manual role=verify run=verify-20261026T182021Z-a3118833 verified_fix_run=fix-20261024T030413Z-e8a85c1e verdict=close)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:native-a-dae-nested-inside-a-gin-block-cannot-c
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T19:40:44Z, deltic:manual run=verify-20261026T182021Z-a3118833 verified_fix_run=fix-20261024T030413Z-e8a85c1e verdict=close)
+
+Verifier note: Manual verify: [verifier gpt-6-luna max (Codex), recorded by lead] fix=528b015 (history code efb4bb2 is version bump); interpreter/native repro both printed 30; dae_in_a_gin_block_captures_the_enclosing_parameter passed 1/1; mutant replaced captured cell with nil and test assertion on run.code==Some(0) failed (None).
 
 ## Notes

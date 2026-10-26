@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00095 — Native: reading a forward global before its ken has run gives naething instead of an error
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** native
 - **Raised:** 2026-10-23T21:37:15Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T182021Z-eb5ac01a
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00095-run-verify-20261026T182021Z-eb5ac01a
-- **Owner base:** 2f352f49ef4c71b45a0497bf81a04779c622faad
-- **Owner fingerprint:** sha256:75096e63a7f7ba64dc3c382bbc13ed3acd402a4608f0a26fc411c7f4ba56ac75
-- **Owner since:** 2026-10-26T18:20:21Z
-- **Owner until:** 2026-10-26T22:20:21Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-23T21:37:15Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T01:42:59Z, deltic:auto role=fix run=fix-20261024T014254Z-5710c3e3 branch=task/bug-MDH-BUG-FLU-00095-run-fix-20261024T014254Z-5710c3e3 code=5cf1a3f gate=manual)
+- **State history:** Open (2026-10-23T21:37:15Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T01:42:59Z, deltic:auto role=fix run=fix-20261024T014254Z-5710c3e3 branch=task/bug-MDH-BUG-FLU-00095-run-fix-20261024T014254Z-5710c3e3 code=5cf1a3f gate=manual) -> Closed (2026-10-26T19:40:44Z, deltic:manual role=verify run=verify-20261026T182021Z-eb5ac01a verified_fix_run=fix-20261024T014254Z-5710c3e3 verdict=close)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:native-reading-a-forward-global-before-its-ken-
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T19:40:44Z, deltic:manual run=verify-20261026T182021Z-eb5ac01a verified_fix_run=fix-20261024T014254Z-5710c3e3 verdict=close)
+
+Verifier note: Manual verify: [verifier gpt-6-luna max (Codex), recorded by lead] fix=67a0617 (history code 5cf1a3f is version bump); native repro errors at lines 3/6 then prints 1,5 like interpreter; forward_global tests passed 2/2; mutant removed guarded flag check and both tests failed: naething and uncaught exit 0.
 
 ## Notes

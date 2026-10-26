@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00150 — Native RC leaks: blether of a float and multi-character split leak strings under MDH_RC=1
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** native
 - **Raised:** 2026-10-25T09:59:18Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T182021Z-4463199a
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00150-run-verify-20261026T182021Z-4463199a
-- **Owner base:** 2f352f49ef4c71b45a0497bf81a04779c622faad
-- **Owner fingerprint:** sha256:29252c29b14fdb237ef5aa102948bac3e212d777125fdb3c3e841439c4e0c99f
-- **Owner since:** 2026-10-26T18:20:21Z
-- **Owner until:** 2026-10-26T22:20:21Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-25T09:59:18Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-25T10:37:06Z, deltic:auto role=fix run=fix-20261025T100351Z-e1910576 branch=task/bug-MDH-BUG-FLU-00150-run-fix-20261025T100351Z-e1910576 code=8497359 gate=manual)
+- **State history:** Open (2026-10-25T09:59:18Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-25T10:37:06Z, deltic:auto role=fix run=fix-20261025T100351Z-e1910576 branch=task/bug-MDH-BUG-FLU-00150-run-fix-20261025T100351Z-e1910576 code=8497359 gate=manual) -> Closed (2026-10-26T19:40:44Z, deltic:manual role=verify run=verify-20261026T182021Z-4463199a verified_fix_run=fix-20261025T100351Z-e1910576 verdict=close)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:native-rc-leaks-blether-of-a-float-and-multi-ch
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T19:40:44Z, deltic:manual run=verify-20261026T182021Z-4463199a verified_fix_run=fix-20261025T100351Z-e1910576 verdict=close)
+
+Verifier note: Manual verify: [verifier gpt-6-luna max (Codex), recorded by lead] fix=8497359; MDH_RC=1 repro prints 1.5/2 and reports string=0; both leak_nothing tests selected and passed; mutant removed float_str and multi-char split releases, first test assertion saw string=3 vs 0 (mixed-concat/read_lines test stayed green).
 
 ## Notes

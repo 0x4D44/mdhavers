@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00144 — Native accepts wrong-type arguments that the interpreter rejects, for about 25 builtins
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** native
 - **Raised:** 2026-10-25T08:13:30Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T182021Z-6ed878b5
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00144-run-verify-20261026T182021Z-6ed878b5
-- **Owner base:** 2f352f49ef4c71b45a0497bf81a04779c622faad
-- **Owner fingerprint:** sha256:b679c6590c07ae2573143413a8e714c286d15a773f06262215d30d59fcf5a367
-- **Owner since:** 2026-10-26T18:20:21Z
-- **Owner until:** 2026-10-26T22:20:21Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-25T08:13:30Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-25T09:08:04Z, deltic:auto role=fix run=fix-20261025T081928Z-4caa481f branch=task/bug-MDH-BUG-FLU-00144-run-fix-20261025T081928Z-4caa481f code=1a64677 gate=manual)
+- **State history:** Open (2026-10-25T08:13:30Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-25T09:08:04Z, deltic:auto role=fix run=fix-20261025T081928Z-4caa481f branch=task/bug-MDH-BUG-FLU-00144-run-fix-20261025T081928Z-4caa481f code=1a64677 gate=manual) -> Closed (2026-10-26T19:40:44Z, deltic:manual role=verify run=verify-20261026T182021Z-6ed878b5 verified_fix_run=fix-20261025T081928Z-4caa481f verdict=close)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:native-accepts-wrong-type-arguments-that-the-in
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T19:40:44Z, deltic:manual run=verify-20261026T182021Z-6ed878b5 verified_fix_run=fix-20261025T081928Z-4caa481f verdict=close)
+
+Verifier note: Manual verify: [verifier gpt-6-luna max (Codex), recorded by lead] fix=1a64677; corrected CLI repro: hauld_atween returns l in interpreter/native; factorial and starts_with type errors match; 9 relevant tests selected and passed 1/1 each; mutant bypassing factorial negative guard failed numeric assertion: got 1 instead of negative-factorial error.
 
 ## Notes

@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00149 — Native ordering comparisons accept a bool against an int; the interpreter raises
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** native
 - **Raised:** 2026-10-25T09:01:03Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T182021Z-4812f126
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00149-run-verify-20261026T182021Z-4812f126
-- **Owner base:** 2f352f49ef4c71b45a0497bf81a04779c622faad
-- **Owner fingerprint:** sha256:0474808af4e4b4b8afc1104f2ba6c4859ab5729fc8bb92db5b65d8f7cc247927
-- **Owner since:** 2026-10-26T18:20:21Z
-- **Owner until:** 2026-10-26T22:20:21Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-25T09:01:03Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-25T09:30:50Z, deltic:auto role=fix run=fix-20261025T090823Z-73018e88 branch=task/bug-MDH-BUG-FLU-00149-run-fix-20261025T090823Z-73018e88 code=eccfe2e gate=manual)
+- **State history:** Open (2026-10-25T09:01:03Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-25T09:30:50Z, deltic:auto role=fix run=fix-20261025T090823Z-73018e88 branch=task/bug-MDH-BUG-FLU-00149-run-fix-20261025T090823Z-73018e88 code=eccfe2e gate=manual) -> Closed (2026-10-26T19:40:44Z, deltic:manual role=verify run=verify-20261026T182021Z-4812f126 verified_fix_run=fix-20261025T090823Z-73018e88 verdict=close)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:native-ordering-comparisons-accept-a-bool-again
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T19:40:44Z, deltic:manual run=verify-20261026T182021Z-4812f126 verified_fix_run=fix-20261025T090823Z-73018e88 verdict=close)
+
+Verifier note: Manual verify: [verifier gpt-6-luna max (Codex), recorded by lead] fix=eccfe2e; atween(aye,0,2) raises matching bool/int error in interpreter/native; dynamic type-pair matrix and static bool test passed 1/1 each; mutant re-admitting Bool to ordering fast path failed static test assertion: got no instead of comparison error.
 
 ## Notes

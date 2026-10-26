@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00132 — Native chunks(): signed overflow computing the chunk count and loop step for a huge size
 
-- **State:** Fixed
+- **State:** Open
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** native
 - **Raised:** 2026-10-25T01:32:27Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T182021Z-3524a0ae
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00132-run-verify-20261026T182021Z-3524a0ae
-- **Owner base:** 2f352f49ef4c71b45a0497bf81a04779c622faad
-- **Owner fingerprint:** sha256:04c75d5e3daafca1fe21a89b8abbfce534a083c66c40fb3f50bdac61a996c0d4
-- **Owner since:** 2026-10-26T18:20:21Z
-- **Owner until:** 2026-10-26T22:20:21Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
-- **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-25T01:32:27Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-25T02:16:04Z, deltic:auto role=fix run=fix-20261025T020015Z-66c23764 branch=task/bug-MDH-BUG-FLU-00132-run-fix-20261025T020015Z-66c23764 code=6a72241 gate=manual)
+- **Attempts:** fix=0, doubt=1, indeterminate=0
+- **State history:** Open (2026-10-25T01:32:27Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-25T02:16:04Z, deltic:auto role=fix run=fix-20261025T020015Z-66c23764 branch=task/bug-MDH-BUG-FLU-00132-run-fix-20261025T020015Z-66c23764 code=6a72241 gate=manual) -> Open (2026-10-26T19:40:44Z, deltic:manual role=verify run=verify-20261026T182021Z-3524a0ae verified_fix_run=fix-20261025T020015Z-66c23764 verdict=doubt reason=reopen-verifier-gpt-6-luna-max-codex-recorded-by-lead-fix6a72241-interpreter-nat)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:native-chunks-signed-overflow-computing-the-chu
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T19:40:44Z, deltic:manual run=verify-20261026T182021Z-3524a0ae verified_fix_run=fix-20261025T020015Z-66c23764 verdict=doubt)
+
+Verifier note: Manual verify: [verifier gpt-6-luna max (Codex), recorded by lead] fix=6a72241; interpreter/native repro printed [[1, 2, 3]]; chunks_with_a_huge_size_does_not_overflow passed 1/1 both before and after reverting to (len+n-1)/n arithmetic; test does not cover the fix.
 
 ## Notes

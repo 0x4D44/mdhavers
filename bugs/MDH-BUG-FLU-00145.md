@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00145 — Native has about 410 builtin names the interpreter lacks, many with placeholder bodies
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** native
 - **Raised:** 2026-10-25T08:13:34Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T182021Z-8a8d9f68
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00145-run-verify-20261026T182021Z-8a8d9f68
-- **Owner base:** 2f352f49ef4c71b45a0497bf81a04779c622faad
-- **Owner fingerprint:** sha256:9bf81d3e21949f313907a7f976744bb480f0b547e163a055a22d46f945294a4a
-- **Owner since:** 2026-10-26T18:20:21Z
-- **Owner until:** 2026-10-26T22:20:21Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-25T08:13:34Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-25T23:21:06Z, deltic:auto role=fix run=fix-20261025T223241Z-2be50da0 branch=task/bug-MDH-BUG-FLU-00145-run-fix-20261025T223241Z-2be50da0 code=e820711 gate=manual)
+- **State history:** Open (2026-10-25T08:13:34Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-25T23:21:06Z, deltic:auto role=fix run=fix-20261025T223241Z-2be50da0 branch=task/bug-MDH-BUG-FLU-00145-run-fix-20261025T223241Z-2be50da0 code=e820711 gate=manual) -> Closed (2026-10-26T19:40:44Z, deltic:manual role=verify run=verify-20261026T182021Z-8a8d9f68 verified_fix_run=fix-20261025T223241Z-2be50da0 verdict=close)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:native-has-about-410-builtin-names-the-interpre
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T19:40:44Z, deltic:manual run=verify-20261026T182021Z-8a8d9f68 verified_fix_run=fix-20261025T223241Z-2be50da0 verdict=close)
+
+Verifier note: Manual verify: [verifier gpt-6-luna max (Codex), recorded by lead] fix=e820711; matrix_new repro is undefined in interpreter and native compile; all 3 llvm_native_placeholder_builtins_removed tests passed; mutant reintroduced curry=>nil and removed_placeholder_builtins_are_undefined failed expect_err: call compiled.
 
 ## Notes

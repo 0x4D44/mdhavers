@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00131 — Native dtls_handshake: probable double close of the dup fd on a failed handshake
 
-- **State:** Fixed
+- **State:** Open
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** native
 - **Raised:** 2026-10-25T01:32:22Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T182021Z-640b9af0
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00131-run-verify-20261026T182021Z-640b9af0
-- **Owner base:** 2f352f49ef4c71b45a0497bf81a04779c622faad
-- **Owner fingerprint:** sha256:c120af03273bacc58519cc39b98eca1186572cdd8c67f04864636b16d369ba1d
-- **Owner since:** 2026-10-26T18:20:21Z
-- **Owner until:** 2026-10-26T22:20:21Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
-- **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-25T01:32:22Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-25T02:15:59Z, deltic:auto role=fix run=fix-20261025T020015Z-990f2c0f branch=task/bug-MDH-BUG-FLU-00131-run-fix-20261025T020015Z-990f2c0f code=6a72241 gate=manual)
+- **Attempts:** fix=0, doubt=1, indeterminate=0
+- **State history:** Open (2026-10-25T01:32:22Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-25T02:15:59Z, deltic:auto role=fix run=fix-20261025T020015Z-990f2c0f branch=task/bug-MDH-BUG-FLU-00131-run-fix-20261025T020015Z-990f2c0f code=6a72241 gate=manual) -> Open (2026-10-26T19:40:44Z, deltic:manual role=verify run=verify-20261026T182021Z-640b9af0 verified_fix_run=fix-20261025T020015Z-990f2c0f verdict=doubt reason=reopen-verifier-gpt-6-luna-max-codex-recorded-by-lead-fix6a72241-native-invalid)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:native-dtls-handshake-probable-double-close-of-
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T19:40:44Z, deltic:manual run=verify-20261026T182021Z-640b9af0 verified_fix_run=fix-20261025T020015Z-990f2c0f verdict=doubt)
+
+Verifier note: Manual verify: [verifier gpt-6-luna max (Codex), recorded by lead] fix=6a72241; native invalid-handle repro returned Unknown DTLS handle and original socket_close=aye; no DTLS test exists under tests/llvm_*.rs (fix commit adds only 00132 chunks test), so no selected assertion can be mutation-checked.
 
 ## Notes

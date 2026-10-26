@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00102 — Native: an empty list, dict or string read straight from an index is truthy in a condition
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** native
 - **Raised:** 2026-10-24T02:09:47Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T182021Z-29e8d75b
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00102-run-verify-20261026T182021Z-29e8d75b
-- **Owner base:** 2f352f49ef4c71b45a0497bf81a04779c622faad
-- **Owner fingerprint:** sha256:f682744ad29e40fd54b247ac8daea29f8f94046054c6487560267782b069da69
-- **Owner since:** 2026-10-26T18:20:21Z
-- **Owner until:** 2026-10-26T22:20:21Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-24T02:09:47Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T02:38:32Z, deltic:auto role=fix run=fix-20261024T023826Z-cf7665f9 branch=task/bug-MDH-BUG-FLU-00102-run-fix-20261024T023826Z-cf7665f9 code=e92c292 gate=manual)
+- **State history:** Open (2026-10-24T02:09:47Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T02:38:32Z, deltic:auto role=fix run=fix-20261024T023826Z-cf7665f9 branch=task/bug-MDH-BUG-FLU-00102-run-fix-20261024T023826Z-cf7665f9 code=e92c292 gate=manual) -> Closed (2026-10-26T19:40:44Z, deltic:manual role=verify run=verify-20261026T182021Z-29e8d75b verified_fix_run=fix-20261024T023826Z-cf7665f9 verdict=close)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:native-an-empty-list-dict-or-string-read-straig
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T19:40:44Z, deltic:manual run=verify-20261026T182021Z-29e8d75b verified_fix_run=fix-20261024T023826Z-cf7665f9 verdict=close)
+
+Verifier note: Manual verify: [verifier gpt-6-luna max (Codex), recorded by lead] fix=aaa6e6b (history code e92c292 is version bump); interpreter/native repro both emitted no wrang; indexed_condition_uses_full_truthiness passed 1/1; mutant restored data-word truthiness and failed assertion (empty list/dict/string became aye; later index OOB).
 
 ## Notes

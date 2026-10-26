@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00128 — Native: fer over a dict or creel iterates the handle as a list instead of raising
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** native
 - **Raised:** 2026-10-24T22:20:47Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T182021Z-c7ed1769
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00128-run-verify-20261026T182021Z-c7ed1769
-- **Owner base:** 2f352f49ef4c71b45a0497bf81a04779c622faad
-- **Owner fingerprint:** sha256:21c9418f48b7afb79265ba53034573f5038569c117700d13323910abf2bc387a
-- **Owner since:** 2026-10-26T18:20:21Z
-- **Owner until:** 2026-10-26T22:20:21Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-24T22:20:47Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T22:42:33Z, deltic:auto role=fix run=fix-20261024T222513Z-7529395c branch=task/bug-MDH-BUG-FLU-00128-run-fix-20261024T222513Z-7529395c code=ad4c55f gate=manual)
+- **State history:** Open (2026-10-24T22:20:47Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T22:42:33Z, deltic:auto role=fix run=fix-20261024T222513Z-7529395c branch=task/bug-MDH-BUG-FLU-00128-run-fix-20261024T222513Z-7529395c code=ad4c55f gate=manual) -> Closed (2026-10-26T19:40:44Z, deltic:manual role=verify run=verify-20261026T182021Z-c7ed1769 verified_fix_run=fix-20261024T222513Z-7529395c verdict=close)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:native-fer-over-a-dict-or-creel-iterates-the-ha
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T19:40:44Z, deltic:manual run=verify-20261026T182021Z-c7ed1769 verified_fix_run=fix-20261024T222513Z-7529395c verdict=close)
+
+Verifier note: Manual verify: [verifier gpt-6-luna max (Codex), recorded by lead] fix=ad4c55f; interpreter/native repro both raised Cannae iterate ower a creel at line 2; fer_over_a_dict tests passed 2/2; mutant reversed list-tag gate and both test assertions failed (garbage iteration/exit None vs expected errors).
 
 ## Notes
