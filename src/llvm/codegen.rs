@@ -685,6 +685,8 @@ pub struct CodeGen<'ctx> {
 
     /// Counter for generating unique lambda names
     lambda_counter: u32,
+    /// Every function that becomes a value, with the name it displays as (`<dae name>`).
+    fn_value_names: Vec<(FunctionValue<'ctx>, String)>,
 
     /// Late-bound function-value dispatchers, keyed by argument count. A call through a
     /// function value only knows the functions that exist when the call site is compiled;
@@ -870,6 +872,7 @@ impl<'ctx> CodeGen<'ctx> {
             try_depth: 0,
             in_user_function: false,
             lambda_counter: 0,
+            fn_value_names: Vec::new(),
             late_call_dispatchers: HashMap::new(),
             in_late_dispatch: false,
             pipe_tmp_counter: 0,
@@ -4659,6 +4662,7 @@ impl<'ctx> CodeGen<'ctx> {
             "__mdh_jmp_buf_size",
             "__mdh_hurl_at",
             "__mdh_set_args",
+            "__mdh_register_fn_names",
             // Reference counting: never raises (a DEAD object aborts, naming the lines).
             "__mdh_rc_retain_obj",
             "__mdh_rc_release_obj",
@@ -5136,6 +5140,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Every function and lambda is now known: give the late dispatchers their bodies.
         self.emit_late_call_dispatchers()?;
+        self.emit_fn_name_table(main_fn);
 
         // Every function body is complete: route its returns through an epilogue that
         // releases its slots (and, in main, the user globals).
@@ -5147,6 +5152,78 @@ impl<'ctx> CodeGen<'ctx> {
         self.rc_drop_unused_declarations();
 
         Ok(())
+    }
+
+    /// Record that `func` becomes a function value shown as `<dae display>` (BUG 146).
+    fn note_fn_value(&mut self, func: FunctionValue<'ctx>, display: &str) {
+        if !self.fn_value_names.iter().any(|(f, _)| *f == func) {
+            self.fn_value_names.push((func, display.to_string()));
+        }
+    }
+
+    /// Emit the constant table of function value names and register it from the start of
+    /// `main`, so the runtime can show a function or closure as the interpreter does. A
+    /// closure's first element is its function value, so one table names both. Nothing is
+    /// emitted for a program that makes no function value.
+    fn emit_fn_name_table(&mut self, main_fn: FunctionValue<'ctx>) {
+        if self.fn_value_names.is_empty() {
+            return;
+        }
+        let ptr_ty = self.context.ptr_type(AddressSpace::default());
+        let entry_ty = self
+            .context
+            .struct_type(&[ptr_ty.into(), ptr_ty.into()], false);
+        let names = self.fn_value_names.clone();
+        let entries: Vec<_> = names
+            .iter()
+            .map(|(func, display)| {
+                let name_ptr = self.immortal_str(display, "fn.value.name");
+                self.context.const_struct(
+                    &[
+                        func.as_global_value().as_pointer_value().into(),
+                        name_ptr.into(),
+                    ],
+                    false,
+                )
+            })
+            .collect();
+        let table = entry_ty.const_array(&entries);
+        let global = self
+            .module
+            .add_global(table.get_type(), None, "__mdh_fn_names");
+        global.set_linkage(Linkage::Private);
+        global.set_constant(true);
+        global.set_initializer(&table);
+
+        let reg_type = self
+            .types
+            .void_type
+            .fn_type(&[ptr_ty.into(), self.types.i64_type.into()], false);
+        let register =
+            self.module
+                .add_function("__mdh_register_fn_names", reg_type, Some(Linkage::External));
+        let saved_block = self.builder.get_insert_block();
+        let entry = main_fn.get_first_basic_block().expect("main entry");
+        match entry.get_first_instruction() {
+            Some(first) => self.builder.position_before(&first),
+            None => self.builder.position_at_end(entry),
+        }
+        self.builder
+            .build_call(
+                register,
+                &[
+                    global.as_pointer_value().into(),
+                    self.types
+                        .i64_type
+                        .const_int(entries.len() as u64, false)
+                        .into(),
+                ],
+                "",
+            )
+            .unwrap();
+        if let Some(block) = saved_block {
+            self.builder.position_at_end(block);
+        }
     }
 
     /// Get (declaring on first use) the late-bound dispatcher for calls with `argc` args.
@@ -14245,6 +14322,7 @@ impl<'ctx> CodeGen<'ctx> {
                     // User-defined function referenced as a value.
                     // If the function has captures, create a closure cell so calls later can
                     // supply captures automatically (and allow mutable captures via boxing).
+                    self.note_fn_value(func, name);
                     let func_ptr = func.as_global_value().as_pointer_value();
                     let func_int = self
                         .builder
@@ -14402,6 +14480,7 @@ impl<'ctx> CodeGen<'ctx> {
                     // User-defined function referenced as a value.
                     // If the function has captures, create a closure cell so calls later can
                     // supply captures automatically (and allow mutable captures via boxing).
+                    self.note_fn_value(func, name);
                     let func_ptr = func.as_global_value().as_pointer_value();
                     let func_int = self
                         .builder
@@ -32516,6 +32595,7 @@ impl<'ctx> CodeGen<'ctx> {
         }
 
         // Create function pointer value
+        self.note_fn_value(lambda_fn, "<lambda>");
         let fn_ptr = lambda_fn.as_global_value().as_pointer_value();
         let fn_ptr_int = self
             .builder
@@ -37893,6 +37973,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             if let Some(method_func) = resolved {
                 let class_global = *self.classes.get(&class_name).expect("class global missing");
+                self.note_fn_value(method_func, property);
                 candidates.push((class_name, class_global, method_func));
             }
         }

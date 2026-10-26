@@ -448,6 +448,7 @@ MdhValue __mdh_dict_invert(MdhValue dict);
 MdhValue __mdh_fae_pairs(MdhValue pairs);
 MdhValue __mdh_toss_in(MdhValue dict, MdhValue item);
 MdhValue __mdh_heave_oot(MdhValue dict, MdhValue item);
+void __mdh_register_fn_names(const void *table, int64_t count);
 MdhValue __mdh_creel_tae_list(MdhValue dict);
 MdhValue __mdh_creels_thegither(MdhValue a, MdhValue b);
 MdhValue __mdh_creels_baith(MdhValue a, MdhValue b);

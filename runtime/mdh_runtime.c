@@ -2005,6 +2005,39 @@ static void __mdh_format_float(char *buf, double f) {
     *out = '\0';
 }
 
+/* Names of the function values a program makes (MDH-BUG-FLU-00146). Compiled code passes
+ * a constant table of { function pointer, name } at the start of main when the program
+ * makes any function value; the names are constant strings, never retained or freed. A
+ * closure's first element is its function value, so one table names functions and closures. */
+typedef struct {
+    const void *fn;
+    const char *name;
+} MdhFnName;
+
+static const MdhFnName *__mdh_fn_names = NULL;
+static int64_t __mdh_fn_name_count = 0;
+
+void __mdh_register_fn_names(const void *table, int64_t count) {
+    __mdh_fn_names = (const MdhFnName *)table;
+    __mdh_fn_name_count = count;
+}
+
+/* The name of a function or closure value, or NULL when it has none. */
+static const char *__mdh_function_name(MdhValue v) {
+    const void *fn = NULL;
+    if (v.tag == MDH_TAG_FUNCTION) {
+        fn = (const void *)(intptr_t)v.data;
+    } else if (v.tag == MDH_TAG_CLOSURE && v.data != 0) {
+        /* [cap][len][fn value, captures...] */
+        const MdhValue *elems = (const MdhValue *)((const uint8_t *)(intptr_t)v.data + 16);
+        fn = (const void *)(intptr_t)elems[0].data;
+    }
+    for (int64_t i = 0; fn && i < __mdh_fn_name_count; i++) {
+        if (__mdh_fn_names[i].fn == fn) return __mdh_fn_names[i].name;
+    }
+    return NULL;
+}
+
 static void __mdh_value_to_string_sb(MdhStrBuf *out, MdhValue v) {
     char tmp[MDH_FLOAT_TEXT_MAX];
 
@@ -2135,6 +2168,22 @@ static void __mdh_value_to_string_sb(MdhStrBuf *out, MdhValue v) {
             char buf[128];
             snprintf(buf, sizeof(buf), "<native %s>", name);
             __mdh_sb_append(out, buf);
+            return;
+        }
+        case MDH_TAG_FUNCTION:
+        case MDH_TAG_CLOSURE: {
+            const char *fname = __mdh_function_name(v);
+            __mdh_sb_append(out, "<dae ");
+            __mdh_sb_append(out, fname ? fname : "<lambda>");
+            __mdh_sb_append_char(out, '>');
+            return;
+        }
+        case MDH_TAG_CLASS: {
+            /* A class value points at its constant name string. */
+            const char *cname = (const char *)(intptr_t)v.data;
+            __mdh_sb_append(out, "<kin ");
+            __mdh_sb_append(out, cname ? cname : "?");
+            __mdh_sb_append_char(out, '>');
             return;
         }
         default:
@@ -10648,6 +10697,15 @@ MdhValue __mdh_clype(MdhValue val) {
             break;
         case MDH_TAG_NIL:
             snprintf(info, sizeof(info), "naething");
+            break;
+        case MDH_TAG_FUNCTION:
+        case MDH_TAG_CLOSURE: {
+            const char *fname = __mdh_function_name(val);
+            snprintf(info, sizeof(info), "function '%.200s'", fname ? fname : "<lambda>");
+            break;
+        }
+        case MDH_TAG_CLASS:
+            snprintf(info, sizeof(info), "class '%.200s'", (const char *)(intptr_t)val.data);
             break;
         default:
             snprintf(info, sizeof(info), "%s", t);

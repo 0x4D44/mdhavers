@@ -300,6 +300,7 @@ pub const RUNTIME_OWNERSHIP: &[(&str, &str, Ret)] = &[
     ("__mdh_regex_replace_first", "bbb", Ret::Fresh), // R1: +1 on every path
     ("__mdh_regex_split", "bb", Ret::Fresh),
     ("__mdh_regex_test", "bb", Ret::None),
+    ("__mdh_register_fn_names", "--", Ret::None), // stores a raw pointer to a constant table
     ("__mdh_release", "b", Ret::None),
     ("__mdh_repeat_say", "bb", Ret::Fresh),
     ("__mdh_replace", "bbb", Ret::Fresh), // R1: +1 on every path
