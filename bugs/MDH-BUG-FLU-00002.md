@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00002 — Self-referential dict or list crashes the interpreter on assignment even when never printed
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** High
 - **Area:** interpreter
 - **Raised:** 2026-10-22T23:24:06Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T214519Z-b3955bb0
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00002-run-verify-20261026T214519Z-b3955bb0
-- **Owner base:** 40936bf267283acf21ab790379d91007fd6c2e00
-- **Owner fingerprint:** sha256:857ef57cb0636fd961065b8caa3483929ee55dd621275a6e7cfdc5908bc79bf7
-- **Owner since:** 2026-10-26T21:45:19Z
-- **Owner until:** 2026-10-27T01:45:19Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-22T23:24:06Z, raised via `deltic bugs new` model=claude-opus-5-5@medium) -> Fixed (2026-10-23T01:48:14Z, deltic:auto role=fix run=fix-20261023T014808Z-2431ecf4 branch=task/bug-MDH-BUG-FLU-00002-run-fix-20261023T014808Z-2431ecf4 code=d84823a gate=manual)
+- **State history:** Open (2026-10-22T23:24:06Z, raised via `deltic bugs new` model=claude-opus-5-5@medium) -> Fixed (2026-10-23T01:48:14Z, deltic:auto role=fix run=fix-20261023T014808Z-2431ecf4 branch=task/bug-MDH-BUG-FLU-00002-run-fix-20261023T014808Z-2431ecf4 code=d84823a gate=manual) -> Closed (2026-10-26T22:19:14Z, deltic:manual role=verify run=verify-20261026T214519Z-b3955bb0 verified_fix_run=fix-20261023T014808Z-2431ecf4 verdict=close)
 
 ## Observation
 
@@ -28,5 +28,9 @@ Confirmed: `ken d = {}` then `d["me"] = d` aborts with stack overflow at that st
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T22:19:14Z, deltic:manual run=verify-20261026T214519Z-b3955bb0 verified_fix_run=fix-20261023T014808Z-2431ecf4 verdict=close)
+
+Verifier note: Manual verify: [verifier gpt-6.1-sol (Codex), recorded by lead] d84823a; self_referential_dict_survives_assignment_and_prints selected/pass; remove cycle detection, rerun with 16MiB test stack -> output assertion fails (nested dict vs {"me": {...}}). Original assignment/print survives; source restored, diff empty.
 
 ## Notes

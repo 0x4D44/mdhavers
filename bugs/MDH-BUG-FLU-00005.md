@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00005 — String repeat / pad / bytes with huge counts panic with capacity overflow
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** High
 - **Area:** interpreter
 - **Raised:** 2026-10-22T23:24:06Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T214519Z-7981b0fc
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00005-run-verify-20261026T214519Z-7981b0fc
-- **Owner base:** 40936bf267283acf21ab790379d91007fd6c2e00
-- **Owner fingerprint:** sha256:b946669309619109b1f20fc86f68d823b0a89a26d7309113825081678b4f784e
-- **Owner since:** 2026-10-26T21:45:19Z
-- **Owner until:** 2026-10-27T01:45:19Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-22T23:24:06Z, raised via `deltic bugs new` model=claude-opus-5-5@medium) -> Fixed (2026-10-23T01:48:47Z, deltic:auto role=fix run=fix-20261023T014841Z-de600b67 branch=task/bug-MDH-BUG-FLU-00005-run-fix-20261023T014841Z-de600b67 code=d84823a gate=manual)
+- **State history:** Open (2026-10-22T23:24:06Z, raised via `deltic bugs new` model=claude-opus-5-5@medium) -> Fixed (2026-10-23T01:48:47Z, deltic:auto role=fix run=fix-20261023T014841Z-de600b67 branch=task/bug-MDH-BUG-FLU-00005-run-fix-20261023T014841Z-de600b67 code=d84823a gate=manual) -> Closed (2026-10-26T22:19:14Z, deltic:manual role=verify run=verify-20261026T214519Z-7981b0fc verified_fix_run=fix-20261023T014841Z-de600b67 verdict=close)
 
 ## Observation
 
@@ -28,5 +28,9 @@ Confirmed: "ab" * 9223372036854775807 -> panic "capacity overflow" (interpreter.
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T22:19:14Z, deltic:manual run=verify-20261026T214519Z-7981b0fc verified_fix_run=fix-20261023T014841Z-de600b67 verdict=close)
+
+Verifier note: Manual verify: [verifier gpt-6.1-sol (Codex), recorded by lead] d84823a; huge_string_and_buffer_sizes_are_errors_not_aborts selected/pass; remove string-repeat size preflight -> capacity overflow; same scratch CLI size probe fails assert 101 != 0. Original "ab"*i64::MAX is caught and prints still alive. Restored; diff empty.
 
 ## Notes
