@@ -1084,7 +1084,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.rc_release_slots(&scope.slots);
     }
 
-    fn rc_release_slots(&mut self, slots: &[PointerValue<'ctx>]) {
+    pub(super) fn rc_release_slots(&mut self, slots: &[PointerValue<'ctx>]) {
         let nil = self.make_nil();
         for slot in slots.iter().rev() {
             let v = self

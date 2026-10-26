@@ -537,6 +537,23 @@ enum BindingKind {
     GlobalRead,
 }
 
+/// A `{ ... }` block being compiled. A `ken` directly in it binds a name seen only inside
+/// the block, as in the interpreter: it gets its own slot, and the outer binding comes
+/// back when the block ends (MDH-BUG-FLU-00163).
+struct BlockScope<'ctx> {
+    /// The function the block is in (a nested function body has blocks of its own).
+    function: Option<FunctionValue<'ctx>>,
+    /// The names its `ken`s declare that are not bound yet.
+    pending: HashSet<String>,
+    /// What each name it bound meant before (state and global entry), put back at its
+    /// end, and whether the binding hid another one (and so has a slot of its own).
+    hidden: Vec<(String, NameState<'ctx>, Option<PointerValue<'ctx>>, bool)>,
+    /// The local slots its bindings hold, released when it ends.
+    slots: Vec<PointerValue<'ctx>>,
+    /// Predeclared slots its `ken`s bound first: unbound again when it ends.
+    rebind: Vec<PointerValue<'ctx>>,
+}
+
 /// Everything codegen knows about one name, saved around a `fer` loop whose variable
 /// hides an outer binding (see `CodeGen::save_name_state`).
 struct NameState<'ctx> {
@@ -663,6 +680,16 @@ pub struct CodeGen<'ctx> {
     /// Symbols of the `dae`s nested in blocks of the function being compiled, keyed by
     /// their definition statement (see `predeclare_nested_functions`).
     block_function_symbols: HashMap<*const Stmt, String>,
+
+    /// The `{ ... }` blocks being compiled, innermost last (see `BlockScope`).
+    block_scopes: Vec<BlockScope<'ctx>>,
+
+    /// Counter for the globals of top-level blocks' `ken`s that hide another binding.
+    block_global_counter: u32,
+
+    /// Slots `predeclare_local_name` made that no `ken` has bound yet: a block's `ken`
+    /// of that name binds the slot itself rather than hiding anything.
+    unbound_predeclared: HashSet<PointerValue<'ctx>>,
 
     /// Counter for generating unique nested function symbols.
     nested_function_counter: u32,
@@ -867,6 +894,9 @@ impl<'ctx> CodeGen<'ctx> {
             function_param_names: HashMap::new(),
             nested_function_scopes: Vec::new(),
             block_function_symbols: HashMap::new(),
+            block_scopes: Vec::new(),
+            block_global_counter: 0,
+            unbound_predeclared: HashSet::new(),
             nested_function_counter: 0,
             function_defined_flags: HashMap::new(),
             loop_stack: Vec::new(),
@@ -13577,15 +13607,34 @@ impl<'ctx> CodeGen<'ctx> {
         }
         match stmt {
             Stmt::VarDecl {
-                name, initializer, ..
+                name,
+                initializer,
+                span,
             } => {
+                if let Some(init) = initializer {
+                    if self.block_local_hides(name)
+                        && self
+                            .referenced_names(&[Stmt::Expression {
+                                expr: init.clone(),
+                                span: *span,
+                            }])
+                            .contains(name)
+                    {
+                        // `ken x = x + 1` in a block reads the outer `x`: evaluate it
+                        // before the new binding hides that one.
+                        return self.compile_block_local_from_outer(name, init, *span);
+                    }
+                }
+                self.bind_block_local(name, true);
                 // Boxed variables: store a 1-element list cell instead of the raw value.
                 // Reads/writes dereference/update element 0, enabling mutable captures.
                 if self.boxed_vars.contains(name) {
                     self.var_types.insert(name.clone(), VarType::Unknown);
+                    // A block's own global is not the name's top-level global.
                     let is_top_level = !self.in_user_function
                         && self.current_class.is_none()
-                        && self.loop_stack.is_empty();
+                        && self.loop_stack.is_empty()
+                        && !self.block_hides_here(name);
                     if is_top_level {
                         self.forward_globals.remove(name);
                     }
@@ -13889,18 +13938,22 @@ impl<'ctx> CodeGen<'ctx> {
             }
 
             Stmt::Block { statements, .. } => {
+                self.open_block_scope(statements);
+                let mut result = Ok(());
                 for s in statements {
-                    self.compile_stmt(s)?;
-                    if self
-                        .builder
-                        .get_insert_block()
-                        .and_then(|b| b.get_terminator())
-                        .is_some()
+                    result = self.compile_stmt(s);
+                    if result.is_err()
+                        || self
+                            .builder
+                            .get_insert_block()
+                            .and_then(|b| b.get_terminator())
+                            .is_some()
                     {
                         break;
                     }
                 }
-                Ok(())
+                self.close_block_scope();
+                result
             }
 
             Stmt::Print { value, .. } => {
@@ -27985,6 +28038,216 @@ impl<'ctx> CodeGen<'ctx> {
         captured
     }
 
+    /// Start compiling a `{ ... }` block whose statements are `statements`.
+    fn open_block_scope(&mut self, statements: &[Stmt]) {
+        let mut pending = HashSet::new();
+        for s in statements {
+            match s {
+                Stmt::VarDecl { name, .. } => {
+                    pending.insert(name.clone());
+                }
+                Stmt::Destructure { patterns, .. } => {
+                    for pat in patterns {
+                        if let DestructPattern::Variable(n) | DestructPattern::Rest(n) = pat {
+                            pending.insert(n.clone());
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        self.block_scopes.push(BlockScope {
+            function: self.current_function,
+            pending,
+            hidden: Vec::new(),
+            slots: Vec::new(),
+            rebind: Vec::new(),
+        });
+    }
+
+    /// Start compiling a function, method or lambda body: a `ken` directly in it of a
+    /// global's name binds a local that hides the global, not the global itself.
+    fn open_frame_scope(&mut self, body: &[Stmt]) {
+        let pending = body
+            .iter()
+            .filter_map(|s| match s {
+                Stmt::VarDecl { name, .. }
+                    if !self.variables.contains_key(name)
+                        && (self.globals.contains_key(name)
+                            || self.forward_globals.contains_key(name)) =>
+                {
+                    Some(name.clone())
+                }
+                _ => None,
+            })
+            .collect();
+        self.block_scopes.push(BlockScope {
+            function: self.current_function,
+            pending,
+            hidden: Vec::new(),
+            slots: Vec::new(),
+            rebind: Vec::new(),
+        });
+    }
+
+    /// The innermost block of the current function still waiting for its `ken name`.
+    fn pending_block_scope(&mut self, name: &str) -> Option<&mut BlockScope<'ctx>> {
+        let function = self.current_function;
+        self.block_scopes
+            .last_mut()
+            .filter(|scope| scope.function == function && scope.pending.contains(name))
+    }
+
+    /// Whether the `ken name` being compiled starts a block binding that hides another one.
+    fn block_local_hides(&mut self, name: &str) -> bool {
+        self.pending_block_scope(name).is_some()
+            && (self
+                .variables
+                .get(name)
+                .is_some_and(|slot| !self.unbound_predeclared.contains(slot))
+                || self.globals.contains_key(name)
+                || self.forward_globals.contains_key(name))
+    }
+
+    /// Whether `name` is bound by a `ken` of the innermost block that hid another binding.
+    fn block_hides_here(&self, name: &str) -> bool {
+        self.block_scopes.last().is_some_and(|scope| {
+            scope.function == self.current_function
+                && scope
+                    .hidden
+                    .iter()
+                    .any(|(n, _, _, hides)| *hides && n == name)
+        })
+    }
+
+    /// A `ken name` directly in a block: from here to the block's end `name` means this
+    /// binding (MDH-BUG-FLU-00163). If it hides another binding it gets a slot of its own:
+    /// an entry alloca, or at top level a global of its own, since functions defined in
+    /// the block read it as a global. The block's end puts the outer binding back.
+    fn bind_block_local(&mut self, name: &str, make_slot: bool) {
+        let hides = self.block_local_hides(name);
+        if self.pending_block_scope(name).is_none() {
+            // A function-level `ken` binds its predeclared slot for good.
+            if let Some(slot) = self.variables.get(name) {
+                self.unbound_predeclared.remove(slot);
+            }
+            return;
+        }
+        let saved = self.save_name_state(name);
+        let saved_global = self.globals.get(name).copied();
+        let mut slot = None;
+        let mut rebind = None;
+        if !hides {
+            // The first binding of a predeclared slot, which is this block's to release.
+            if let Some(&p) = self.variables.get(name) {
+                if make_slot && self.unbound_predeclared.remove(&p) {
+                    slot = Some(p);
+                    rebind = Some(p);
+                }
+            }
+        } else {
+            // Nothing the outer binding's slot knew applies to this one.
+            self.int_shadows.remove(name);
+            self.list_ptr_shadows.remove(name);
+            self.string_len_shadows.remove(name);
+            self.string_cap_shadows.remove(name);
+            self.variable_class_types.remove(name);
+        }
+        if hides && make_slot {
+            let is_top_level = !self.in_user_function
+                && self.current_class.is_none()
+                && self.loop_stack.is_empty();
+            let ptr = if is_top_level {
+                self.block_global_counter += 1;
+                let symbol = format!(
+                    "{}__block{}",
+                    Self::user_global_symbol(name),
+                    self.block_global_counter
+                );
+                let global = self.module.add_global(self.types.value_type, None, &symbol);
+                global.set_initializer(&self.types.value_type.const_zero());
+                let ptr = global.as_pointer_value();
+                self.globals.insert(name.to_string(), ptr);
+                ptr
+            } else {
+                let a = self.create_entry_block_alloca(name);
+                slot = Some(a);
+                a
+            };
+            self.variables.insert(name.to_string(), ptr);
+        }
+        let scope = self.block_scopes.last_mut().expect("pending block scope");
+        scope.pending.remove(name);
+        // A predeclared slot's first binding hides nothing: the name keeps that slot
+        // (and what codegen learns about it) after the block, as before.
+        if rebind.is_none() {
+            scope
+                .hidden
+                .push((name.to_string(), saved, saved_global, hides));
+        }
+        scope.slots.extend(slot);
+        scope.rebind.extend(rebind);
+    }
+
+    /// `ken name = init` in a block, where `init` reads the binding the new one hides:
+    /// evaluate `init` first, then bind and store its value.
+    fn compile_block_local_from_outer(
+        &mut self,
+        name: &str,
+        init: &Expr,
+        span: Span,
+    ) -> Result<(), HaversError> {
+        let var_type = if self.unstable_vars.contains(name) {
+            VarType::Unknown
+        } else {
+            self.infer_expr_type(init)
+        };
+        let value = self.compile_expr(init)?;
+        // The statement's temp holds the value's reference; the variable takes its own.
+        self.rc_own_temp(value);
+        let carrier = "__mdh_block_init";
+        let tmp = self.create_entry_block_alloca_raw(carrier);
+        self.builder.build_store(tmp, value).unwrap();
+        self.bind_block_local(name, true);
+        self.variables.insert(carrier.to_string(), tmp);
+        self.var_types.insert(carrier.to_string(), var_type);
+        let decl = Stmt::VarDecl {
+            name: name.to_string(),
+            initializer: Some(Expr::Variable {
+                name: carrier.to_string(),
+                span,
+            }),
+            span,
+        };
+        let result = self.compile_stmt_inner(&decl);
+        self.variables.remove(carrier);
+        self.var_types.remove(carrier);
+        result
+    }
+
+    /// The end of a block opened by `open_block_scope`: release the slots its `ken`s
+    /// made (counting on) and put back the bindings they hid.
+    fn close_block_scope(&mut self) {
+        let Some(scope) = self.block_scopes.pop() else {
+            return;
+        };
+        if self.rc_enabled && self.rc_active() && !scope.slots.is_empty() {
+            self.rc_release_slots(&scope.slots);
+        }
+        self.unbound_predeclared.extend(scope.rebind);
+        for (name, saved, global, _) in scope.hidden.into_iter().rev() {
+            self.restore_name_state(&name, saved);
+            match global {
+                Some(g) => {
+                    self.globals.insert(name, g);
+                }
+                None => {
+                    self.globals.remove(&name);
+                }
+            }
+        }
+    }
+
     /// Snapshot every per-name piece of codegen state for `name`, so a `fer` loop can
     /// put back the outer binding its loop variable hides (MDH-BUG-FLU-00107).
     fn save_name_state(&self, name: &str) -> NameState<'ctx> {
@@ -28630,6 +28893,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.prebox_captured_names(&param_names, &bindings, body);
 
         // Compile body
+        self.open_frame_scope(body);
         for stmt in body {
             self.compile_stmt(stmt)?;
             // Stop emitting instructions once we've terminated the current block.
@@ -28653,6 +28917,7 @@ impl<'ctx> CodeGen<'ctx> {
         {
             self.builder.build_return(Some(&self.make_nil())).unwrap();
         }
+        self.close_block_scope();
         self.restore_current_line_on_return(function);
         self.rc_leave_function(saved_rc);
 
@@ -28987,6 +29252,7 @@ impl<'ctx> CodeGen<'ctx> {
         }
         let a = self.create_entry_block_alloca(name);
         self.variables.insert(name.to_string(), a);
+        self.unbound_predeclared.insert(a);
         self.var_types
             .entry(name.to_string())
             .or_insert(VarType::Unknown);
@@ -32639,6 +32905,7 @@ impl<'ctx> CodeGen<'ctx> {
         // A block body may `gie`; otherwise the lambda returns the block's value, its
         // final expression statement (MDH-BUG-FLU-00064). Other bodies return their value.
         if let Expr::BlockExpr { statements, .. } = body {
+            self.open_frame_scope(statements);
             let value = self.compile_block_expr(statements)?;
             if self
                 .builder
@@ -32650,6 +32917,7 @@ impl<'ctx> CodeGen<'ctx> {
                 self.rc_return_value(value);
                 self.builder.build_return(Some(&value)).unwrap();
             }
+            self.close_block_scope();
         } else {
             let result = self.compile_expr(body)?;
             self.rc_return_value(result);
@@ -37206,6 +37474,12 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(try_body);
         let saved_try_depth = self.try_depth;
         self.try_depth = saved_try_depth + 1;
+        // The try block's own bindings stay visible until its slots are pinned below.
+        let try_statements: &[Stmt] = match try_block {
+            Stmt::Block { statements, .. } => statements,
+            _ => &[],
+        };
+        self.open_block_scope(try_statements);
         let try_compile_result = (|| {
             if let Stmt::Block { statements, .. } = try_block {
                 for stmt in statements {
@@ -37232,6 +37506,7 @@ impl<'ctx> CodeGen<'ctx> {
             .try_as_basic_value()
             .expect_instruction("try_push returns void");
         self.escape_slots_before(try_push_instr);
+        self.close_block_scope();
         if self
             .builder
             .get_insert_block()
@@ -37265,6 +37540,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.variables.insert(error_name.to_string(), error_alloca);
 
         if let Stmt::Block { statements, .. } = catch_block {
+            self.open_block_scope(statements);
             for stmt in statements {
                 self.compile_stmt(stmt)?;
                 if self
@@ -37276,6 +37552,7 @@ impl<'ctx> CodeGen<'ctx> {
                     break;
                 }
             }
+            self.close_block_scope();
         } else {
             self.compile_stmt(catch_block)?;
         }
@@ -37623,12 +37900,14 @@ impl<'ctx> CodeGen<'ctx> {
                         let elem = self.compile_list_index_dynamic(items_ptr, actual_index);
                         let alloca = self.create_entry_block_alloca(name);
                         self.store_slot(alloca, elem);
+                        self.bind_block_local(name, false);
                         self.variables.insert(name.clone(), alloca);
                     } else {
                         // Normal forward indexing
                         let elem = self.compile_list_index_ptr(items_ptr, index);
                         let alloca = self.create_entry_block_alloca(name);
                         self.store_slot(alloca, elem);
+                        self.bind_block_local(name, false);
                         self.variables.insert(name.clone(), alloca);
                         index += 1;
                     }
@@ -37653,6 +37932,7 @@ impl<'ctx> CodeGen<'ctx> {
                         self.compile_list_slice_dynamic(items_ptr, start_idx, slice_end);
                     let alloca = self.create_entry_block_alloca(name);
                     self.store_slot(alloca, rest_list);
+                    self.bind_block_local(name, false);
                     self.variables.insert(name.clone(), alloca);
                 }
             }
@@ -39326,6 +39606,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.prebox_captured_names(&param_names, &bindings, body);
 
         // Compile method body
+        self.open_frame_scope(body);
         for stmt in body {
             self.compile_stmt(stmt)?;
         }
@@ -39348,6 +39629,7 @@ impl<'ctx> CodeGen<'ctx> {
             self.rc_return_value(masel_val);
             self.builder.build_return(Some(&masel_val)).unwrap();
         }
+        self.close_block_scope();
         self.restore_current_line_on_return(function);
         self.rc_leave_function(saved_rc);
 
