@@ -8,7 +8,7 @@ use miniaudio::{Decoder, DecoderConfig, Device, DeviceConfig, DeviceType, Format
 use rustysynth::{MidiFile, MidiFileSequencer, SoundFont, Synthesizer, SynthesizerSettings};
 
 use super::{
-    mdh_float_value, mdh_make_string_from_rust, mdh_string_to_rust, MdhValue, MDH_TAG_BOOL,
+    mdh_error_string, mdh_float_value, mdh_string_to_rust, MdhValue, MDH_TAG_BOOL,
     MDH_TAG_FLOAT, MDH_TAG_INT, MDH_TAG_NIL, MDH_TAG_STRING,
 };
 
@@ -175,7 +175,7 @@ where
     match result {
         Ok(value) => value,
         Err(msg) => {
-            let error = unsafe { mdh_make_string_from_rust(&msg) };
+            let error = unsafe { mdh_error_string(&msg) };
             drop(msg);
             unsafe {
                 __mdh_hurl(error);

@@ -140,6 +140,12 @@ static int64_t __mdh_kv_find(MdhValue kv, MdhValue key);
 void __mdh_list_push_owned(MdhValue list, MdhValue value);
 /* dict[key] = value, taking over the caller's references to both. Also used by Rust. */
 MdhValue __mdh_dict_set_owned(MdhValue dict, MdhValue key, MdhValue value);
+/* Never-raising forms for the Rust runtime (MDH-BUG-FLU-00188); see __mdh_make_string_try. */
+int32_t __mdh_make_string_try(const char *value, MdhValue *out);
+int32_t __mdh_list_push_owned_try(MdhValue list, MdhValue value);
+int32_t __mdh_dict_set_owned_try(MdhValue dict, MdhValue key, MdhValue value);
+int32_t __mdh_bytes_new_try(int64_t size, MdhValue *out);
+MdhValue __mdh_out_of_memory_message(void);
 /* Hurl a message the caller hands over (__mdh_last_error takes its reference). */
 static void __mdh_hurl_owned(MdhValue msg);
 static void __mdh_stack_guard_init(void);
@@ -205,6 +211,28 @@ static __thread int __mdh_stack_quiet = 0;
 static __thread int __mdh_stack_ran_low = 0;
 static __thread int __mdh_quiet_oom = 0;
 
+/* The out-of-memory error text as a static string, so raising or reporting it needs no
+ * memory (MDH-BUG-FLU-00188). Laid out like a compiled string literal: an immortal
+ * header, then the text, which the value points at. */
+static struct {
+    MdhObjHeader header;
+    char text[sizeof(MDH_STRING_TOO_BIG_MSG)];
+} __mdh_too_big_text = {
+    {MDH_REFCOUNT_IMMORTAL, MDH_KIND_STRING, MDH_OBJ_MAGIC | MDH_OBJ_IMMORTAL},
+    MDH_STRING_TOO_BIG_MSG,
+};
+
+/* The "ower muckle" error value (static, so owning it costs nothing). Also used by Rust. */
+MdhValue __mdh_out_of_memory_message(void) {
+    MdhValue v = {.tag = MDH_TAG_STRING, .data = (int64_t)(intptr_t)__mdh_too_big_text.text};
+    return v;
+}
+
+/* Out of memory: raise the "ower muckle" error. */
+static void __mdh_raise_too_big(void) {
+    __mdh_hurl_owned(__mdh_out_of_memory_message());
+}
+
 /* The string buffer could not get memory: raise the too-big error, or in quiet mode
  * record it. The buffer is left with none (buf NULL), which every append skips. */
 static void __mdh_sb_fail(MdhStrBuf *sb) {
@@ -220,7 +248,7 @@ static void __mdh_sb_fail(MdhStrBuf *sb) {
         __mdh_quiet_oom = 1;
         return;
     }
-    __mdh_hurl_owned(__mdh_make_string(MDH_STRING_TOO_BIG_MSG));
+    __mdh_raise_too_big();
 }
 
 static void __mdh_sb_init(MdhStrBuf *sb) {
@@ -335,14 +363,40 @@ MdhValue __mdh_make_float(double value) {
     return v;
 }
 
+/* A copy of `value` as a string value. Out of memory, it raises the "ower muckle" error
+ * (in quiet mode it records that and returns the error text instead), so it never
+ * returns a string with no text (MDH-BUG-FLU-00188). Rust uses __mdh_make_string_try. */
 MdhValue __mdh_make_string(const char *value) {
     MdhValue v;
     v.tag = MDH_TAG_STRING;
 
     /* Store char* directly (matches LLVM backend convention) */
     char *s = __mdh_obj_strdup(value);
+    if (!s) {
+        if (__mdh_stack_quiet) {
+            __mdh_quiet_oom = 1;
+        } else {
+            __mdh_raise_too_big();
+        }
+        return __mdh_out_of_memory_message();
+    }
     v.data = (int64_t)(intptr_t)s;
     return v;
+}
+
+/* For the Rust runtime, which must never be longjmp'd through (MDH-BUG-FLU-00188): these
+ * never raise. They return 1, or 0 when memory ran out, and the Rust caller reports the
+ * "ower muckle" error once its own frames are gone. */
+
+/* __mdh_make_string: the new string in *out, or nil in *out. */
+int32_t __mdh_make_string_try(const char *value, MdhValue *out) {
+    char *s = __mdh_obj_strdup(value);
+    if (!s) {
+        *out = __mdh_make_nil();
+        return 0;
+    }
+    *out = __mdh_string_from_buf(s);
+    return 1;
 }
 
 MdhValue __mdh_make_list(int32_t capacity) {
@@ -467,7 +521,7 @@ static char *__mdh_alloc_text(int size_overflowed, size_t out_len) {
         buf = (char *)__mdh_obj_alloc(MDH_KIND_STRING, out_len + 1);
     }
     if (!buf) {
-        __mdh_hurl_owned(__mdh_make_string(MDH_STRING_TOO_BIG_MSG));
+        __mdh_raise_too_big();
     }
     return buf;
 }
@@ -1842,6 +1896,25 @@ void __mdh_list_push(MdhValue list, MdhValue value) {
     __mdh_list_push_owned(list, __mdh_retained(value));
 }
 
+/* Room for one more item: 1, or 0 when the list cannot grow (too big, or no memory). */
+static int __mdh_list_reserve_one(MdhList *l) {
+    /* Grow if needed. Lists from slices/copies can have capacity 0 (and items NULL),
+     * so doubling alone would never grow them. */
+    if (l->length >= l->capacity) {
+        int64_t new_cap = l->capacity > 0 ? l->capacity * 2 : 8;
+        if (new_cap <= l->length || (uint64_t)new_cap > SIZE_MAX / sizeof(MdhValue)) {
+            return 0;
+        }
+        MdhValue *grown = (MdhValue *)__mdh_buf_realloc(l->items, sizeof(MdhValue) * (size_t)new_cap);
+        if (!grown) {
+            return 0;
+        }
+        l->items = grown;
+        l->capacity = new_cap;
+    }
+    return 1;
+}
+
 void __mdh_list_push_owned(MdhValue list, MdhValue value) {
     if (list.tag != MDH_TAG_LIST) {
         __mdh_type_error("shove", list.tag, 0);
@@ -1849,25 +1922,23 @@ void __mdh_list_push_owned(MdhValue list, MdhValue value) {
     }
 
     MdhList *l = __mdh_get_list(list);
-
-    /* Grow if needed. Lists from slices/copies can have capacity 0 (and items NULL),
-     * so doubling alone would never grow them. */
-    if (l->length >= l->capacity) {
-        int64_t new_cap = l->capacity > 0 ? l->capacity * 2 : 8;
-        if (new_cap <= l->length || (uint64_t)new_cap > SIZE_MAX / sizeof(MdhValue)) {
-            __mdh_hurl_owned(__mdh_make_string("Och! This list's grown ower muckle"));
-            return;
-        }
-        MdhValue *grown = (MdhValue *)__mdh_buf_realloc(l->items, sizeof(MdhValue) * (size_t)new_cap);
-        if (!grown) {
-            __mdh_hurl_owned(__mdh_make_string("Och! This list's grown ower muckle"));
-            return;
-        }
-        l->items = grown;
-        l->capacity = new_cap;
+    if (!__mdh_list_reserve_one(l)) {
+        __mdh_hurl_owned(__mdh_make_string("Och! This list's grown ower muckle"));
+        return;
     }
-
     l->items[l->length++] = value;
+}
+
+/* __mdh_list_push_owned for Rust (see __mdh_make_string_try): 0 when the list cannot
+ * grow (or `list` is not a list), and `value` is then released. */
+int32_t __mdh_list_push_owned_try(MdhValue list, MdhValue value) {
+    if (list.tag != MDH_TAG_LIST || !__mdh_list_reserve_one(__mdh_get_list(list))) {
+        __mdh_release(value);
+        return 0;
+    }
+    MdhList *l = __mdh_get_list(list);
+    l->items[l->length++] = value;
+    return 1;
 }
 
 MdhValue __mdh_list_pop(MdhValue list) {
@@ -2448,19 +2519,39 @@ MdhValue __mdh_bytes_new(MdhValue size_val) {
         size = 0;
     }
 
-    if (size < 0) size = 0;
-
-    MdhBytes *bytes = (MdhBytes *)__mdh_obj_alloc(MDH_KIND_BYTES, sizeof(MdhBytes));
-    bytes->length = size;
-    bytes->capacity = size > 0 ? size : 0;
-    if (bytes->capacity > 0) {
-        bytes->data = (uint8_t *)__mdh_buf_alloc((size_t)bytes->capacity);
-        memset(bytes->data, 0, (size_t)bytes->capacity);
-    } else {
-        bytes->data = NULL;
+    MdhValue out;
+    if (!__mdh_bytes_new_try(size, &out)) {
+        __mdh_raise_too_big();
     }
+    return out;
+}
 
-    return (MdhValue){ .tag = MDH_TAG_BYTES, .data = (int64_t)(intptr_t)bytes };
+/* `size` zero bytes in *out (none for size <= 0): 1, or 0 with nil in *out when there was
+ * no memory. Never raises, so Rust uses it too (see __mdh_make_string_try). */
+int32_t __mdh_bytes_new_try(int64_t size, MdhValue *out) {
+    *out = __mdh_make_nil();
+    if (size < 0) size = 0;
+    if ((uint64_t)size > SIZE_MAX) {
+        return 0;
+    }
+    uint8_t *data = NULL;
+    if (size > 0) {
+        data = (uint8_t *)__mdh_buf_alloc((size_t)size);
+        if (!data) {
+            return 0;
+        }
+        memset(data, 0, (size_t)size);
+    }
+    MdhBytes *bytes = (MdhBytes *)__mdh_obj_alloc(MDH_KIND_BYTES, sizeof(MdhBytes));
+    if (!bytes) {
+        __mdh_buf_free(data);
+        return 0;
+    }
+    bytes->length = size;
+    bytes->capacity = size;
+    bytes->data = data;
+    *out = (MdhValue){.tag = MDH_TAG_BYTES, .data = (int64_t)(intptr_t)bytes};
+    return 1;
 }
 
 MdhValue __mdh_bytes_from_string(MdhValue s) {
@@ -4955,7 +5046,7 @@ static int64_t __mdh_kv_find(MdhValue kv, MdhValue key) {
    doubling (amortised O(1)) and keeps the hash index in step. The old payload is left
    alive: a loop iterating the dict may still hold it. The entry holds a reference to its
    key and one to its value (a creel stores its item in both, so it holds two). */
-static void __mdh_kv_append(MdhValue kv, MdhValue key, MdhValue value) {
+static int __mdh_kv_append_try(MdhValue kv, MdhValue key, MdhValue value) {
     intptr_t *handle = (intptr_t *)(intptr_t)kv.data;
     int64_t *payload = __mdh_kv_payload_raw(kv);
     int64_t count = payload ? payload[0] : 0;
@@ -4967,14 +5058,12 @@ static void __mdh_kv_append(MdhValue kv, MdhValue key, MdhValue value) {
 
     if (used + 1 > cap) {
         if (used > (INT64_MAX - 8) / 64) {
-            __mdh_hurl_owned(__mdh_make_string(MDH_DICT_TOO_BIG_MSG));
-            return;
+            return 0;
         }
         int64_t new_cap = used < 4 ? 8 : used * 2;
         int64_t *grown = (int64_t *)__mdh_buf_alloc((size_t)(8 + new_cap * 32));
         if (!grown) {
-            __mdh_hurl_owned(__mdh_make_string(MDH_DICT_TOO_BIG_MSG));
-            return;
+            return 0;
         }
         grown[0] = count;
         if (used > 0) {
@@ -4999,6 +5088,13 @@ static void __mdh_kv_append(MdhValue kv, MdhValue key, MdhValue value) {
             __mdh_kv_index_put(idx, entries, used);
             idx->count = used + 1;
         }
+    }
+    return 1;
+}
+
+static void __mdh_kv_append(MdhValue kv, MdhValue key, MdhValue value) {
+    if (!__mdh_kv_append_try(kv, key, value)) {
+        __mdh_hurl_owned(__mdh_make_string(MDH_DICT_TOO_BIG_MSG));
     }
 }
 
@@ -5078,12 +5174,9 @@ MdhValue __mdh_dict_values(MdhValue dict) {
     return result;
 }
 
-MdhValue __mdh_dict_set(MdhValue dict, MdhValue key, MdhValue value) {
-    if (dict.tag != MDH_TAG_DICT) {
-        __mdh_type_error("dict_set", dict.tag, 0);
-        return __mdh_empty_dict();
-    }
-
+/* dict[key] = value in a dict (borrowed key and value): 1, or 0 when a new entry found
+ * no memory (the dict is then unchanged). */
+static int __mdh_dict_set_try(MdhValue dict, MdhValue key, MdhValue value) {
     int64_t found = __mdh_kv_find(dict, key);
     if (found >= 0) {
         /* Update existing entry in place (the entry keeps its own key) */
@@ -5091,10 +5184,19 @@ MdhValue __mdh_dict_set(MdhValue dict, MdhValue key, MdhValue value) {
         MdhValue old = entries[found * 2 + 1];
         entries[found * 2 + 1] = __mdh_retained(value);
         __mdh_release(old);
-        return dict;
+        return 1;
     }
+    return __mdh_kv_append_try(dict, key, value);
+}
 
-    __mdh_kv_append(dict, key, value);
+MdhValue __mdh_dict_set(MdhValue dict, MdhValue key, MdhValue value) {
+    if (dict.tag != MDH_TAG_DICT) {
+        __mdh_type_error("dict_set", dict.tag, 0);
+        return __mdh_empty_dict();
+    }
+    if (!__mdh_dict_set_try(dict, key, value)) {
+        __mdh_hurl_owned(__mdh_make_string(MDH_DICT_TOO_BIG_MSG));
+    }
     return dict;
 }
 
@@ -5103,6 +5205,16 @@ MdhValue __mdh_dict_set_owned(MdhValue dict, MdhValue key, MdhValue value) {
     __mdh_release(key);
     __mdh_release(value);
     return dict;
+}
+
+/* __mdh_dict_set_owned for Rust (see __mdh_make_string_try): 0 when there was no memory
+ * for the entry (or `dict` is not a dict). The dict stays the same object either way;
+ * `key` and `value` are released. */
+int32_t __mdh_dict_set_owned_try(MdhValue dict, MdhValue key, MdhValue value) {
+    int ok = dict.tag == MDH_TAG_DICT && __mdh_dict_set_try(dict, key, value);
+    __mdh_release(key);
+    __mdh_release(value);
+    return ok;
 }
 
 MdhValue __mdh_dict_get(MdhValue dict, MdhValue key) {
@@ -8618,7 +8730,7 @@ MdhValue __mdh_date_format(MdhValue timestamp_secs, MdhValue format) {
         cap *= 2;
         char *grown = (char *)__mdh_obj_realloc(buf, cap);
         if (!grown) {
-            __mdh_hurl_owned(__mdh_make_string(MDH_STRING_TOO_BIG_MSG));
+            __mdh_raise_too_big();
             return __mdh_make_nil();
         }
         buf = grown;

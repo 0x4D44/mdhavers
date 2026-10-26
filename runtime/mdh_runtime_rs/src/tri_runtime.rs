@@ -9,7 +9,8 @@ use std::{env, fmt};
 
 use crate::tri_engine::{with_engine, LoopCallback, MeshData, RenderItem};
 use crate::{
-    mdh_dict_get_named, mdh_float_value, mdh_make_string_from_rust, mdh_value_to_string, Abandon,
+    mdh_dict_get_named, mdh_dict_set, mdh_error_string, mdh_float_value, mdh_list_push,
+    mdh_make_string_from_rust, mdh_value_to_string, take_no_memory, Abandon,
     MdhList, MdhValue, MDH_TAG_BOOL, MDH_TAG_CLOSURE, MDH_TAG_DICT, MDH_TAG_FLOAT,
     MDH_TAG_FUNCTION, MDH_TAG_INT, MDH_TAG_LIST, MDH_TAG_NATIVE, MDH_TAG_NIL, MDH_TAG_STRING,
     STRING_TOO_BIG_MSG,
@@ -109,12 +110,23 @@ enum TriRaise {
 type TriResult = Result<MdhValue, TriRaise>;
 
 unsafe fn tri_hurl(msg: &str) -> TriRaise {
-    TriRaise::Hurl(mdh_make_string_from_rust(msg))
+    TriRaise::Hurl(mdh_error_string(msg))
 }
 
 /// The value, or the error raised: only ever the last thing an extern entry does, with
-/// nothing of its own alive.
+/// nothing of its own alive. When memory ran out making a value during the call (see
+/// NO_MEMORY in lib.rs), that is the error: the "ower muckle" one (MDH-BUG-FLU-00188).
 unsafe fn tri_finish(result: TriResult) -> MdhValue {
+    let result = if take_no_memory() {
+        match result {
+            Err(TriRaise::Hurl(msg)) | Err(TriRaise::KeyNotFound(msg)) => __mdh_release(msg),
+            // The value may be borrowed (a field), so it is left alone.
+            Ok(_) => {}
+        }
+        Err(TriRaise::Hurl(__mdh_out_of_memory_message()))
+    } else {
+        result
+    };
     match result {
         Ok(value) => value,
         Err(TriRaise::Hurl(msg)) => {
@@ -478,7 +490,8 @@ unsafe fn tri_method_add(obj: &mut TriObject, args: &[MdhValue]) {
         __mdh_make_nil()
     };
     for arg in args {
-        __mdh_list_push(list_val, *arg);
+        __mdh_retain(*arg);
+        mdh_list_push(list_val, *arg);
         if parent_val.tag != MDH_TAG_NIL && arg.tag == MDH_TAG_NATIVE && arg.data != 0 {
             let ptr = arg.data as *mut MdhNativeObject;
             let _ = with_object(ptr, |_key, tri| {
@@ -553,14 +566,10 @@ unsafe fn tri_sync_fields(obj: &TriObject) {
         return;
     }
     let native_ptr = obj.native_key as *mut MdhNativeObject;
-    let mut dict = unsafe { (*native_ptr).fields };
+    let dict = unsafe { (*native_ptr).fields };
     for (key, value) in &obj.fields {
-        let key_val = mdh_make_string_from_rust(key);
-        dict = unsafe { __mdh_dict_set(dict, key_val, *value) };
-        __mdh_release(key_val);
-    }
-    unsafe {
-        (*native_ptr).fields = dict;
+        __mdh_retain(*value);
+        mdh_dict_set(dict, mdh_make_string_from_rust(key), *value);
     }
 }
 
@@ -568,11 +577,8 @@ unsafe fn tri_method_set_field(obj: &mut TriObject, key: &str, value: MdhValue) 
     obj.fields.insert(key.to_string(), value);
     if obj.native_key != 0 {
         let native_ptr = obj.native_key as *mut MdhNativeObject;
-        let dict = (*native_ptr).fields;
-        let key_val = mdh_make_string_from_rust(key);
-        let dict = __mdh_dict_set(dict, key_val, value);
-        __mdh_release(key_val);
-        (*native_ptr).fields = dict;
+        __mdh_retain(value);
+        mdh_dict_set((*native_ptr).fields, mdh_make_string_from_rust(key), value);
     }
 }
 
@@ -1513,7 +1519,7 @@ unsafe fn tri_object_call(obj: &mut TriObject, method: &str, args: &[MdhValue]) 
 }
 
 unsafe fn tri_key_not_found(name: &str) -> TriResult {
-    Err(TriRaise::KeyNotFound(mdh_make_string_from_rust(name)))
+    Err(TriRaise::KeyNotFound(mdh_error_string(name)))
 }
 
 unsafe fn tri_module_get(prop: &str) -> TriResult {
@@ -1676,10 +1682,9 @@ extern "C" {
     fn __mdh_make_float(value: f64) -> MdhValue;
     fn __mdh_make_list(capacity: i32) -> MdhValue;
     fn __mdh_list_get(list: MdhValue, index: i64) -> MdhValue;
-    fn __mdh_list_push(list: MdhValue, value: MdhValue);
     fn __mdh_list_len(list: MdhValue) -> i64;
     fn __mdh_empty_dict() -> MdhValue;
-    fn __mdh_dict_set(dict: MdhValue, key: MdhValue, value: MdhValue) -> MdhValue;
+    fn __mdh_out_of_memory_message() -> MdhValue;
     fn __mdh_hurl(value: MdhValue);
     fn __mdh_key_not_found(key: MdhValue);
     fn __mdh_eq(a: MdhValue, b: MdhValue) -> bool;

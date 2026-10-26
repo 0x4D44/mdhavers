@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::ffi::{CStr, CString};
 use std::io::{Read, Write};
@@ -81,14 +82,17 @@ extern "C" {
     fn __mdh_make_bool(value: bool) -> MdhValue;
     fn __mdh_make_int(value: i64) -> MdhValue;
     fn __mdh_make_float(value: f64) -> MdhValue;
-    fn __mdh_make_string(value: *const c_char) -> MdhValue;
     fn __mdh_make_list(capacity: i32) -> MdhValue;
-    // Every value this file stores is one it has just made, so it hands its reference
-    // over: push/set_owned take the caller's +1 (reference counting, mdh_runtime.c).
-    fn __mdh_list_push_owned(list: MdhValue, value: MdhValue);
-    fn __mdh_bytes_new(size: MdhValue) -> MdhValue;
+    // These never raise, which would longjmp across our frames: out of memory, they
+    // return 0 (MDH-BUG-FLU-00188). Every value this file stores is one it has just made,
+    // so it hands its reference over: push/set_owned take the caller's +1 (reference
+    // counting, mdh_runtime.c), and release it if they fail.
+    fn __mdh_make_string_try(value: *const c_char, out: *mut MdhValue) -> i32;
+    fn __mdh_list_push_owned_try(list: MdhValue, value: MdhValue) -> i32;
+    fn __mdh_bytes_new_try(size: i64, out: *mut MdhValue) -> i32;
+    fn __mdh_dict_set_owned_try(dict: MdhValue, key: MdhValue, value: MdhValue) -> i32;
+    fn __mdh_out_of_memory_message() -> MdhValue;
     fn __mdh_empty_dict() -> MdhValue;
-    fn __mdh_dict_set_owned(dict: MdhValue, key: MdhValue, value: MdhValue) -> MdhValue;
     fn __mdh_dict_get_default(dict: MdhValue, key: MdhValue, default_val: MdhValue) -> MdhValue;
     fn __mdh_to_string_checked(value: MdhValue, out: *mut MdhValue) -> i32;
     fn __mdh_kv_densify(value: MdhValue) -> i32;
@@ -97,6 +101,39 @@ extern "C" {
 
 fn cstring_lossy(s: &str) -> CString {
     CString::new(s).unwrap_or_else(|_| CString::new("Runtime error").expect("CString literal"))
+}
+
+thread_local! {
+    /// Set when the C runtime had no memory for a value this crate asked it to make
+    /// (MDH-BUG-FLU-00188). The helpers below then hand back nil (or skip the store) and
+    /// the builtin carries on with that; the extern entry, as its last act, reports the
+    /// "ower muckle" error instead of its result (`mdh_finish`, `tri_finish`), so the
+    /// error is raised with no Rust value alive, as for MDH-BUG-FLU-00183.
+    static NO_MEMORY: Cell<bool> = const { Cell::new(false) };
+}
+
+fn note_no_memory() {
+    NO_MEMORY.with(|flag| flag.set(true));
+}
+
+/// Whether memory ran out since the last call, clearing the record.
+pub(crate) fn take_no_memory() -> bool {
+    NO_MEMORY.with(|flag| flag.replace(false))
+}
+
+/// The builtin's result, or the "ower muckle" error when memory ran out making it: the
+/// last thing each `MdhRsResult` entry does.
+unsafe fn mdh_finish(result: MdhRsResult) -> MdhRsResult {
+    if !take_no_memory() {
+        return result;
+    }
+    __mdh_release(result.value);
+    __mdh_release(result.error);
+    MdhRsResult {
+        ok: 0,
+        value: __mdh_make_nil(),
+        error: __mdh_out_of_memory_message(),
+    }
 }
 
 unsafe fn mdh_ok(value: MdhValue) -> MdhRsResult {
@@ -111,7 +148,7 @@ unsafe fn mdh_err(msg: &str) -> MdhRsResult {
     MdhRsResult {
         ok: 0,
         value: __mdh_make_nil(),
-        error: mdh_make_string_from_rust(msg),
+        error: mdh_error_string(msg),
     }
 }
 
@@ -126,9 +163,44 @@ pub(crate) unsafe fn mdh_string_to_rust(value: MdhValue) -> String {
     CStr::from_ptr(ptr).to_string_lossy().into_owned()
 }
 
+/// A new string value, or nil with the failure noted (see NO_MEMORY).
 pub(crate) unsafe fn mdh_make_string_from_rust(s: &str) -> MdhValue {
     let cstr = cstring_lossy(s);
-    __mdh_make_string(cstr.as_ptr())
+    let mut out = __mdh_make_nil();
+    if __mdh_make_string_try(cstr.as_ptr(), &mut out) == 0 {
+        note_no_memory();
+    }
+    out
+}
+
+/// An error message to raise: when there is no memory for it, the "ower muckle" error
+/// itself (a static string, so this always succeeds).
+pub(crate) unsafe fn mdh_error_string(msg: &str) -> MdhValue {
+    let cstr = cstring_lossy(msg);
+    let mut out = __mdh_make_nil();
+    if __mdh_make_string_try(cstr.as_ptr(), &mut out) == 0 {
+        return __mdh_out_of_memory_message();
+    }
+    out
+}
+
+/// Push a value this crate made onto a list (taking its reference); noted on failure.
+pub(crate) unsafe fn mdh_list_push(list: MdhValue, value: MdhValue) {
+    if __mdh_list_push_owned_try(list, value) == 0 {
+        note_no_memory();
+    }
+}
+
+/// dict[key] = value, taking both references; noted on failure. The dict stays the same
+/// object. A nil key is a key string that could not be made (already noted): skipped.
+pub(crate) unsafe fn mdh_dict_set(dict: MdhValue, key: MdhValue, value: MdhValue) {
+    if key.tag == MDH_TAG_NIL {
+        __mdh_release(value);
+        return;
+    }
+    if __mdh_dict_set_owned_try(dict, key, value) == 0 {
+        note_no_memory();
+    }
 }
 
 /// The runtime's text for `value`, or why it could not be made (too deep to format, or
@@ -175,8 +247,13 @@ unsafe fn mdh_bytes_to_vec(value: MdhValue) -> Option<Vec<u8>> {
     Some(std::slice::from_raw_parts(data, len).to_vec())
 }
 
+/// A new bytes value holding `data`, or nil with the failure noted (see NO_MEMORY).
 unsafe fn mdh_make_bytes_from_vec(data: &[u8]) -> MdhValue {
-    let bytes_val = __mdh_bytes_new(__mdh_make_int(data.len() as i64));
+    let mut bytes_val = __mdh_make_nil();
+    if __mdh_bytes_new_try(data.len() as i64, &mut bytes_val) == 0 {
+        note_no_memory();
+        return bytes_val;
+    }
     let ptr = bytes_val.data as *mut MdhBytes;
     if !ptr.is_null() && !data.is_empty() {
         std::ptr::copy_nonoverlapping(data.as_ptr(), (*ptr).data, data.len());
@@ -930,16 +1007,16 @@ fn json_to_mdh(value: &JsonValue) -> Result<MdhValue, String> {
                 let list = __mdh_make_list(items.len() as i32);
                 for item in items {
                     let v = json_to_mdh(item)?;
-                    __mdh_list_push_owned(list, v);
+                    mdh_list_push(list, v);
                 }
                 Ok(list)
             }
             JsonValue::Object(map) => {
-                let mut dict = __mdh_empty_dict();
+                let dict = __mdh_empty_dict();
                 for (k, v) in map.iter() {
                     let key = mdh_make_string_from_rust(k);
                     let val = json_to_mdh(v)?;
-                    dict = __mdh_dict_set_owned(dict, key, val);
+                    mdh_dict_set(dict, key, val);
                 }
                 Ok(dict)
             }
@@ -964,24 +1041,24 @@ pub extern "C" fn __mdh_rs_json_parse(json_str: MdhValue) -> MdhRsResult {
             Err(e) => mdh_err(&format!("Invalid JSON: {}", e)),
         }
     }) {
-        Ok(result) => result,
-        Err(_) => unsafe { mdh_err("Rust panic in json_parse") },
+        Ok(result) => unsafe { mdh_finish(result) },
+        Err(_) => unsafe { mdh_finish(mdh_err("Rust panic in json_parse")) },
     }
 }
 
 #[no_mangle]
 pub extern "C" fn __mdh_rs_json_stringify(value: MdhValue) -> MdhRsResult {
     match std::panic::catch_unwind(|| unsafe { json_result(mdh_value_to_json(value, false, 0)) }) {
-        Ok(result) => result,
-        Err(_) => unsafe { mdh_err("Rust panic in json_stringify") },
+        Ok(result) => unsafe { mdh_finish(result) },
+        Err(_) => unsafe { mdh_finish(mdh_err("Rust panic in json_stringify")) },
     }
 }
 
 #[no_mangle]
 pub extern "C" fn __mdh_rs_json_pretty(value: MdhValue) -> MdhRsResult {
     match std::panic::catch_unwind(|| unsafe { json_result(mdh_value_to_json(value, true, 0)) }) {
-        Ok(result) => result,
-        Err(_) => unsafe { mdh_err("Rust panic in json_pretty") },
+        Ok(result) => unsafe { mdh_finish(result) },
+        Err(_) => unsafe { mdh_finish(mdh_err("Rust panic in json_pretty")) },
     }
 }
 
@@ -1001,8 +1078,8 @@ pub extern "C" fn __mdh_rs_regex_test(text: MdhValue, pattern: MdhValue) -> MdhR
 
         mdh_ok(__mdh_make_bool(re.is_match(&text_s)))
     }) {
-        Ok(result) => result,
-        Err(_) => unsafe { mdh_err("Rust panic in regex_test") },
+        Ok(result) => unsafe { mdh_finish(result) },
+        Err(_) => unsafe { mdh_finish(mdh_err("Rust panic in regex_test")) },
     }
 }
 
@@ -1021,18 +1098,18 @@ pub extern "C" fn __mdh_rs_regex_match(text: MdhValue, pattern: MdhValue) -> Mdh
         };
 
         if let Some(m) = re.find(&text_s) {
-            let mut dict = __mdh_empty_dict();
-            dict = __mdh_dict_set_owned(
+            let dict = __mdh_empty_dict();
+            mdh_dict_set(
                 dict,
                 mdh_make_string_from_rust("match"),
                 mdh_make_string_from_rust(m.as_str()),
             );
-            dict = __mdh_dict_set_owned(
+            mdh_dict_set(
                 dict,
                 mdh_make_string_from_rust("start"),
                 __mdh_make_int(m.start() as i64),
             );
-            dict = __mdh_dict_set_owned(
+            mdh_dict_set(
                 dict,
                 mdh_make_string_from_rust("end"),
                 __mdh_make_int(m.end() as i64),
@@ -1042,8 +1119,8 @@ pub extern "C" fn __mdh_rs_regex_match(text: MdhValue, pattern: MdhValue) -> Mdh
             mdh_ok(__mdh_make_nil())
         }
     }) {
-        Ok(result) => result,
-        Err(_) => unsafe { mdh_err("Rust panic in regex_match") },
+        Ok(result) => unsafe { mdh_finish(result) },
+        Err(_) => unsafe { mdh_finish(mdh_err("Rust panic in regex_match")) },
     }
 }
 
@@ -1063,28 +1140,28 @@ pub extern "C" fn __mdh_rs_regex_match_all(text: MdhValue, pattern: MdhValue) ->
 
         let result = __mdh_make_list(8);
         for m in re.find_iter(&text_s) {
-            let mut dict = __mdh_empty_dict();
-            dict = __mdh_dict_set_owned(
+            let dict = __mdh_empty_dict();
+            mdh_dict_set(
                 dict,
                 mdh_make_string_from_rust("match"),
                 mdh_make_string_from_rust(m.as_str()),
             );
-            dict = __mdh_dict_set_owned(
+            mdh_dict_set(
                 dict,
                 mdh_make_string_from_rust("start"),
                 __mdh_make_int(m.start() as i64),
             );
-            dict = __mdh_dict_set_owned(
+            mdh_dict_set(
                 dict,
                 mdh_make_string_from_rust("end"),
                 __mdh_make_int(m.end() as i64),
             );
-            __mdh_list_push_owned(result, dict);
+            mdh_list_push(result, dict);
         }
         mdh_ok(result)
     }) {
-        Ok(result) => result,
-        Err(_) => unsafe { mdh_err("Rust panic in regex_match_all") },
+        Ok(result) => unsafe { mdh_finish(result) },
+        Err(_) => unsafe { mdh_finish(mdh_err("Rust panic in regex_match_all")) },
     }
 }
 
@@ -1113,8 +1190,8 @@ pub extern "C" fn __mdh_rs_regex_replace(
         let replaced = re.replace_all(&text_s, repl_s.as_str()).to_string();
         mdh_ok(mdh_make_string_from_rust(&replaced))
     }) {
-        Ok(result) => result,
-        Err(_) => unsafe { mdh_err("Rust panic in regex_replace") },
+        Ok(result) => unsafe { mdh_finish(result) },
+        Err(_) => unsafe { mdh_finish(mdh_err("Rust panic in regex_replace")) },
     }
 }
 
@@ -1143,8 +1220,8 @@ pub extern "C" fn __mdh_rs_regex_replace_first(
         let replaced = re.replacen(&text_s, 1, repl_s.as_str()).to_string();
         mdh_ok(mdh_make_string_from_rust(&replaced))
     }) {
-        Ok(result) => result,
-        Err(_) => unsafe { mdh_err("Rust panic in regex_replace_first") },
+        Ok(result) => unsafe { mdh_finish(result) },
+        Err(_) => unsafe { mdh_finish(mdh_err("Rust panic in regex_replace_first")) },
     }
 }
 
@@ -1164,12 +1241,12 @@ pub extern "C" fn __mdh_rs_regex_split(text: MdhValue, pattern: MdhValue) -> Mdh
 
         let result = __mdh_make_list(8);
         for part in re.split(&text_s) {
-            __mdh_list_push_owned(result, mdh_make_string_from_rust(part));
+            mdh_list_push(result, mdh_make_string_from_rust(part));
         }
         mdh_ok(result)
     }) {
-        Ok(result) => result,
-        Err(_) => unsafe { mdh_err("Rust panic in regex_split") },
+        Ok(result) => unsafe { mdh_finish(result) },
+        Err(_) => unsafe { mdh_finish(mdh_err("Rust panic in regex_split")) },
     }
 }
 
@@ -1199,34 +1276,34 @@ pub extern "C" fn __mdh_rs_dns_srv(service: MdhValue, domain: MdhValue) -> MdhRs
         let list = __mdh_make_list(8);
         for rdata in lookup.iter() {
             if let RData::SRV(srv) = rdata {
-                let mut dict = __mdh_empty_dict();
-                dict = __mdh_dict_set_owned(
+                let dict = __mdh_empty_dict();
+                mdh_dict_set(
                     dict,
                     mdh_make_string_from_rust("priority"),
                     __mdh_make_int(srv.priority() as i64),
                 );
-                dict = __mdh_dict_set_owned(
+                mdh_dict_set(
                     dict,
                     mdh_make_string_from_rust("weight"),
                     __mdh_make_int(srv.weight() as i64),
                 );
-                dict = __mdh_dict_set_owned(
+                mdh_dict_set(
                     dict,
                     mdh_make_string_from_rust("port"),
                     __mdh_make_int(srv.port() as i64),
                 );
-                dict = __mdh_dict_set_owned(
+                mdh_dict_set(
                     dict,
                     mdh_make_string_from_rust("target"),
                     mdh_make_string_from_rust(&srv.target().to_string()),
                 );
-                __mdh_list_push_owned(list, dict);
+                mdh_list_push(list, dict);
             }
         }
         mdh_ok(list)
     }) {
-        Ok(result) => result,
-        Err(_) => unsafe { mdh_err("Rust panic in dns_srv") },
+        Ok(result) => unsafe { mdh_finish(result) },
+        Err(_) => unsafe { mdh_finish(mdh_err("Rust panic in dns_srv")) },
     }
 }
 
@@ -1248,44 +1325,44 @@ pub extern "C" fn __mdh_rs_dns_naptr(domain: MdhValue) -> MdhRsResult {
         let list = __mdh_make_list(8);
         for rdata in lookup.iter() {
             if let RData::NAPTR(naptr) = rdata {
-                let mut dict = __mdh_empty_dict();
-                dict = __mdh_dict_set_owned(
+                let dict = __mdh_empty_dict();
+                mdh_dict_set(
                     dict,
                     mdh_make_string_from_rust("order"),
                     __mdh_make_int(naptr.order() as i64),
                 );
-                dict = __mdh_dict_set_owned(
+                mdh_dict_set(
                     dict,
                     mdh_make_string_from_rust("preference"),
                     __mdh_make_int(naptr.preference() as i64),
                 );
-                dict = __mdh_dict_set_owned(
+                mdh_dict_set(
                     dict,
                     mdh_make_string_from_rust("flags"),
                     mdh_make_string_from_rust(String::from_utf8_lossy(naptr.flags()).as_ref()),
                 );
-                dict = __mdh_dict_set_owned(
+                mdh_dict_set(
                     dict,
                     mdh_make_string_from_rust("service"),
                     mdh_make_string_from_rust(String::from_utf8_lossy(naptr.services()).as_ref()),
                 );
-                dict = __mdh_dict_set_owned(
+                mdh_dict_set(
                     dict,
                     mdh_make_string_from_rust("regexp"),
                     mdh_make_string_from_rust(String::from_utf8_lossy(naptr.regexp()).as_ref()),
                 );
-                dict = __mdh_dict_set_owned(
+                mdh_dict_set(
                     dict,
                     mdh_make_string_from_rust("replacement"),
                     mdh_make_string_from_rust(&naptr.replacement().to_string()),
                 );
-                __mdh_list_push_owned(list, dict);
+                mdh_list_push(list, dict);
             }
         }
         mdh_ok(list)
     }) {
-        Ok(result) => result,
-        Err(_) => unsafe { mdh_err("Rust panic in dns_naptr") },
+        Ok(result) => unsafe { mdh_finish(result) },
+        Err(_) => unsafe { mdh_finish(mdh_err("Rust panic in dns_naptr")) },
     }
 }
 
@@ -1326,8 +1403,8 @@ pub extern "C" fn __mdh_rs_tls_client_new(config: MdhValue) -> MdhRsResult {
         let id = tls_register(session);
         mdh_ok(__mdh_make_int(id))
     }) {
-        Ok(result) => result,
-        Err(_) => unsafe { mdh_err("Rust panic in tls_client_new") },
+        Ok(result) => unsafe { mdh_finish(result) },
+        Err(_) => unsafe { mdh_finish(mdh_err("Rust panic in tls_client_new")) },
     }
 }
 
@@ -1389,8 +1466,8 @@ pub extern "C" fn __mdh_rs_tls_connect(tls: MdhValue, sock: MdhValue) -> MdhRsRe
             Err(e) => mdh_err(&e),
         }
     }) {
-        Ok(result) => result,
-        Err(_) => unsafe { mdh_err("Rust panic in tls_connect") },
+        Ok(result) => unsafe { mdh_finish(result) },
+        Err(_) => unsafe { mdh_finish(mdh_err("Rust panic in tls_connect")) },
     }
 }
 
@@ -1432,8 +1509,8 @@ pub extern "C" fn __mdh_rs_tls_send(tls: MdhValue, buf: MdhValue) -> MdhRsResult
             Err(e) => mdh_err(&e),
         }
     }) {
-        Ok(result) => result,
-        Err(_) => unsafe { mdh_err("Rust panic in tls_send") },
+        Ok(result) => unsafe { mdh_finish(result) },
+        Err(_) => unsafe { mdh_finish(mdh_err("Rust panic in tls_send")) },
     }
 }
 
@@ -1468,20 +1545,12 @@ pub extern "C" fn __mdh_rs_tls_recv(tls: MdhValue, max_len: MdhValue) -> MdhRsRe
         });
 
         match res {
-            Ok(buf) => {
-                let bytes_val = __mdh_bytes_new(__mdh_make_int(buf.len() as i64));
-                let bytes_ptr = bytes_val.data as *mut MdhBytes;
-                if !bytes_ptr.is_null() && !buf.is_empty() {
-                    std::ptr::copy_nonoverlapping(buf.as_ptr(), (*bytes_ptr).data, buf.len());
-                    (*bytes_ptr).length = buf.len() as i64;
-                }
-                mdh_ok(bytes_val)
-            }
+            Ok(buf) => mdh_ok(mdh_make_bytes_from_vec(&buf)),
             Err(e) => mdh_err(&e),
         }
     }) {
-        Ok(result) => result,
-        Err(_) => unsafe { mdh_err("Rust panic in tls_recv") },
+        Ok(result) => unsafe { mdh_finish(result) },
+        Err(_) => unsafe { mdh_finish(mdh_err("Rust panic in tls_recv")) },
     }
 }
 
@@ -1494,8 +1563,8 @@ pub extern "C" fn __mdh_rs_tls_close(tls: MdhValue) -> MdhRsResult {
         tls_remove(tls.data);
         mdh_ok(__mdh_make_nil())
     }) {
-        Ok(result) => result,
-        Err(_) => unsafe { mdh_err("Rust panic in tls_close") },
+        Ok(result) => unsafe { mdh_finish(result) },
+        Err(_) => unsafe { mdh_finish(mdh_err("Rust panic in tls_close")) },
     }
 }
 
@@ -1589,8 +1658,8 @@ pub extern "C" fn __mdh_rs_srtp_create(config: MdhValue) -> MdhRsResult {
         let id = srtp_register(SrtpSession { send, recv });
         mdh_ok(__mdh_make_int(id))
     }) {
-        Ok(result) => result,
-        Err(_) => unsafe { mdh_err("Rust panic in srtp_create") },
+        Ok(result) => unsafe { mdh_finish(result) },
+        Err(_) => unsafe { mdh_finish(mdh_err("Rust panic in srtp_create")) },
     }
 }
 
@@ -1615,8 +1684,8 @@ pub extern "C" fn __mdh_rs_srtp_protect(ctx: MdhValue, packet: MdhValue) -> MdhR
             Err(e) => mdh_err(&e),
         }
     }) {
-        Ok(result) => result,
-        Err(_) => unsafe { mdh_err("Rust panic in srtp_protect") },
+        Ok(result) => unsafe { mdh_finish(result) },
+        Err(_) => unsafe { mdh_finish(mdh_err("Rust panic in srtp_protect")) },
     }
 }
 
@@ -1641,8 +1710,8 @@ pub extern "C" fn __mdh_rs_srtp_unprotect(ctx: MdhValue, packet: MdhValue) -> Md
             Err(e) => mdh_err(&e),
         }
     }) {
-        Ok(result) => result,
-        Err(_) => unsafe { mdh_err("Rust panic in srtp_unprotect") },
+        Ok(result) => unsafe { mdh_finish(result) },
+        Err(_) => unsafe { mdh_finish(mdh_err("Rust panic in srtp_unprotect")) },
     }
 }
 
@@ -1672,8 +1741,8 @@ pub extern "C" fn __mdh_rs_dtls_server_new(config: MdhValue) -> MdhRsResult {
         let id = dtls_register(cfg);
         mdh_ok(__mdh_make_int(id))
     }) {
-        Ok(result) => result,
-        Err(_) => unsafe { mdh_err("Rust panic in dtls_server_new") },
+        Ok(result) => unsafe { mdh_finish(result) },
+        Err(_) => unsafe { mdh_finish(mdh_err("Rust panic in dtls_server_new")) },
     }
 }
 
@@ -1802,38 +1871,38 @@ pub extern "C" fn __mdh_rs_dtls_handshake(dtls: MdhValue, sock: MdhValue) -> Mdh
         let client_salt = &material[(2 * key_len)..(2 * key_len + salt_len)];
         let server_salt = &material[(2 * key_len + salt_len)..(2 * key_len + 2 * salt_len)];
 
-        let mut dict = __mdh_empty_dict();
-        dict = __mdh_dict_set_owned(
+        let dict = __mdh_empty_dict();
+        mdh_dict_set(
             dict,
             mdh_make_string_from_rust("profile"),
             mdh_make_string_from_rust(&profile.to_string()),
         );
-        dict = __mdh_dict_set_owned(
+        mdh_dict_set(
             dict,
             mdh_make_string_from_rust("client_key"),
             mdh_make_bytes_from_vec(client_key),
         );
-        dict = __mdh_dict_set_owned(
+        mdh_dict_set(
             dict,
             mdh_make_string_from_rust("client_salt"),
             mdh_make_bytes_from_vec(client_salt),
         );
-        dict = __mdh_dict_set_owned(
+        mdh_dict_set(
             dict,
             mdh_make_string_from_rust("server_key"),
             mdh_make_bytes_from_vec(server_key),
         );
-        dict = __mdh_dict_set_owned(
+        mdh_dict_set(
             dict,
             mdh_make_string_from_rust("server_salt"),
             mdh_make_bytes_from_vec(server_salt),
         );
-        dict = __mdh_dict_set_owned(
+        mdh_dict_set(
             dict,
             mdh_make_string_from_rust("key_len"),
             __mdh_make_int(key_len as i64),
         );
-        dict = __mdh_dict_set_owned(
+        mdh_dict_set(
             dict,
             mdh_make_string_from_rust("salt_len"),
             __mdh_make_int(salt_len as i64),
@@ -1841,7 +1910,7 @@ pub extern "C" fn __mdh_rs_dtls_handshake(dtls: MdhValue, sock: MdhValue) -> Mdh
 
         mdh_ok(dict)
     }) {
-        Ok(result) => result,
-        Err(_) => unsafe { mdh_err("Rust panic in dtls_handshake") },
+        Ok(result) => unsafe { mdh_finish(result) },
+        Err(_) => unsafe { mdh_finish(mdh_err("Rust panic in dtls_handshake")) },
     }
 }

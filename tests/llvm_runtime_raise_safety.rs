@@ -105,3 +105,51 @@ blether tae_string([1, 2, 3])
         );
     }
 }
+
+/// Making a string value that cannot get memory used to give a string with a NULL
+/// pointer, which the next use dereferenced (MDH-BUG-FLU-00188). Compiled code's runtime
+/// calls now raise the "ower muckle" error; the Rust runtime gets a status instead and
+/// reports the same error once its own frames are gone. With the test-only knob of debug
+/// builds, every string of 1 MiB or more fails: a 2 MiB file read by `slurp` (C runtime)
+/// and a 2 MiB `regex_replace` result (Rust runtime).
+#[cfg(debug_assertions)]
+#[test]
+fn running_out_of_memory_making_a_string_raises_the_too_big_error() {
+    let dir = tempdir().expect("temp dir");
+    let big_path = dir.path().join("big.txt");
+    std::fs::write(&big_path, "x".repeat(2 * 1024 * 1024)).expect("write big file");
+    let src = format!(
+        r#"ken half = "a" * 524288
+fer k in 0..2 {{
+    hae_a_bash {{
+        ken s = slurp("{}")
+        blether len(s)
+    }} gin_it_gangs_wrang e {{
+        blether e
+    }}
+    hae_a_bash {{
+        ken r = regex_replace(half, "a", "aaaa")
+        blether len(r)
+    }} gin_it_gangs_wrang e {{
+        blether e
+    }}
+}}
+blether len(regex_replace("abc", "b", "xyz"))
+"#,
+        big_path.display()
+    );
+    for refcounting in [false, true] {
+        let run = run_native_with_env(
+            &src,
+            refcounting,
+            &[("MDH_TEST_ALLOC_FAIL_OVER", "1048576")],
+        );
+        assert_eq!(run.code, Some(0), "rc={refcounting}: {}", run.stderr);
+        let lines: Vec<&str> = run.stdout.lines().collect();
+        assert_eq!(
+            lines,
+            vec![TOO_BIG, TOO_BIG, TOO_BIG, TOO_BIG, "5"],
+            "rc={refcounting}"
+        );
+    }
+}

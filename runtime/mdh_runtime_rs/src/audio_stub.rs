@@ -1,4 +1,4 @@
-use super::{mdh_make_string_from_rust, MdhValue};
+use super::{mdh_error_string, MdhValue};
 
 const ERR_NO_AUDIO: &str = "Soond isnae available - build wi' --features audio";
 
@@ -9,7 +9,7 @@ extern "C" {
 
 fn hurl() -> MdhValue {
     unsafe {
-        __mdh_hurl(mdh_make_string_from_rust(ERR_NO_AUDIO));
+        __mdh_hurl(mdh_error_string(ERR_NO_AUDIO));
         __mdh_make_nil()
     }
 }
