@@ -25,7 +25,28 @@ use std::time::{Duration, Instant};
 
 const GOLDEN_DIR: &str = "tests/golden";
 const ALLOWLIST: &str = "tests/js_parity_allowlist.txt";
-const NODE_TIMEOUT: Duration = Duration::from_secs(20);
+const NODE_BASE_SECS: u64 = 40;
+
+/// Goldens that need far more than the usual limit (showcase_blether_lisp runs ~53e9
+/// instructions under the debug wasm-run). The limit stays finite so a real hang fails.
+const HEAVY_GOLDENS: &[&str] = &["showcase_blether_lisp"];
+const HEAVY_FACTOR: u64 = 10;
+
+/// The per-case time limit: `base_secs`, times `HEAVY_FACTOR` for a heavy golden, times
+/// `MDH_GOLDEN_TIMEOUT_SCALE` (default 1) for a loaded box (MDH-BUG-FLU-00182).
+fn case_timeout(name: &str, base_secs: u64) -> Duration {
+    let scale = std::env::var("MDH_GOLDEN_TIMEOUT_SCALE")
+        .ok()
+        .and_then(|v| v.parse::<f64>().ok())
+        .filter(|s| s.is_finite() && *s > 0.0)
+        .unwrap_or(1.0);
+    let heavy = if HEAVY_GOLDENS.contains(&name) {
+        HEAVY_FACTOR
+    } else {
+        1
+    };
+    Duration::from_secs_f64((base_secs * heavy) as f64 * scale)
+}
 
 fn discover_tests(dir: &Path, tests: &mut Vec<PathBuf>) {
     let Ok(entries) = fs::read_dir(dir) else {
@@ -73,7 +94,7 @@ fn summarise_node_error(stderr: &str) -> String {
     line.chars().take(100).collect::<String>().replace('#', "")
 }
 
-fn run_node(js_path: &Path) -> Result<String, String> {
+fn run_node(js_path: &Path, node_timeout: Duration) -> Result<String, String> {
     let mut child = Command::new("node")
         .arg(js_path)
         .stdin(Stdio::null())
@@ -95,7 +116,7 @@ fn run_node(js_path: &Path) -> Result<String, String> {
         buf
     });
 
-    let deadline = Instant::now() + NODE_TIMEOUT;
+    let deadline = Instant::now() + node_timeout;
     let status = loop {
         match child.try_wait() {
             Ok(Some(status)) => break Some(status),
@@ -112,7 +133,7 @@ fn run_node(js_path: &Path) -> Result<String, String> {
     let err = String::from_utf8_lossy(&err_reader.join().unwrap_or_default()).to_string();
 
     match status {
-        None => Err(format!("timed out after {}s", NODE_TIMEOUT.as_secs())),
+        None => Err(format!("timed out after {}s", node_timeout.as_secs())),
         Some(status) if !status.success() => Err(format!(
             "node exit {}: {}",
             status.code().unwrap_or(-1),
@@ -132,7 +153,11 @@ fn run_case(braw: &Path, js_path: &Path) -> Result<(), String> {
         format!("compile error: {}", msg.replace('#', ""))
     })?;
     fs::write(js_path, js).map_err(|e| format!("write failed: {e}"))?;
-    let actual = run_node(js_path)?;
+    let node_timeout = case_timeout(
+        braw.file_stem().and_then(|s| s.to_str()).unwrap_or(""),
+        NODE_BASE_SECS,
+    );
+    let actual = run_node(js_path, node_timeout)?;
     if actual.trim() == expected.trim() {
         Ok(())
     } else {

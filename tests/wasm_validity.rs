@@ -408,7 +408,28 @@ enum GoldenOutcome {
     Invalid(String),
 }
 
-fn run_golden(source: String, expected: String) -> GoldenOutcome {
+/// Goldens that need far more than the usual limit (showcase_blether_lisp runs ~53e9
+/// instructions under the debug wasm-run). The limit stays finite so a real hang fails.
+const HEAVY_GOLDENS: &[&str] = &["showcase_blether_lisp"];
+const HEAVY_FACTOR: u64 = 10;
+
+/// The per-case time limit: `base_secs`, times `HEAVY_FACTOR` for a heavy golden, times
+/// `MDH_GOLDEN_TIMEOUT_SCALE` (default 1) for a loaded box (MDH-BUG-FLU-00182).
+fn case_timeout(name: &str, base_secs: u64) -> Duration {
+    let scale = std::env::var("MDH_GOLDEN_TIMEOUT_SCALE")
+        .ok()
+        .and_then(|v| v.parse::<f64>().ok())
+        .filter(|s| s.is_finite() && *s > 0.0)
+        .unwrap_or(1.0);
+    let heavy = if HEAVY_GOLDENS.contains(&name) {
+        HEAVY_FACTOR
+    } else {
+        1
+    };
+    Duration::from_secs_f64((base_secs * heavy) as f64 * scale)
+}
+
+fn run_golden(name: &str, source: String, expected: String) -> GoldenOutcome {
     let wat_text = match compile_to_wat(&source) {
         Ok(w) => w,
         Err(_) => return GoldenOutcome::Unsupported,
@@ -421,7 +442,7 @@ fn run_golden(source: String, expected: String) -> GoldenOutcome {
     thread::spawn(move || {
         let _ = tx.send(run_wat_captured(&wat_text));
     });
-    match rx.recv_timeout(Duration::from_secs(30)) {
+    match rx.recv_timeout(case_timeout(name, 60)) {
         Err(_) => GoldenOutcome::Mismatch("timed out".to_string()),
         Ok(Err(e)) => GoldenOutcome::Mismatch(format!("module did not load: {e}")),
         Ok(Ok(out)) => {
@@ -463,7 +484,8 @@ fn golden_programs_the_wasm_backend_accepts_match_their_expected_output() {
             .to_string_lossy()
             .replace('\\', "/");
 
-        match run_golden(source, expected) {
+        let name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+        match run_golden(name, source, expected) {
             GoldenOutcome::Unsupported => unsupported += 1,
             GoldenOutcome::Invalid(e) => failures.push(format!("{rel}: INVALID MODULE: {e}")),
             GoldenOutcome::Pass => {

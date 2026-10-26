@@ -31,7 +31,28 @@ use std::time::Duration;
 
 const GOLDEN_DIR: &str = "tests/golden";
 const ALLOWLIST: &str = "tests/wasm_parity_allowlist.txt";
-const CASE_TIMEOUT: Duration = Duration::from_secs(30);
+const CASE_BASE_SECS: u64 = 60;
+
+/// Goldens that need far more than the usual limit (showcase_blether_lisp runs ~53e9
+/// instructions under the debug wasm-run). The limit stays finite so a real hang fails.
+const HEAVY_GOLDENS: &[&str] = &["showcase_blether_lisp"];
+const HEAVY_FACTOR: u64 = 10;
+
+/// The per-case time limit: `base_secs`, times `HEAVY_FACTOR` for a heavy golden, times
+/// `MDH_GOLDEN_TIMEOUT_SCALE` (default 1) for a loaded box (MDH-BUG-FLU-00182).
+fn case_timeout(name: &str, base_secs: u64) -> Duration {
+    let scale = std::env::var("MDH_GOLDEN_TIMEOUT_SCALE")
+        .ok()
+        .and_then(|v| v.parse::<f64>().ok())
+        .filter(|s| s.is_finite() && *s > 0.0)
+        .unwrap_or(1.0);
+    let heavy = if HEAVY_GOLDENS.contains(&name) {
+        HEAVY_FACTOR
+    } else {
+        1
+    };
+    Duration::from_secs_f64((base_secs * heavy) as f64 * scale)
+}
 
 fn discover_tests(dir: &Path, tests: &mut Vec<PathBuf>) {
     let Ok(entries) = fs::read_dir(dir) else {
@@ -104,6 +125,11 @@ fn run_case(braw: &Path) -> Result<(), String> {
     let expected = fs::read_to_string(braw.with_extension("expected"))
         .map_err(|e| format!("read expected failed: {e}"))?;
 
+    let case_timeout = case_timeout(
+        braw.file_stem().and_then(|s| s.to_str()).unwrap_or(""),
+        CASE_BASE_SECS,
+    );
+
     // Worker thread: a runaway or panicking program mustnae hang or kill the suite.
     let (tx, rx) = mpsc::channel();
     thread::spawn(move || {
@@ -129,8 +155,8 @@ fn run_case(braw: &Path) -> Result<(), String> {
             }
         });
     });
-    match rx.recv_timeout(CASE_TIMEOUT) {
-        Err(_) => Err(format!("timed out after {}s", CASE_TIMEOUT.as_secs())),
+    match rx.recv_timeout(case_timeout) {
+        Err(_) => Err(format!("timed out after {}s", case_timeout.as_secs())),
         Ok(Err(e)) => Err(e),
         Ok(Ok(actual)) if actual.trim() == expected.trim() => Ok(()),
         Ok(Ok(_)) => Err("output mismatch".to_string()),
