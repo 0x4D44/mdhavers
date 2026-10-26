@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00163 — Native: ken inside a nested block overwrites the outer variable of the same name
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** High
 - **Area:** native
 - **Raised:** 2026-10-26T05:03:17Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261026T050440Z-9b9dd345
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00163-run-fix-20261026T050440Z-9b9dd345
-- **Owner base:** 0ce2a5bc5cf9ba91c13f5b84148dcd8cfea0ba99
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-26T05:04:40Z
-- **Owner until:** 2026-10-26T09:04:40Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-26T05:03:17Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-26T05:03:17Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T06:49:56Z, deltic:auto role=fix run=fix-20261026T050440Z-9b9dd345 branch=task/bug-MDH-BUG-FLU-00163-run-fix-20261026T050440Z-9b9dd345 code=5c3046a gate=manual)
 
 ## Observation
 
