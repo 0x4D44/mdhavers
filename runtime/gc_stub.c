@@ -68,20 +68,32 @@ int64_t __mdh_rc_live(uint32_t kind) {
 #ifdef MDH_ALLOC_FAULTS
 /* Test-only, compiled into debug builds of mdhavers (build.rs) and never into release:
  * MDH_TEST_ALLOC_FAIL_OVER=N at run time makes every object allocation or reallocation
- * of N bytes or more fail, to exercise the out-of-memory paths (MDH-BUG-FLU-00184). */
+ * of N bytes or more fail, to exercise the out-of-memory paths (MDH-BUG-FLU-00184).
+ * MDH_TEST_BUF_FAIL_OVER=N does the same for buffers (__mdh_buf_alloc/_realloc: list
+ * items, dict payloads and other backing arrays), MDH-BUG-FLU-00189. 0 or unset: off. */
+static size_t __mdh_fault_limit(const char *name, size_t *limit, int *read) {
+    if (!*read) {
+        const char *s = getenv(name);
+        *limit = s ? (size_t)strtoull(s, NULL, 10) : 0;
+        *read = 1;
+    }
+    return *limit;
+}
 static size_t __mdh_alloc_fail_over(void) {
     static int read = 0;
     static size_t limit = 0;
-    if (!read) {
-        const char *s = getenv("MDH_TEST_ALLOC_FAIL_OVER");
-        limit = s ? (size_t)strtoull(s, NULL, 10) : 0;
-        read = 1;
-    }
-    return limit;
+    return __mdh_fault_limit("MDH_TEST_ALLOC_FAIL_OVER", &limit, &read);
+}
+static size_t __mdh_buf_fail_over(void) {
+    static int read = 0;
+    static size_t limit = 0;
+    return __mdh_fault_limit("MDH_TEST_BUF_FAIL_OVER", &limit, &read);
 }
 #define MDH_ALLOC_FAULT(size) (__mdh_alloc_fail_over() != 0 && (size) >= __mdh_alloc_fail_over())
+#define MDH_BUF_FAULT(size) (__mdh_buf_fail_over() != 0 && (size) >= __mdh_buf_fail_over())
 #else
 #define MDH_ALLOC_FAULT(size) 0
+#define MDH_BUF_FAULT(size) 0
 #endif
 
 static MdhObjHeader *__mdh_obj_header(const void *payload) {
@@ -276,6 +288,7 @@ char *__mdh_obj_strdup(const char *s) {
 }
 
 void *__mdh_buf_alloc(size_t size) {
+    if (MDH_BUF_FAULT(size)) return NULL;
 #ifdef MDH_ALLOC_STATS
     __mdh_alloc_note(MDH_KIND_BUFFER);
 #endif
@@ -283,6 +296,7 @@ void *__mdh_buf_alloc(size_t size) {
 }
 
 void *__mdh_buf_realloc(void *buf, size_t size) {
+    if (MDH_BUF_FAULT(size)) return NULL;
 #ifdef MDH_ALLOC_STATS
     if (!buf) __mdh_alloc_note(MDH_KIND_BUFFER);
 #endif

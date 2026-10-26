@@ -77,7 +77,8 @@ fn main() {
     build.compile("mdh_runtime");
 
     // Compile the GC stub. Debug builds get the test-only allocation-failure knob
-    // (MDH_TEST_ALLOC_FAIL_OVER, see runtime/gc_stub.c); release builds never do.
+    // (MDH_TEST_ALLOC_FAIL_OVER and MDH_TEST_BUF_FAIL_OVER, see runtime/gc_stub.c);
+    // release builds never do.
     let mut gc_build = cc::Build::new();
     gc_build
         .file("runtime/gc_stub.c")
