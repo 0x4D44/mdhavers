@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00183 — Native runtime: Rust code raises via longjmp across live Rust frames (tri, audio)
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** native
 - **Raised:** 2026-10-26T08:39:16Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261026T103609Z-e7d700f1
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00183-run-fix-20261026T103609Z-e7d700f1
-- **Owner base:** 2261723f61042e6ac35bd07e8fe56195cb0755bf
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-26T10:36:09Z
-- **Owner until:** 2026-10-26T14:36:09Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-26T08:39:16Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-26T08:39:16Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T12:19:55Z, deltic:auto role=fix run=fix-20261026T103609Z-e7d700f1 branch=task/bug-MDH-BUG-FLU-00183-run-fix-20261026T103609Z-e7d700f1 code=60643ac gate=manual)
 
 ## Observation
 
