@@ -1,0 +1,15 @@
+# destructure_middle_rest.braw - a rest element can sit in the middle (MDH-BUG-FLU-00169).
+ken [x, ...mid, y] = [10, 20, 30, 40, 50]
+blether x
+blether mid
+blether y
+ken [a, ...none, b] = [1, 2]
+blether a
+blether none
+blether b
+ken [p, q, ...tail, z] = [1, 2, 3, 4, 5, 6]
+blether p + q
+blether tail
+blether z
+ken [_, ...inner, _] = [1, 2, 3, 4]
+blether inner

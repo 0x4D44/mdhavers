@@ -1,0 +1,9 @@
+# pipe_lambda.braw - a lambda on the right o' |> is called wi' the left value
+# (MDH-BUG-FLU-00168).
+ken d = 5 |> |x| x * 2
+blether d
+dae inc(n) {
+    gie n + 1
+}
+blether 1 |> inc
+blether 3 |> |x| x + 1 |> |y| y * 10

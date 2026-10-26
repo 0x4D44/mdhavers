@@ -388,6 +388,43 @@ const RUNTIME_BINDINGS: &[&str] = &[
     "chan_is_closed",
     "shell",
     "shell_status",
+    // Scots checks, quips an' list oddments (core_runtime.js, MDH-BUG-FLU-00167).
+    "stacktrace",
+    "set_crash_handling",
+    "backside_forrit",
+    "wee",
+    "dicht",
+    "redd_up",
+    "is_a",
+    "braw",
+    "stoater",
+    "scottify",
+    "sclaff",
+    "drookit",
+    "gallus",
+    "wrang_sort",
+    "scunner_check",
+    "bonnie",
+    "och",
+    "jings",
+    "crivvens",
+    "help_ma_boab",
+    "haud_yer_wheesht",
+    "numpty_check",
+    "crabbit",
+    "cannie",
+    "is_wee",
+    "is_muckle",
+    "scunner",
+    "haver",
+    "slainte",
+    "dram",
+    "jammy",
+    "bampot_mode",
+    "stopwatch",
+    "blether_format",
+    "braw_time",
+    "braw_date",
 ];
 
 /// JS reserved words, strict-mode restricted names an' awkward globals. An mdhavers
@@ -1150,8 +1187,7 @@ impl Compiler {
         // keys, values, items an' the dict helpers live in core_runtime.js,
         // which keeps dict keys typed (MDH-BUG-FLU-00109).
 
-        // join function
-        self.emit_line("join: (arr, delim) => arr.map(__havers_core.show).join(delim),");
+        // join lives in core_runtime.js, which type-checks its arguments (MDH-BUG-FLU-00173).
 
         // contains function
         self.emit_line("contains: (container, item) => {");
@@ -1780,6 +1816,46 @@ impl Compiler {
                         }
                         DestructPattern::Ignore => parts.push(String::new()),
                     }
+                }
+                let rest_pos = patterns
+                    .iter()
+                    .position(|p| matches!(p, DestructPattern::Rest(_)));
+                if rest_pos.is_some_and(|pos| pos + 1 < patterns.len()) {
+                    // A rest element in the middle isnae valid JS (`[x, ...mid, y]`): lower
+                    // it tae index an' slice() calls on a copy o' the value (MDH-BUG-FLU-00169).
+                    let rest_pos = rest_pos.unwrap_or(0);
+                    self.rename_counter += 1;
+                    let tmp = format!("__destr${}", self.rename_counter);
+                    if !fresh_names.is_empty() {
+                        self.emit_line(&format!("let {};", fresh_names.join(", ")));
+                    }
+                    self.emit_line(&format!("const {} = [...{}];", tmp, value_js));
+                    let after = patterns.len() - rest_pos - 1;
+                    let mut names = parts.iter();
+                    for (i, pattern) in patterns.iter().enumerate() {
+                        let name = names.next().cloned().unwrap_or_default();
+                        match pattern {
+                            DestructPattern::Ignore => {}
+                            DestructPattern::Variable(_) if i < rest_pos => {
+                                self.emit_line(&format!("{} = {}[{}];", name, tmp, i));
+                            }
+                            DestructPattern::Variable(_) => {
+                                let from_end = patterns.len() - i;
+                                self.emit_line(&format!(
+                                    "{} = {}[{}.length - {}];",
+                                    name, tmp, tmp, from_end
+                                ));
+                            }
+                            DestructPattern::Rest(_) => {
+                                let js = name.trim_start_matches("...");
+                                self.emit_line(&format!(
+                                    "{} = {}.slice({}, {}.length - {});",
+                                    js, tmp, rest_pos, tmp, after
+                                ));
+                            }
+                        }
+                    }
+                    return;
                 }
                 let target = format!("[{}]", parts.join(", "));
                 if fresh_names.len() == named {
@@ -2483,7 +2559,16 @@ impl Compiler {
 
             Expr::Pipe { left, right, .. } => {
                 // In JavaScript, we transform left |> right to right(left)
+                // The right side is parenthesised: a lambda `(x) => x * 2` followed by
+                // `(5)` would otherwise be the lambda's body, no' a call (MDH-BUG-FLU-00168).
+                let bare = matches!(**right, Expr::Variable { .. });
+                if !bare {
+                    self.output.push('(');
+                }
                 self.compile_expr(right);
+                if !bare {
+                    self.output.push(')');
+                }
                 self.output.push('(');
                 self.compile_expr(left);
                 self.output.push(')');

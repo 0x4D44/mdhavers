@@ -1971,6 +1971,286 @@ const __havers_core = (() => {
       if (typeof s !== "string") throw native("wheesht_aw() needs a string");
       return s.split(/[ \t\n\r]/).filter((p) => p !== "").join(" ");
     },
+    // ---------- Scots checks, quips an' list oddments (MDH-BUG-FLU-00167) ----------
+    join: (l, delim) => {
+      if (!Array.isArray(l) || typeof delim !== "string") throw native("join() expects a list and a string");
+      return l.map(show).join(delim);
+    },
+    stacktrace: () => "(no stack trace)",
+    set_crash_handling: (b) => {
+      if (typeof b !== "boolean") throw native("set_crash_handling() expects a boolean");
+      return null;
+    },
+    backside_forrit: (x) => {
+      if (Array.isArray(x)) return [...x].reverse();
+      if (typeof x === "string") return cps(x).reverse().join("");
+      throw native("backside_forrit() expects a list or string");
+    },
+    // The smaller o' two values (the prelude's `wee`).
+    wee: (a, b) => (lt(a, b, 33) ? a : b),
+    dicht: (l, i) => {
+      if (!Array.isArray(l)) throw native("dicht() needs a list");
+      const n = asInt(i);
+      if (n === null) throw native("dicht() needs an integer index");
+      const len = BigInt(l.length);
+      // Rust's `(len + idx) as usize` wraps a too-negative index tae a huge one.
+      const at = n < 0n ? BigInt.asUintN(64, len + n) : n;
+      if (at >= len) throw native(`Index ${at} oot o' bounds fer list o' length ${len}`);
+      const out = [...l];
+      out.splice(Number(at), 1);
+      return out;
+    },
+    redd_up: (l) => {
+      if (!Array.isArray(l)) throw native("redd_up() needs a list");
+      return l.filter((x) => x !== null && x !== undefined);
+    },
+    is_a: (x, t) => {
+      if (typeof t !== "string") throw native("is_a() needs a type name string");
+      switch (t) {
+        case "integer": case "int": return typeof x === "bigint";
+        case "float": return typeof x === "number";
+        case "string": case "str": return typeof x === "string";
+        case "bool": return typeof x === "boolean";
+        case "list": return Array.isArray(x);
+        case "bytes": case "byte": return x instanceof MdhBytes;
+        case "dict": return isDict(x);
+        case "function": case "dae": return typeof x === "function" && !isKin(x);
+        case "naething": case "nil": return x === null || x === undefined;
+        default: return false;
+      }
+    },
+    braw: (x) => {
+      if (x === null || x === undefined) return false;
+      if (typeof x === "boolean") return x;
+      if (typeof x === "bigint") return x > 0n;
+      if (typeof x === "number") return x > 0;
+      if (typeof x === "string") return x !== "";
+      if (Array.isArray(x)) return x.length > 0;
+      if (isDict(x)) return Object.keys(x).length > 0;
+      return true;
+    },
+    stoater: (l) => {
+      if (!Array.isArray(l)) throw native("stoater() needs a list");
+      if (l.length === 0) throw native("Cannae find a stoater in an empty list!");
+      let best = l[0];
+      for (let i = 1; i < l.length; i++) {
+        const x = l[i];
+        const t = typeof best;
+        if (t !== typeof x) continue;
+        if (t === "bigint" || t === "number") {
+          if (x > best) best = x;
+        } else if (t === "string") {
+          if (utf8Len(x) > utf8Len(best)) best = x;
+        }
+      }
+      return best;
+    },
+    scottify: (s) => {
+      if (typeof s !== "string") throw native("scottify() needs a string");
+      const pairs = [
+        ["yes", "aye"], ["Yes", "Aye"], ["no", "nae"], ["No", "Nae"], ["know", "ken"], ["Know", "Ken"],
+        ["not", "nae"], ["from", "fae"], ["to", "tae"], ["do", "dae"], ["myself", "masel"],
+        ["yourself", "yersel"], ["small", "wee"], ["little", "wee"], ["child", "bairn"],
+        ["children", "bairns"], ["church", "kirk"], ["beautiful", "bonnie"], ["Beautiful", "Bonnie"],
+        ["going", "gaun"], ["have", "hae"], ["nothing", "naething"], ["something", "somethin"],
+        ["everything", "awthing"], ["everyone", "awbody"], ["about", "aboot"], ["out", "oot"],
+        ["house", "hoose"],
+      ];
+      return pairs.reduce((acc, [from, to]) => acc.split(from).join(to), s);
+    },
+    sclaff: (l) => {
+      if (!Array.isArray(l)) throw native("sclaff needs a list");
+      const out = [];
+      const open = [];
+      const walk = (v) => {
+        if (!Array.isArray(v)) {
+          out.push(v);
+          return;
+        }
+        if (open.includes(v)) throw native("sclaff cannae flatten a list that's inside itsel!");
+        if (open.length >= 512) throw native("sclaff: yer lists are nested ower deep!");
+        open.push(v);
+        for (const item of v) walk(item);
+        open.pop();
+      };
+      walk(l);
+      return out;
+    },
+    drookit: (l) => {
+      if (!Array.isArray(l)) throw native("drookit() needs a list");
+      for (let i = 0; i < l.length; i++) {
+        for (let j = 0; j < i; j++) if (eq(l[j], l[i])) return true;
+      }
+      return false;
+    },
+    gallus: (x) => {
+      if (typeof x === "bigint") return x !== 0n && (x > 100n || x < -100n);
+      if (typeof x === "number") return x !== 0 && (x > 100 || x < -100);
+      if (typeof x === "string") return utf8Len(x) > 20;
+      if (Array.isArray(x)) return x.length > 10;
+      return false;
+    },
+    wrang_sort: (x, t) => {
+      if (typeof t !== "string") throw native("Second arg must be a type name string");
+      return typeName(x) !== t;
+    },
+    scunner_check: (x, t) => {
+      if (typeof t !== "string") throw native("scunner_check() needs type name as second arg");
+      const actual = typeName(x);
+      return actual === t ? true : `Och, ya scunner! Expected ${t} but got ${actual}`;
+    },
+    bonnie: (x) => `~~~ ${show(x)} ~~~`,
+    och: (x) => `Och! ${show(x)}`,
+    jings: (x) => `Jings! ${show(x)}`,
+    crivvens: (x) => `Crivvens! ${show(x)}`,
+    help_ma_boab: (x) => `Help ma boab! ${show(x)}`,
+    haud_yer_wheesht: () => "",
+    numpty_check: (x) => {
+      if (x === null || x === undefined) return "That's naething, ya numpty!";
+      if (x === "") return "Empty string, ya numpty!";
+      if (Array.isArray(x) && x.length === 0) return "Empty list, ya numpty!";
+      return "That's braw!";
+    },
+    crabbit: (x) => {
+      if (typeof x === "bigint") return x < 0n;
+      if (typeof x === "number") return x < 0;
+      throw native("crabbit() needs a number");
+    },
+    cannie: (x) => {
+      if (x === null || x === undefined) return false;
+      if (typeof x === "bigint") return x >= 0n;
+      if (typeof x === "number") return x >= 0 && !Number.isNaN(x);
+      if (typeof x === "string") return x !== "";
+      if (Array.isArray(x)) return x.length > 0;
+      if (typeof x === "boolean") return x;
+      return true;
+    },
+    is_wee: (x) => {
+      if (typeof x === "bigint") return (x < 0n ? -x : x) < 10n;
+      if (typeof x === "number") return Math.abs(x) < 10;
+      if (typeof x === "string") return utf8Len(x) < 5;
+      if (Array.isArray(x)) return x.length < 5;
+      return true;
+    },
+    is_muckle: (x) => {
+      if (typeof x === "bigint") return (x < 0n ? -x : x) >= 100n;
+      if (typeof x === "number") return Math.abs(x) >= 100;
+      if (typeof x === "string") return utf8Len(x) >= 50;
+      if (Array.isArray(x)) return x.length >= 50;
+      return false;
+    },
+    scunner: (x) => {
+      if (typeof x === "bigint") return x < 0n;
+      if (typeof x === "number") return x < 0;
+      if (typeof x === "string") return x === "";
+      if (Array.isArray(x)) return x.length === 0;
+      if (typeof x === "boolean") return !x;
+      return x === null || x === undefined;
+    },
+    haver: () => {
+      const havers = [
+        "Och, yer bum's oot the windae!", "Awa' an bile yer heid!", "Haud yer wheesht, ya numpty!",
+        "Dinnae fash yersel!", "Whit's fer ye'll no go by ye!", "Lang may yer lum reek!",
+        "Yer a wee scunner, so ye are!", "Haste ye back!", "It's a dreich day the day!",
+        "Pure dead brilliant!", "Ah'm fair puckled!", "Gie it laldy!", "Whit a stoater!",
+        "That's pure mince!", "Jings, crivvens, help ma boab!",
+      ];
+      return havers[Math.floor(Math.random() * havers.length)];
+    },
+    slainte: () => {
+      const toasts = [
+        "Slàinte mhath! (Good health!)",
+        "Here's tae us, wha's like us? Gey few, and they're a' deid!",
+        "May the best ye've ever seen be the worst ye'll ever see!",
+        "Lang may yer lum reek wi' ither fowk's coal!",
+        "May ye aye be happy, an' never drink frae a toom glass!",
+        "Here's tae the heath, the hill and the heather!",
+      ];
+      return toasts[Math.floor(Math.random() * toasts.length)];
+    },
+    dram: (l) => {
+      if (!Array.isArray(l)) throw native("dram needs a list tae pick fae");
+      if (l.length === 0) return null;
+      return l[Math.floor(Math.random() * l.length)];
+    },
+    jammy: (a, b) => {
+      const lo = asInt(a);
+      const hi = asInt(b);
+      if (lo === null || hi === null) throw native("jammy() needs integer bounds");
+      if (lo >= hi) throw native("jammy() needs min < max, ya numpty!");
+      return randomIntInclusive(lo, hi - 1n);
+    },
+    bampot_mode: (l) => {
+      if (!Array.isArray(l)) throw native("bampot_mode() needs a list");
+      const items = [...l];
+      for (let pass = 0; pass < 2; pass++) {
+        for (let i = items.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [items[i], items[j]] = [items[j], items[i]];
+        }
+      }
+      return items.reverse();
+    },
+    stopwatch: (f) => {
+      if (typeof f !== "function" || isKin(f)) throw native("stopwatch() needs a function");
+      return `Use 'noo()' before and after callin' '${f.name}' tae time it!`;
+    },
+    blether_format: (template, d) => {
+      if (typeof template !== "string") throw native("blether_format needs a template string");
+      if (!isDict(d)) throw native("blether_format needs a dictionary o' values");
+      let result = template;
+      for (const k of Object.keys(d)) {
+        const key = undkey(k);
+        const keyStr = typeof key === "string" ? key : show(key);
+        result = result.split(`{${keyStr}}`).join(show(d[k]));
+      }
+      return result;
+    },
+    braw_time: () => {
+      const secs = BigInt(Math.floor(Date.now() / 1000));
+      const hours = Number((secs / 3600n) % 24n);
+      const minutes = Number((secs / 60n) % 60n);
+      const hh = String(hours).padStart(2, "0");
+      const mm = String(minutes).padStart(2, "0");
+      const t = `(${hh}:${mm})`;
+      if (hours <= 5) return `It's the wee small hours ${t}`;
+      if (hours <= 11) return `It's the mornin' ${t}`;
+      if (hours === 12) return `It's high noon ${t}`;
+      if (hours <= 17) return `It's the efternoon ${t}`;
+      if (hours <= 21) return `It's the evenin' ${t}`;
+      return `It's gettin' late ${t}`;
+    },
+    braw_date: (ts) => {
+      let secs;
+      if (typeof ts === "bigint") secs = BigInt.asUintN(64, ts);
+      else if (ts === null || ts === undefined) secs = BigInt(Math.floor(Date.now() / 1000));
+      else throw native("braw_date() needs a timestamp or naething");
+      const days = secs / 86400n;
+      const dayNames = ["the Sabbath", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Setterday"];
+      const monthNames = ["Januar", "Februar", "Mairch", "Aprile", "Mey", "Juin", "Julie", "August", "September", "October", "November", "December"];
+      const leap = (y) => (y % 4n === 0n && y % 100n !== 0n) || y % 400n === 0n;
+      let remaining = BigInt.asIntN(64, days);
+      let year = 1970n;
+      for (;;) {
+        const inYear = leap(year) ? 366n : 365n;
+        if (remaining < inYear) break;
+        remaining -= inYear;
+        year += 1n;
+      }
+      const dims = [31, leap(year) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31].map(BigInt);
+      let month = 0;
+      for (let i = 0; i < 12; i++) {
+        if (remaining < dims[i]) {
+          month = i;
+          break;
+        }
+        remaining -= dims[i];
+      }
+      const day = remaining + 1n;
+      const ordinal = day === 1n || day === 21n || day === 31n ? "st" : day === 2n || day === 22n ? "nd" : day === 3n || day === 23n ? "rd" : "th";
+      return `${dayNames[Number((days + 4n) % 7n)]}, the ${day}${ordinal} o' ${monthNames[month]}, ${year}`;
+    },
+
     // A list wi' a repeat, or a string wi' a repeated character.
     clarty: (x) => {
       if (Array.isArray(x)) {
@@ -2147,15 +2427,18 @@ const __havers_core = (() => {
       if (!Array.isArray(a) || !Array.isArray(b)) throw native("ceilidh needs two lists");
       return interleaveLists(a, b);
     },
+    // A string counts as a list o' its characters (MDH-BUG-FLU-00170).
     tak: (l, n) => {
-      const count = Array.isArray(l) ? asInt(n) : null;
+      const items = Array.isArray(l) ? l : typeof l === "string" ? cps(l) : null;
+      const count = items === null ? null : asInt(n);
       if (count === null) throw native("tak() needs a list and an integer");
-      return l.slice(0, clampCount(count, l.length));
+      return items.slice(0, clampCount(count, items.length));
     },
     drap: (l, n) => {
-      const count = Array.isArray(l) ? asInt(n) : null;
+      const items = Array.isArray(l) ? l : typeof l === "string" ? cps(l) : null;
+      const count = items === null ? null : asInt(n);
       if (count === null) throw native("drap() needs a list and an integer");
-      return l.slice(clampCount(count, l.length));
+      return items.slice(clampCount(count, items.length));
     },
     // Groups runs o' consecutive equal elements (compared with the run's first).
     grup_runs: (l) => {
