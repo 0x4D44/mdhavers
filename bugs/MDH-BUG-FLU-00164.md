@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00164 — Native: unbounded recursion segfaults instead of raising the stack error
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** High
 - **Area:** native
 - **Raised:** 2026-10-26T05:03:22Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261026T050440Z-fef125a9
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00164-run-fix-20261026T050440Z-fef125a9
-- **Owner base:** 0ce2a5bc5cf9ba91c13f5b84148dcd8cfea0ba99
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-26T05:04:40Z
-- **Owner until:** 2026-10-26T12:16:57Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-26T05:03:22Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-26T05:03:22Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T10:35:53Z, deltic:auto role=fix run=fix-20261026T050440Z-fef125a9 branch=task/bug-MDH-BUG-FLU-00164-run-fix-20261026T050440Z-fef125a9 code=cc7bfde gate=manual)
 
 ## Observation
 
