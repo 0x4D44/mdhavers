@@ -6,15 +6,15 @@
 - **Area:** native
 - **Raised:** 2026-10-25T08:13:38Z
 - **Discovery source:** Agent
-- **Owner:** -
-- **Owner role:** -
-- **Owner run:** -
-- **Owner host:** -
-- **Owner branch:** -
-- **Owner base:** -
-- **Owner fingerprint:** -
-- **Owner since:** -
-- **Owner until:** -
+- **Owner:** deltic:manual
+- **Owner role:** verify
+- **Owner run:** verify-20261026T182021Z-b44dea60
+- **Owner host:** flux
+- **Owner branch:** task/bug-MDH-BUG-FLU-00146-run-verify-20261026T182021Z-b44dea60
+- **Owner base:** 2f352f49ef4c71b45a0497bf81a04779c622faad
+- **Owner fingerprint:** sha256:3e8fd6a49da37c3b4007558df9d079112d468e37b13f93808b21e6598ea10e1c
+- **Owner since:** 2026-10-26T18:20:21Z
+- **Owner until:** 2026-10-26T22:20:21Z
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
