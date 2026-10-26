@@ -75,6 +75,8 @@ pub(crate) const MDH_TAG_BYTES: u8 = 13;
 pub(crate) const MDH_TAG_NATIVE: u8 = 14;
 
 extern "C" {
+    fn __mdh_stack_low() -> i32;
+    fn __mdh_stack_overflow_message() -> MdhValue;
     fn __mdh_make_nil() -> MdhValue;
     fn __mdh_make_bool(value: bool) -> MdhValue;
     fn __mdh_make_int(value: i64) -> MdhValue;
@@ -731,11 +733,41 @@ unsafe fn json_fallback_string(value: MdhValue) -> String {
     format!("\"{}\"", escaped)
 }
 
-unsafe fn mdh_value_to_json(value: MdhValue, pretty: bool, indent: usize) -> String {
+/// `mdh_value_to_json` ran too deep: nested values recurse here, so it stops with the
+/// runtime's stack error while there is room to raise it (MDH-BUG-FLU-00164).
+struct StackLow;
+
+unsafe fn json_result(result: Result<String, StackLow>) -> MdhRsResult {
+    match result {
+        Ok(s) => mdh_ok(mdh_make_string_from_rust(&s)),
+        Err(StackLow) => MdhRsResult {
+            ok: 0,
+            value: __mdh_make_nil(),
+            error: __mdh_stack_overflow_message(),
+        },
+    }
+}
+
+unsafe fn mdh_value_to_json(
+    value: MdhValue,
+    pretty: bool,
+    indent: usize,
+) -> Result<String, StackLow> {
+    if __mdh_stack_low() != 0 {
+        return Err(StackLow);
+    }
+    mdh_value_to_json_level(value, pretty, indent)
+}
+
+unsafe fn mdh_value_to_json_level(
+    value: MdhValue,
+    pretty: bool,
+    indent: usize,
+) -> Result<String, StackLow> {
     let ws = "  ".repeat(indent);
     let ws_inner = "  ".repeat(indent + 1);
 
-    match value.tag {
+    Ok(match value.tag {
         MDH_TAG_NIL => "null".to_string(),
         MDH_TAG_BOOL => {
             if value.data != 0 {
@@ -759,16 +791,16 @@ unsafe fn mdh_value_to_json(value: MdhValue, pretty: bool, indent: usize) -> Str
         }
         MDH_TAG_LIST => {
             if value.data == 0 {
-                return "[]".to_string();
+                return Ok("[]".to_string());
             }
             let list_ptr = value.data as *const MdhList;
             if list_ptr.is_null() {
-                return "[]".to_string();
+                return Ok("[]".to_string());
             }
             let list = &*list_ptr;
             let len = list.length.max(0) as usize;
             if len == 0 {
-                return "[]".to_string();
+                return Ok("[]".to_string());
             }
             let items = if list.items.is_null() {
                 &[] as &[MdhValue]
@@ -776,16 +808,22 @@ unsafe fn mdh_value_to_json(value: MdhValue, pretty: bool, indent: usize) -> Str
                 std::slice::from_raw_parts(list.items, len)
             };
             if pretty {
-                let parts: Vec<String> = items
+                let parts = items
                     .iter()
-                    .map(|v| format!("{}{}", ws_inner, mdh_value_to_json(*v, true, indent + 1)))
-                    .collect();
+                    .map(|v| {
+                        Ok(format!(
+                            "{}{}",
+                            ws_inner,
+                            mdh_value_to_json(*v, true, indent + 1)?
+                        ))
+                    })
+                    .collect::<Result<Vec<String>, StackLow>>()?;
                 format!("[\n{}\n{}]", parts.join(",\n"), ws)
             } else {
-                let parts: Vec<String> = items
+                let parts = items
                     .iter()
                     .map(|v| mdh_value_to_json(*v, false, indent))
-                    .collect();
+                    .collect::<Result<Vec<String>, StackLow>>()?;
                 format!("[{}]", parts.join(", "))
             }
         }
@@ -794,24 +832,24 @@ unsafe fn mdh_value_to_json(value: MdhValue, pretty: bool, indent: usize) -> Str
         }
         MDH_TAG_DICT => {
             if value.data == 0 {
-                return "{}".to_string();
+                return Ok("{}".to_string());
             }
             // Dict values store a stable handle pointer to their payload pointer (see
             // runtime/mdh_runtime.c: __mdh_kv_payload_ptr).
             let handle_ptr = value.data as *const i64;
             if handle_ptr.is_null() {
-                return "{}".to_string();
+                return Ok("{}".to_string());
             }
             // Drop any removed (tombstoned) entries first, so the payload holds exactly
             // `count` live entries (MDH-BUG-FLU-00091).
             __mdh_kv_densify(value);
             let payload_ptr = *handle_ptr as *const i64;
             if payload_ptr.is_null() {
-                return "{}".to_string();
+                return Ok("{}".to_string());
             }
             let count = *payload_ptr;
             if count <= 0 {
-                return "{}".to_string();
+                return Ok("{}".to_string());
             }
             let entries_ptr = payload_ptr.add(1) as *const MdhValue;
             let entries = std::slice::from_raw_parts(entries_ptr, (count * 2) as usize);
@@ -826,9 +864,9 @@ unsafe fn mdh_value_to_json(value: MdhValue, pretty: bool, indent: usize) -> Str
                 };
                 let key_json = json_escape_string(&key_str);
                 let val_json = if pretty {
-                    mdh_value_to_json(val, true, indent + 1)
+                    mdh_value_to_json(val, true, indent + 1)?
                 } else {
-                    mdh_value_to_json(val, false, indent)
+                    mdh_value_to_json(val, false, indent)?
                 };
                 if pretty {
                     parts.push(format!("{}{}: {}", ws_inner, key_json, val_json));
@@ -843,7 +881,7 @@ unsafe fn mdh_value_to_json(value: MdhValue, pretty: bool, indent: usize) -> Str
             }
         }
         _ => json_fallback_string(value),
-    }
+    })
 }
 
 fn json_to_mdh(value: &JsonValue) -> Result<MdhValue, String> {
@@ -912,10 +950,7 @@ pub extern "C" fn __mdh_rs_json_parse(json_str: MdhValue) -> MdhRsResult {
 
 #[no_mangle]
 pub extern "C" fn __mdh_rs_json_stringify(value: MdhValue) -> MdhRsResult {
-    match std::panic::catch_unwind(|| unsafe {
-        let s = mdh_value_to_json(value, false, 0);
-        mdh_ok(mdh_make_string_from_rust(&s))
-    }) {
+    match std::panic::catch_unwind(|| unsafe { json_result(mdh_value_to_json(value, false, 0)) }) {
         Ok(result) => result,
         Err(_) => unsafe { mdh_err("Rust panic in json_stringify") },
     }
@@ -923,10 +958,7 @@ pub extern "C" fn __mdh_rs_json_stringify(value: MdhValue) -> MdhRsResult {
 
 #[no_mangle]
 pub extern "C" fn __mdh_rs_json_pretty(value: MdhValue) -> MdhRsResult {
-    match std::panic::catch_unwind(|| unsafe {
-        let s = mdh_value_to_json(value, true, 0);
-        mdh_ok(mdh_make_string_from_rust(&s))
-    }) {
+    match std::panic::catch_unwind(|| unsafe { json_result(mdh_value_to_json(value, true, 0)) }) {
         Ok(result) => result,
         Err(_) => unsafe { mdh_err("Rust panic in json_pretty") },
     }

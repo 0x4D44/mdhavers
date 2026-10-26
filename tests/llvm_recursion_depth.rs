@@ -123,3 +123,95 @@ fn deep_but_finite_recursion_still_works() {
     assert_eq!(run.code, Some(0), "{}", run.stderr);
     assert_eq!(run.stdout.trim(), "5000");
 }
+
+#[test]
+fn formatting_a_too_deeply_nested_list_raises_the_error() {
+    // The runtime formats nested values recursively: it stops with the stack error at a
+    // checked headroom, from normal code, rather than running into the tripwire.
+    let src = r#"ken l = []
+fer i in 0..300000 {
+    l = [l]
+}
+hae_a_bash {
+    blether l
+} gin_it_gangs_wrang e {
+    blether "caught: " + e
+}
+hae_a_bash {
+    blether json_stringify(l)
+} gin_it_gangs_wrang e {
+    blether "json caught: " + e
+}
+blether "after"
+blether l
+"#;
+    let run = run_native(src, false);
+    assert_eq!(run.code, Some(1), "{}", run.stderr);
+    let puggled = |line: usize| {
+        format!(
+            "Stack's fair puggled! Too many nested calls at line {line} - yer recursion's gone radge!"
+        )
+    };
+    assert_eq!(
+        run.stdout.lines().collect::<Vec<_>>(),
+        vec![
+            format!("caught: {}", puggled(6)),
+            format!("json caught: {}", puggled(11)),
+            "after".to_string()
+        ]
+    );
+    assert!(run.stderr.contains(&puggled(16)), "{}", run.stderr);
+}
+
+#[test]
+fn recursion_that_calls_the_runtime_only_now_and_then_raises_the_error() {
+    // Most levels call nothing out of compiled code; every k-th calls a runtime
+    // function from wherever the stack has got to.
+    let src = r#"dae r(n, k) {
+    gin n % k == 0 {
+        ken s = tae_string(n) + "!"
+    }
+    gie 1 + r(n + 1, k)
+}
+fer k in [1000, 997, 991, 983, 977, 971, 967, 953, 947, 941, 7, 3] {
+    hae_a_bash {
+        blether r(0, k)
+    } gin_it_gangs_wrang e {
+        blether "caught " + tae_string(k)
+    }
+}
+blether "after"
+"#;
+    let ks = [1000, 997, 991, 983, 977, 971, 967, 953, 947, 941, 7, 3];
+    let mut expected: Vec<String> = ks.iter().map(|k| format!("caught {k}")).collect();
+    expected.push("after".to_string());
+    for refcounting in [false, true] {
+        let run = run_native(src, refcounting);
+        assert_eq!(run.code, Some(0), "rc={refcounting}: {}", run.stderr);
+        assert_eq!(
+            run.stdout.lines().collect::<Vec<_>>(),
+            expected,
+            "rc={refcounting}"
+        );
+    }
+}
+
+#[test]
+fn a_function_with_a_frame_bigger_than_the_tripwire_raises_the_error() {
+    // 400 hae_a_bash sites reserve about 200 KiB of handler buffers in one frame, more
+    // than the tripwire: the frame is probed page by page, so it cannot step over it.
+    let body: String = (0..400)
+        .map(|i| format!("    hae_a_bash {{ x = x + {i} }} gin_it_gangs_wrang e{i} {{ x = 0 }}\n"))
+        .collect();
+    let src = format!(
+        "dae big(n) {{\n    ken x = n\n{body}    gie 1 + big(n + 1)\n}}\n\
+         hae_a_bash {{\n    blether big(0)\n}} gin_it_gangs_wrang e {{\n    blether \"big caught\"\n}}\n\
+         blether \"after\"\n"
+    );
+    let run = run_native(&src, false);
+    assert_eq!(run.code, Some(0), "{}", run.stderr);
+    assert_eq!(
+        run.stdout.lines().collect::<Vec<_>>(),
+        vec!["big caught", "after"]
+    );
+}

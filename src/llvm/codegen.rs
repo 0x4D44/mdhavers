@@ -5196,20 +5196,34 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     /// Unbounded recursion must raise "Stack's fair puggled!" rather than crash
-    /// (MDH-BUG-FLU-00164). The runtime puts a PROT_NONE tripwire at the end of each
-    /// thread's stack and turns a fault in it into that error (`__mdh_stack_fault`), which
-    /// is only safe when the fault is taken in compiled code, never inside malloc or stdio.
-    /// So before every call out of compiled code (a runtime or libc function, or an
-    /// indirect call) load one byte `STACK_PROBE_DISTANCE` below the stack pointer: whatever the
-    /// callee then uses (less than that) stays clear of the tripwire, and the probe faults
-    /// first. Compiled code that calls nothing out (the int path of a recursive function)
-    /// carries no probe at all; a frame of its own that reaches the tripwire faults in
-    /// compiled code anyway.
+    /// (MDH-BUG-FLU-00164). The runtime puts a PROT_NONE tripwire of
+    /// `STACK_PROBE_DISTANCE` plus slack at the end of each thread's stack and turns a
+    /// fault in it into that error (`__mdh_stack_fault`), which is only safe when the
+    /// fault is taken in compiled code, never inside malloc or stdio. So:
+    ///
+    /// - Before every call out of compiled code (a runtime or libc function, an indirect
+    ///   call, or a memcpy/memmove/memset intrinsic, which may become a libc call), touch
+    ///   the stack pointer and then the byte `STACK_PROBE_DISTANCE` below it. If the stack
+    ///   pointer is already in the tripwire the first load faults; otherwise, if the
+    ///   callee could reach the tripwire, the second lands inside it (the tripwire is at
+    ///   least that deep), so the callee never gets there first. `setjmp` is left out: a
+    ///   fault between registering a handler and filling its buffer would jump to garbage,
+    ///   and the probe before `__mdh_try_push` already covers both calls.
+    /// - Every compiled function probes its own frame pagewise when the frame is large
+    ///   ("probe-stack"), so no frame can step over the tripwire.
+    ///
+    /// Compiled code that calls nothing out (the int path of a recursive function) carries
+    /// no probe at all; its frames reach the tripwire in compiled code.
     fn emit_stack_probes(&mut self) {
+        use inkwell::attributes::AttributeLoc;
         use inkwell::llvm_sys::core::{LLVMGetCalledValue, LLVMIsAFunction, LLVMIsAInlineAsm};
         use inkwell::values::{AsValueRef, InstructionOpcode};
         /// Keep in step with MDH_STACK_PROBE in runtime/mdh_runtime.c.
         const STACK_PROBE_DISTANCE: i64 = 128 * 1024;
+        /// Intrinsics the backend may lower to a libc call.
+        const LIBC_INTRINSICS: &[&[u8]] = &[b"llvm.memcpy.", b"llvm.memmove.", b"llvm.memset."];
+        /// Never probed: see above.
+        const UNPROBED: &[&[u8]] = &[b"setjmp", b"_setjmp", b"sigsetjmp"];
         let ptr_type = self.context.ptr_type(AddressSpace::default());
         // The stack pointer, without forcing a frame pointer as llvm.frameaddress would.
         let stacksave = match self.module.get_function("llvm.stacksave.p0") {
@@ -5219,6 +5233,42 @@ impl<'ctx> CodeGen<'ctx> {
                     .add_function("llvm.stacksave.p0", ptr_type.fn_type(&[], false), None)
             }
         };
+        let probe_stack = self
+            .context
+            .create_string_attribute("probe-stack", "inline-asm");
+        // On the two native targets the probe is one inline-asm statement per call site,
+        // whose order against the call is fixed and which keeps the IR small; elsewhere
+        // it is a pair of volatile loads.
+        let void_fn = self.context.void_type().fn_type(&[], false);
+        let triple = self.module.get_triple();
+        let triple = triple.as_str().to_string_lossy();
+        let probe_asm = if triple.starts_with("aarch64") || triple.starts_with("arm64") {
+            Some((
+                format!(
+                    "ldrb wzr, [sp]\nsub x16, sp, #{}, lsl #12\nldrb wzr, [x16]",
+                    STACK_PROBE_DISTANCE >> 12
+                ),
+                "~{x16},~{memory}",
+            ))
+        } else if triple.starts_with("x86_64") {
+            Some((
+                format!("cmpb $$0, (%rsp)\ncmpb $$0, -{STACK_PROBE_DISTANCE}(%rsp)"),
+                "~{dirflag},~{fpsr},~{flags},~{memory}",
+            ))
+        } else {
+            None
+        }
+        .map(|(code, clobbers)| {
+            self.context.create_inline_asm(
+                void_fn,
+                code,
+                clobbers.to_string(),
+                true,
+                false,
+                None,
+                false,
+            )
+        });
         let saved_block = self.builder.get_insert_block();
         let functions: Vec<FunctionValue<'ctx>> = self
             .module
@@ -5230,6 +5280,7 @@ impl<'ctx> CodeGen<'ctx> {
             .i64_type
             .const_int(STACK_PROBE_DISTANCE.wrapping_neg() as u64, true);
         for function in functions {
+            function.add_attribute(AttributeLoc::Function, probe_stack);
             let mut calls_out = Vec::new();
             for block in function.get_basic_blocks() {
                 let mut instr = block.get_first_instruction();
@@ -5244,7 +5295,11 @@ impl<'ctx> CodeGen<'ctx> {
                     } else if unsafe { !LLVMIsAFunction(callee).is_null() } {
                         let f = unsafe { FunctionValue::new(callee) }.expect("called function");
                         let name = f.get_name().to_bytes();
-                        f.count_basic_blocks() == 0 && !name.starts_with(b"llvm.")
+                        if name.starts_with(b"llvm.") {
+                            LIBC_INTRINSICS.iter().any(|p| name.starts_with(p))
+                        } else {
+                            f.count_basic_blocks() == 0 && !UNPROBED.contains(&name)
+                        }
                     } else {
                         // Inline asm is not a call out; a function pointer may be.
                         unsafe { LLVMIsAInlineAsm(callee).is_null() }
@@ -5256,29 +5311,37 @@ impl<'ctx> CodeGen<'ctx> {
             }
             for call in calls_out {
                 self.builder.position_before(&call);
-                let frame = self
+                if let Some(asm) = probe_asm {
+                    self.builder
+                        .build_indirect_call(void_fn, asm, &[], "")
+                        .unwrap();
+                    continue;
+                }
+                let sp = self
                     .builder
                     .build_call(stacksave, &[], "stack_probe_sp")
                     .unwrap()
                     .try_as_basic_value()
                     .basic()
-                    .expect("frameaddress returns a pointer")
+                    .expect("stacksave returns a pointer")
                     .into_pointer_value();
-                let at = unsafe {
+                let below = unsafe {
                     self.builder
-                        .build_gep(self.types.i8_type, frame, &[offset], "stack_probe_at")
+                        .build_gep(self.types.i8_type, sp, &[offset], "stack_probe_at")
                         .unwrap()
                 };
-                let probe = self
-                    .builder
-                    .build_load(self.types.i8_type, at, "stack_probe")
-                    .unwrap();
-                probe
-                    .into_int_value()
-                    .as_instruction()
-                    .expect("probe load")
-                    .set_volatile(true)
-                    .unwrap();
+                for (at, name) in [(sp, "stack_probe_here"), (below, "stack_probe")] {
+                    let probe = self
+                        .builder
+                        .build_load(self.types.i8_type, at, name)
+                        .unwrap();
+                    probe
+                        .into_int_value()
+                        .as_instruction()
+                        .expect("probe load")
+                        .set_volatile(true)
+                        .unwrap();
+                }
             }
         }
         if let Some(block) = saved_block {
