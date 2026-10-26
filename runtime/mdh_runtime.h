@@ -112,6 +112,9 @@ typedef struct {
 
 #define MDH_OBJ_IMMORTAL 0x1u
 #define MDH_OBJ_DEAD 0x2u
+/* An object of a kind outside MdhObjKind: compiled code's inline count fast path tests
+ * flags == MDH_OBJ_MAGIC, so this sends it to __mdh_rc_retain_obj/__mdh_rc_release_obj. */
+#define MDH_OBJ_SLOW 0x4u
 #define MDH_OBJ_MAGIC 0x4D440000u
 #define MDH_OBJ_MAGIC_MASK 0xFFFF0000u
 #define MDH_REFCOUNT_IMMORTAL (INT64_MAX / 2)
@@ -169,8 +172,16 @@ int64_t __mdh_rc_live(uint32_t kind);
 void __mdh_rc_enable(void);
 /* Read MDH_RC_REPORT; called once at program start. */
 void __mdh_rc_init(void);
+/* Free the small-object cache (gc_stub.c); __mdh_thread_spawn calls it before the
+ * first thread exists, after which nothing is cached. */
+void __mdh_obj_cache_drain(void);
 extern uint32_t __mdh_rc_kinds;
 extern uint32_t __mdh_rc_free_kinds;
+/* 1 while compiled code may update counts inline, without calling retain/release (its
+ * fast path, src/llvm/codegen/rc.rs:rc_emit_fast_paths): every object kind is counted
+ * and no thread has been spawned. 0 from the first spawn on, when every count goes
+ * through the atomic paths here. */
+extern int32_t __mdh_rc_fast;
 /* Hooks the allocator needs from the runtime (mdh_runtime.c): call `visit` once per
  * MdhValue the object directly holds; free the buffers a dead object owns (not the
  * object itself); and the current mdhavers line. */

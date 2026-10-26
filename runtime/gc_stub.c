@@ -30,13 +30,23 @@ _Static_assert(sizeof(MdhObjHeader) == 16, "the object header keeps payloads 16-
 static int64_t __mdh_rc_allocated[MDH_KIND_COUNT];
 static int64_t __mdh_rc_died[MDH_KIND_COUNT];
 
+/* Plain until the first thread is spawned, atomic after (as the counts are, see
+ * __mdh_rc_inc): __mdh_thread_spawn sets __mdh_line_threaded before the thread exists. */
+static inline void __mdh_counter_add(int64_t *counter) {
+    if (__builtin_expect(__mdh_line_threaded != 0, 0)) {
+        __atomic_fetch_add(counter, 1, __ATOMIC_RELAXED);
+    } else {
+        (*counter)++;
+    }
+}
+
 static void __mdh_alloc_note(uint32_t kind) {
 #ifndef MDH_ALLOC_STATS
     /* Only a program compiled with counting pays for the counters. */
     if (__mdh_rc_kinds == 0) return;
 #endif
     if (kind >= MDH_KIND_COUNT) kind = MDH_KIND_BUFFER;
-    __atomic_fetch_add(&__mdh_rc_allocated[kind], 1, __ATOMIC_RELAXED);
+    __mdh_counter_add(&__mdh_rc_allocated[kind]);
 }
 
 int64_t __mdh_alloc_count(uint32_t kind) {
@@ -59,6 +69,71 @@ static MdhObjHeader *__mdh_obj_header(const void *payload) {
     return (MdhObjHeader *)((char *)payload - sizeof(MdhObjHeader));
 }
 
+/* ========== Small-object cache (R4) ==========
+ *
+ * Objects freed at zero are kept on per-size-class free lists and handed out again by
+ * __mdh_obj_alloc, instead of a free() and a malloc() each: in allocation loops those
+ * were most of reference counting's cost. A class is a block size (header included) in
+ * 16-byte steps up to MDH_OBJ_CACHE_MAX; a cached object's block was malloc'd at its
+ * class size, and the class (1-based) sits in bits 16-23 of the header's kind field
+ * (MDH_HDR_KIND strips it). Each list keeps at most MDH_OBJ_CACHE_DEPTH blocks. Only
+ * while the program is single-threaded: __mdh_obj_cache_drain frees every cached block
+ * at the first thread_spawn, and from then on objects are malloc'd and freed as before.
+ * Off under AddressSanitizer, so a use after free is still reported. */
+#define MDH_OBJ_CACHE_MAX 256
+#define MDH_OBJ_CACHE_CLASSES (MDH_OBJ_CACHE_MAX / 16)
+#define MDH_OBJ_CACHE_DEPTH 256
+#define MDH_HDR_CLASS_SHIFT 16
+#define MDH_HDR_KIND(h) ((h)->kind & 0xFFFFu)
+#define MDH_HDR_CLASS(h) (((h)->kind >> MDH_HDR_CLASS_SHIFT) & 0xFFu)
+
+#if defined(__SANITIZE_ADDRESS__)
+#define MDH_OBJ_CACHE_ON 0
+#elif defined(__has_feature)
+#if __has_feature(address_sanitizer)
+#define MDH_OBJ_CACHE_ON 0
+#endif
+#endif
+#ifndef MDH_OBJ_CACHE_ON
+#define MDH_OBJ_CACHE_ON 1
+#endif
+
+static MdhObjHeader *__mdh_obj_cache[MDH_OBJ_CACHE_CLASSES + 1];
+static uint32_t __mdh_obj_cache_len[MDH_OBJ_CACHE_CLASSES + 1];
+
+/* The next cached block is kept where the refcount was. */
+#define MDH_CACHE_NEXT(h) (*(MdhObjHeader **)(void *)(h))
+
+static inline int __mdh_obj_cache_usable(void) {
+    return MDH_OBJ_CACHE_ON && !__mdh_line_threaded;
+}
+
+/* Called by __mdh_thread_spawn before the first thread exists. */
+void __mdh_obj_cache_drain(void) {
+    for (uint32_t c = 1; c <= MDH_OBJ_CACHE_CLASSES; c++) {
+        MdhObjHeader *h = __mdh_obj_cache[c];
+        while (h) {
+            MdhObjHeader *next = MDH_CACHE_NEXT(h);
+            free(h);
+            h = next;
+        }
+        __mdh_obj_cache[c] = NULL;
+        __mdh_obj_cache_len[c] = 0;
+    }
+}
+
+/* Free a dead object's block, or keep it for reuse. */
+static inline void __mdh_obj_block_free(MdhObjHeader *h) {
+    uint32_t c = MDH_HDR_CLASS(h);
+    if (c != 0 && __mdh_obj_cache_usable() && __mdh_obj_cache_len[c] < MDH_OBJ_CACHE_DEPTH) {
+        MDH_CACHE_NEXT(h) = __mdh_obj_cache[c];
+        __mdh_obj_cache[c] = h;
+        __mdh_obj_cache_len[c]++;
+        return;
+    }
+    free(h);
+}
+
 void *__mdh_obj_alloc(uint32_t kind, size_t size) {
     /* Counting off (__mdh_rc_kinds is fixed before main allocates anything): nothing reads
      * a heap object's header, so it gets none, as before reference counting existed. */
@@ -67,11 +142,27 @@ void *__mdh_obj_alloc(uint32_t kind, size_t size) {
         return malloc(size);
     }
     if (size > SIZE_MAX - sizeof(MdhObjHeader)) return NULL;
-    MdhObjHeader *h = (MdhObjHeader *)malloc(sizeof(MdhObjHeader) + size);
+    size_t total = sizeof(MdhObjHeader) + size;
+    MdhObjHeader *h;
+    uint32_t class_bits = 0;
+    if (total <= MDH_OBJ_CACHE_MAX && __mdh_obj_cache_usable()) {
+        uint32_t c = (uint32_t)((total + 15) / 16);
+        h = __mdh_obj_cache[c];
+        if (h) {
+            __mdh_obj_cache[c] = MDH_CACHE_NEXT(h);
+            __mdh_obj_cache_len[c]--;
+        } else {
+            h = (MdhObjHeader *)malloc((size_t)c * 16);
+        }
+        class_bits = c << MDH_HDR_CLASS_SHIFT;
+    } else {
+        h = (MdhObjHeader *)malloc(total);
+    }
     if (!h) return NULL;
     h->refcount = 1;
-    h->kind = kind;
+    h->kind = kind | class_bits;
     h->flags = MDH_OBJ_MAGIC;
+    if (kind == MDH_KIND_BUFFER || kind >= MDH_KIND_COUNT) h->flags |= MDH_OBJ_SLOW;
     __mdh_alloc_note(kind);
     return h + 1;
 }
@@ -88,7 +179,7 @@ static void __mdh_rc_fail(const char *op, const MdhObjHeader *h) {
         stderr,
         "mdhavers rc: %s o' a deid %s object %p (it dee'd at line %lld), at line %lld\n",
         op,
-        __mdh_rc_kind_name(h->kind),
+        __mdh_rc_kind_name(MDH_HDR_KIND(h)),
         (const void *)(h + 1),
         (long long)h->refcount,
         (long long)__mdh_rc_line()
@@ -125,11 +216,12 @@ void *__mdh_obj_realloc(void *obj, size_t size) {
     /* Growing in place is only legal for an object nobody else holds (DES F6 3.7):
      * realloc may move it, leaving any other holder pointing at freed memory. */
     int64_t count = __atomic_load_n(&h->refcount, __ATOMIC_ACQUIRE);
-    if (h->kind < MDH_KIND_COUNT && (__mdh_rc_kinds & (1u << h->kind)) && count != 1) {
+    uint32_t kind = MDH_HDR_KIND(h);
+    if (kind < MDH_KIND_COUNT && (__mdh_rc_kinds & (1u << kind)) && count != 1) {
         fprintf(
             stderr,
             "mdhavers rc: realloc o' a shared %s object %p (count %lld), at line %lld\n",
-            __mdh_rc_kind_name(h->kind),
+            __mdh_rc_kind_name(kind),
             obj,
             (long long)count,
             (long long)__mdh_rc_line()
@@ -137,8 +229,13 @@ void *__mdh_obj_realloc(void *obj, size_t size) {
         fflush(stderr);
         abort();
     }
-    MdhObjHeader *grown = (MdhObjHeader *)realloc(h, sizeof(MdhObjHeader) + size);
-    return grown ? grown + 1 : NULL;
+    size_t total = sizeof(MdhObjHeader) + size;
+    uint32_t c = MDH_HDR_CLASS(h);
+    if (c != 0 && total <= (size_t)c * 16) return obj; /* its class block is big enough */
+    MdhObjHeader *grown = (MdhObjHeader *)realloc(h, total);
+    if (!grown) return NULL;
+    grown->kind = MDH_HDR_KIND(grown); /* a plain malloc block from now on */
+    return grown + 1;
 }
 
 char *__mdh_obj_strdup(const char *s) {
@@ -186,6 +283,12 @@ uint32_t __mdh_rc_kinds = 0;
  * keeps them in a table keyed by address. */
 uint32_t __mdh_rc_free_kinds = 0;
 
+/* See mdh_runtime.h. Cleared by __mdh_thread_spawn when it sets __mdh_line_threaded. */
+int32_t __mdh_rc_fast = 0;
+
+/* Every kind an object header can carry (all but buffers, which have none). */
+#define MDH_RC_OBJECT_KINDS (((1u << MDH_KIND_COUNT) - 1u) & ~(1u << MDH_KIND_BUFFER))
+
 /* MDH_RC_DEFAULT_KINDS are counted; MDH_RC_KINDS (a number, 0x prefix for hex) overrides
  * it for debugging. Of those, MDH_RC_DEFAULT_FREE_KINDS are freed at zero.
  * MDH_RC_NOFREE=1 frees nothing: every object that reaches zero is marked DEAD and kept,
@@ -200,6 +303,8 @@ void __mdh_rc_enable(void) {
                                                  : MDH_RC_DEFAULT_FREE_KINDS;
     if (nofree && strcmp(nofree, "1") == 0) freed = 0;
     __mdh_rc_free_kinds = freed & __mdh_rc_kinds & ~(1u << MDH_KIND_NATIVE);
+    __mdh_rc_fast = !__mdh_line_threaded &&
+                    (__mdh_rc_kinds & MDH_RC_OBJECT_KINDS) == MDH_RC_OBJECT_KINDS;
 }
 
 static int __mdh_rc_report_enabled = 0;
@@ -264,7 +369,8 @@ static MdhObjHeader *__mdh_rc_counted(const char *op, int64_t data) {
     }
     if (flags & MDH_OBJ_IMMORTAL) return NULL;
     if (flags & MDH_OBJ_DEAD) __mdh_rc_fail(op, h);
-    if (h->kind >= MDH_KIND_COUNT || !(__mdh_rc_kinds & (1u << h->kind))) return NULL;
+    uint32_t kind = MDH_HDR_KIND(h);
+    if (kind >= MDH_KIND_COUNT || !(__mdh_rc_kinds & (1u << kind))) return NULL;
     return h;
 }
 
@@ -282,23 +388,25 @@ typedef struct {
     MdhObjHeader *inline_items[32];
 } MdhRcWork;
 
-static void __mdh_rc_work_push(MdhRcWork *w, MdhObjHeader *h) {
-    if (w->len == w->cap) {
-        size_t cap = w->cap * 2;
-        MdhObjHeader **grown;
-        if (w->items == w->inline_items) {
-            grown = (MdhObjHeader **)malloc(cap * sizeof(*grown));
-            if (grown) memcpy(grown, w->items, w->len * sizeof(*grown));
-        } else {
-            grown = (MdhObjHeader **)realloc(w->items, cap * sizeof(*grown));
-        }
-        if (!grown) {
-            fprintf(stderr, "mdhavers rc: oot o' memory releasing objects\n");
-            abort();
-        }
-        w->items = grown;
-        w->cap = cap;
+static void __mdh_rc_work_grow(MdhRcWork *w) {
+    size_t cap = w->cap * 2;
+    MdhObjHeader **grown;
+    if (w->items == w->inline_items) {
+        grown = (MdhObjHeader **)malloc(cap * sizeof(*grown));
+        if (grown) memcpy(grown, w->items, w->len * sizeof(*grown));
+    } else {
+        grown = (MdhObjHeader **)realloc(w->items, cap * sizeof(*grown));
     }
+    if (!grown) {
+        fprintf(stderr, "mdhavers rc: oot o' memory releasing objects\n");
+        abort();
+    }
+    w->items = grown;
+    w->cap = cap;
+}
+
+static inline void __mdh_rc_work_push(MdhRcWork *w, MdhObjHeader *h) {
+    if (__builtin_expect(w->len == w->cap, 0)) __mdh_rc_work_grow(w);
     w->items[w->len++] = h;
 }
 
@@ -317,21 +425,25 @@ static void __mdh_rc_kill(MdhObjHeader *h) {
     w.items = w.inline_items;
     w.len = 0;
     w.cap = sizeof(w.inline_items) / sizeof(w.inline_items[0]);
-    __mdh_rc_work_push(&w, h);
-    int64_t line = __mdh_rc_line();
-    while (w.len > 0) {
-        MdhObjHeader *dead = w.items[--w.len];
-        uint32_t kind = dead->kind;
+    int64_t line = -1; /* looked up for the first object kept DEAD */
+    MdhObjHeader *dead = h;
+    for (;;) {
+        uint32_t kind = MDH_HDR_KIND(dead);
         /* DEAD before its children are released, so a miscounted path back to it aborts
          * instead of queueing it twice. */
         dead->flags |= MDH_OBJ_DEAD;
-        dead->refcount = line; /* the death line, for the abort message */
-        __atomic_fetch_add(&__mdh_rc_died[kind], 1, __ATOMIC_RELAXED);
-        __mdh_rc_children(kind, dead + 1, __mdh_rc_drop_child, &w);
+        __mdh_counter_add(&__mdh_rc_died[kind]);
         if (__mdh_rc_free_kinds & (1u << kind)) {
+            __mdh_rc_children(kind, dead + 1, __mdh_rc_drop_child, &w);
             __mdh_rc_free_buffers(kind, dead + 1);
-            free(dead);
+            __mdh_obj_block_free(dead);
+        } else {
+            if (line < 0) line = __mdh_rc_line();
+            dead->refcount = line; /* the death line, for the abort message */
+            __mdh_rc_children(kind, dead + 1, __mdh_rc_drop_child, &w);
         }
+        if (w.len == 0) break;
+        dead = w.items[--w.len];
     }
     if (w.items != w.inline_items) free(w.items);
 }

@@ -42,6 +42,9 @@ pub(super) struct RcScope<'ctx> {
     pub(super) opened_at: Option<(BasicBlock<'ctx>, Option<InstructionValue<'ctx>>)>,
     /// Borrowed reads of local slots in this statement (see `rc_borrowed_read`).
     pub(super) reads: Vec<RcRead<'ctx>>,
+    /// The values parked in its temp slots (`rc_own_temp`), so `gie` can hand a temp's
+    /// reference to the caller instead of retaining and then releasing the temp.
+    pub(super) parked: Vec<(BasicValueEnum<'ctx>, PointerValue<'ctx>)>,
 }
 
 /// A local variable (or `masel`) read used without a reference of its own: the slot holds
@@ -454,38 +457,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_extract_value(sv, 1, "rc_data")
             .unwrap()
             .into_int_value();
-        let i64t = self.types.i64_type;
-        let tag64 = self
-            .builder
-            .build_int_z_extend(tag, i64t, "rc_tag64")
-            .unwrap();
-        let in_range = self
-            .builder
-            .build_int_compare(
-                IntPredicate::ULT,
-                tag64,
-                i64t.const_int(16, false),
-                "rc_tag_small",
-            )
-            .unwrap();
-        let shift = self
-            .builder
-            .build_and(tag64, i64t.const_int(15, false), "rc_shift")
-            .unwrap();
-        let bits = self
-            .builder
-            .build_right_shift(
-                i64t.const_int(RC_HEAP_TAG_MASK, false),
-                shift,
-                false,
-                "rc_bits",
-            )
-            .unwrap();
-        let bit = self
-            .builder
-            .build_int_truncate(bits, self.types.bool_type, "rc_bit")
-            .unwrap();
-        let is_heap = self.builder.build_and(in_range, bit, "rc_is_heap").unwrap();
+        let is_heap = self.rc_build_heap_test(&self.builder, tag, "rc_");
         let call_bb = self
             .context
             .append_basic_block(function, &format!("rc_{what}"));
@@ -499,6 +471,35 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_call(f, &[data.into()], "").unwrap();
         self.builder.build_unconditional_branch(cont_bb).unwrap();
         self.builder.position_at_end(cont_bb);
+    }
+
+    /// `tag` is a counted heap tag (`RC_HEAP_TAG_MASK`): one shift of the mask by the tag.
+    /// The shift amount is the tag mod 64, which a 64-bit shift on AArch64 and x86-64 takes
+    /// for free; every tag is below 16 and the mask has no bit at 16 or above, so tags
+    /// 16..63 test false as before.
+    fn rc_build_heap_test(
+        &self,
+        b: &Builder<'ctx>,
+        tag: IntValue<'ctx>,
+        prefix: &str,
+    ) -> IntValue<'ctx> {
+        let i64t = self.types.i64_type;
+        let tag64 = b
+            .build_int_z_extend(tag, i64t, &format!("{prefix}tag64"))
+            .unwrap();
+        let shift = b
+            .build_and(tag64, i64t.const_int(63, false), &format!("{prefix}shift"))
+            .unwrap();
+        let bits = b
+            .build_right_shift(
+                i64t.const_int(RC_HEAP_TAG_MASK, false),
+                shift,
+                false,
+                &format!("{prefix}bits"),
+            )
+            .unwrap();
+        b.build_int_truncate(bits, self.types.bool_type, &format!("{prefix}is_heap"))
+            .unwrap()
     }
 
     /// Retain `v` with a call to `__mdh_retain` (no new blocks; no-op for values that
@@ -538,6 +539,50 @@ impl<'ctx> CodeGen<'ctx> {
         self.rc_emit_inline(v, f, "release");
     }
 
+    /// A holder's reference to `v` for a statement-level store (`inline`): when a temp of
+    /// the statement holds `v`, move that reference (the temp becomes nil) instead of a
+    /// retain now and the temp's release when the statement ends. Only for slots no other
+    /// thread can reach (not globals, see `store_shared_slot`): after its store the
+    /// statement runs no user code (an assignment's value is retained at once), so
+    /// nothing can drop the slot's reference while `v` is still used. Otherwise
+    /// `rc_take_mode`.
+    fn rc_take_or_move(&mut self, v: BasicValueEnum<'ctx>, inline: bool) -> bool {
+        if inline && self.rc_move_from_temp(v, false) {
+            return true;
+        }
+        self.rc_take_mode(v, inline)
+    }
+
+    /// If a temp holds `v` (of the innermost scope, or with `any_scope` of any open one),
+    /// set that temp to nil and forget it: its reference now belongs to the caller.
+    /// The temp still holds `v`: a temp is written only where it is parked, right after
+    /// its value is made (which dominates every use of `v`), and where its scope closes.
+    fn rc_move_from_temp(&mut self, v: BasicValueEnum<'ctx>, any_scope: bool) -> bool {
+        if !self.rc_is_value(v) {
+            return false;
+        }
+        let depth = self.rc_state.scopes.len();
+        let from = if any_scope {
+            0
+        } else {
+            depth.saturating_sub(1)
+        };
+        let mut found = None;
+        for (si, scope) in self.rc_state.scopes.iter().enumerate().skip(from).rev() {
+            if let Some(pi) = scope.parked.iter().rposition(|(pv, _)| *pv == v) {
+                found = Some((si, pi));
+                break;
+            }
+        }
+        let Some((si, pi)) = found else {
+            return false;
+        };
+        let (_, slot) = self.rc_state.scopes[si].parked.remove(pi);
+        let nil = self.make_nil();
+        self.builder.build_store(slot, nil).unwrap();
+        true
+    }
+
     /// Store `v` into the owned slot `ptr` (a variable, global, cell element or other
     /// holder of one reference): take a reference to `v`, store it, then release the old
     /// value (store before release, DES F6 3.4). Plain calls, no new blocks.
@@ -564,7 +609,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_load(self.types.value_type, ptr, "rc_old")
             .unwrap();
-        self.rc_take_mode(v, inline);
+        self.rc_take_or_move(v, inline);
         self.builder.build_store(ptr, v).unwrap();
         if inline {
             self.rc_release_inline(old);
@@ -684,6 +729,9 @@ impl<'ctx> CodeGen<'ctx> {
         v: BasicValueEnum<'ctx>,
         inline: bool,
     ) {
+        // Never a move from a temp: an assignment's value is used after its store (it is
+        // an expression), and once threads exist another thread can replace the global
+        // and drop the slot's reference in between; the temp's reference keeps it alive.
         self.rc_take_mode(v, inline);
         if !inline {
             self.builder
@@ -928,6 +976,9 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         self.builder.build_store(slot, v).unwrap();
         self.rc_release_unknown(old);
+        if let Some(scope) = self.rc_state.scopes.last_mut() {
+            scope.parked.push((v, slot));
+        }
     }
 
     /// A temp slot of the innermost temp scope. Inside a statement it is set to nil where
@@ -954,6 +1005,7 @@ impl<'ctx> CodeGen<'ctx> {
                     slots: vec![slot],
                     opened_at: None,
                     reads: Vec::new(),
+                    parked: Vec::new(),
                 }),
             }
             return slot;
@@ -983,6 +1035,7 @@ impl<'ctx> CodeGen<'ctx> {
             slots: Vec::new(),
             opened_at,
             reads: Vec::new(),
+            parked: Vec::new(),
         });
     }
 
@@ -1078,6 +1131,7 @@ impl<'ctx> CodeGen<'ctx> {
             slots: Vec::new(),
             opened_at: None,
             reads: Vec::new(),
+            parked: Vec::new(),
         });
         std::mem::replace(&mut self.rc_state, fresh)
     }
@@ -1139,11 +1193,300 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
+    /// With counting on, give retain and release an inline fast path (R4 performance pass).
+    /// Every call codegen emitted to `__mdh_retain`/`__mdh_release` (an `MdhValue`) and
+    /// `__mdh_rc_retain_obj`/`__mdh_rc_release_obj` (its data) is redirected to an internal,
+    /// always-inlined function that adjusts the count itself in the common case: a live,
+    /// mortal object of a counted kind, before any thread exists, and for a release one
+    /// that does not reach zero. Everything else (no header, immortal, DEAD, uncounted kind,
+    /// threads, the last release) calls the runtime as before, so behaviour is unchanged.
+    /// The runtime's `__mdh_rc_fast` is 1 while every object kind is counted and no thread
+    /// has been spawned, else 0. Runs last, after the line-note pass.
+    pub(super) fn rc_emit_fast_paths(&mut self) {
+        if !self.rc_enabled {
+            return;
+        }
+        let slow = [
+            self.libc.rc_retain_obj,
+            self.libc.rc_release_obj,
+            self.libc.rc_retain,
+            self.libc.rc_release,
+        ];
+        let obj_type = self.libc.rc_retain_obj.get_type();
+        let value_type = self.libc.rc_retain.get_type();
+        let attr = |name: &str| {
+            self.context
+                .create_enum_attribute(Attribute::get_named_enum_kind_id(name), 0)
+        };
+        let (always_inline, nounwind) = (attr("alwaysinline"), attr("nounwind"));
+        let mut fast = Vec::new();
+        for (i, name) in [
+            "__mdh_rc_retain_obj_fast",
+            "__mdh_rc_release_obj_fast",
+            "__mdh_retain_fast",
+            "__mdh_release_fast",
+        ]
+        .iter()
+        .enumerate()
+        {
+            let ty = if i < 2 { obj_type } else { value_type };
+            let f = self.module.add_function(name, ty, Some(Linkage::Internal));
+            f.add_attribute(AttributeLoc::Function, always_inline);
+            f.add_attribute(AttributeLoc::Function, nounwind);
+            fast.push(f);
+        }
+        // Redirect first, so the fast paths' own calls to the runtime stay direct.
+        for (s, f) in slow.iter().zip(&fast) {
+            // SAFETY: both are functions of this module with the same type.
+            unsafe {
+                inkwell::llvm_sys::core::LLVMReplaceAllUsesWith(s.as_value_ref(), f.as_value_ref())
+            };
+        }
+        self.rc_fold_never_threaded(fast[2], fast[3]);
+        self.rc_build_obj_fast(fast[0], self.libc.rc_retain_obj, true);
+        self.rc_build_obj_fast(fast[1], self.libc.rc_release_obj, false);
+        self.rc_build_value_fast(fast[2], fast[0]);
+        self.rc_build_value_fast(fast[3], fast[1]);
+        // `__mdh_retain`/`__mdh_release` stay declared (unused): the ownership table
+        // checks every declared runtime symbol against the module.
+    }
+
+    /// A program that never calls `__mdh_thread_spawn` never has a second thread: that call
+    /// is the only thing that sets `__mdh_line_threaded`, and compiled code reaches it only
+    /// through this module's references to it (a thread_spawn call, or a function value of
+    /// it). With no reference left, every read of the flag is 0, so fold them: the
+    /// shared-slot and line-note branches for threads go, and loops over globals no
+    /// longer call the runtime on a path the optimiser has to keep. The remaining calls
+    /// to `__mdh_shared_load`/`__mdh_shared_store` become what those do single-threaded:
+    /// load and retain; load the old value, store, release the old value.
+    fn rc_fold_never_threaded(
+        &mut self,
+        retain_fast: FunctionValue<'ctx>,
+        release_fast: FunctionValue<'ctx>,
+    ) {
+        use inkwell::llvm_sys::core::{
+            LLVMGetFirstUse, LLVMGetNextUse, LLVMGetUser, LLVMInstructionEraseFromParent,
+            LLVMIsACallInst, LLVMIsALoadInst, LLVMReplaceAllUsesWith,
+        };
+        let spawned = self
+            .module
+            .get_function("__mdh_thread_spawn")
+            .is_some_and(|f| {
+                f.as_global_value()
+                    .as_pointer_value()
+                    .get_first_use()
+                    .is_some()
+            });
+        if spawned {
+            return;
+        }
+        let Some(flag) = self.module.get_global("__mdh_line_threaded") else {
+            return;
+        };
+        let zero = self.types.i32_type.const_zero();
+        let mut loads = Vec::new();
+        // SAFETY: walking the use list of a live global, then replacing and erasing the
+        // loads found (none of them is used by another of them).
+        unsafe {
+            let mut u = LLVMGetFirstUse(flag.as_value_ref());
+            while !u.is_null() {
+                let user = LLVMGetUser(u);
+                if !LLVMIsALoadInst(user).is_null() {
+                    loads.push(user);
+                }
+                u = LLVMGetNextUse(u);
+            }
+            for load in loads {
+                LLVMReplaceAllUsesWith(load, zero.as_value_ref());
+                LLVMInstructionEraseFromParent(load);
+            }
+        }
+        let b = self.context.create_builder();
+        for (f, is_load) in [
+            (self.libc.shared_load, true),
+            (self.libc.shared_store, false),
+        ] {
+            let mut calls = Vec::new();
+            // SAFETY: as above; each call found is replaced and erased once.
+            unsafe {
+                let mut u = LLVMGetFirstUse(f.as_value_ref());
+                while !u.is_null() {
+                    let user = LLVMGetUser(u);
+                    if !LLVMIsACallInst(user).is_null() {
+                        calls.push(user);
+                    }
+                    u = LLVMGetNextUse(u);
+                }
+            }
+            for call in calls {
+                // SAFETY: `call` is a live call instruction of this module.
+                let inst = unsafe { InstructionValue::new(call) };
+                let Some(BasicValueEnum::PointerValue(slot)) = Self::rc_operand(inst, 0) else {
+                    continue;
+                };
+                b.position_before(&inst);
+                let old = b
+                    .build_load(self.types.value_type, slot, "shared_old")
+                    .unwrap();
+                if is_load {
+                    b.build_call(retain_fast, &[old.into()], "").unwrap();
+                    // SAFETY: the call's result is replaced by an equal value, then erased.
+                    unsafe {
+                        LLVMReplaceAllUsesWith(call, old.as_value_ref());
+                        LLVMInstructionEraseFromParent(call);
+                    }
+                } else {
+                    let Some(v) = Self::rc_operand(inst, 1) else {
+                        continue;
+                    };
+                    b.build_store(slot, v).unwrap();
+                    b.build_call(release_fast, &[old.into()], "").unwrap();
+                    // SAFETY: a void call with no uses.
+                    unsafe { LLVMInstructionEraseFromParent(call) };
+                }
+            }
+        }
+    }
+
+    /// `fast(data)`: the header test and count update inline, `slow(data)` otherwise.
+    fn rc_build_obj_fast(
+        &self,
+        fast: FunctionValue<'ctx>,
+        slow: FunctionValue<'ctx>,
+        retain: bool,
+    ) {
+        let (i64t, i32t) = (self.types.i64_type, self.types.i32_type);
+        let fast_flag = match self.module.get_global("__mdh_rc_fast") {
+            Some(g) => g,
+            None => {
+                let g = self.module.add_global(i32t, None, "__mdh_rc_fast");
+                g.set_linkage(Linkage::External);
+                g
+            }
+        }
+        .as_pointer_value();
+        let b = self.context.create_builder();
+        let entry = self.context.append_basic_block(fast, "entry");
+        let check = self.context.append_basic_block(fast, "check");
+        let quick = self.context.append_basic_block(fast, "quick");
+        let call = self.context.append_basic_block(fast, "slow");
+        let done = self.context.append_basic_block(fast, "done");
+        let data = fast.get_nth_param(0).unwrap().into_int_value();
+
+        b.position_at_end(entry);
+        let is_null = b
+            .build_int_compare(IntPredicate::EQ, data, i64t.const_zero(), "is_null")
+            .unwrap();
+        b.build_conditional_branch(is_null, call, check).unwrap();
+
+        // The header is the 16 bytes before the payload: { i64 refcount, u32 kind, u32 flags }.
+        b.position_at_end(check);
+        let header_addr = b
+            .build_int_sub(data, i64t.const_int(OBJ_HEADER_SIZE, false), "header_addr")
+            .unwrap();
+        let header = b
+            .build_int_to_ptr(header_addr, self.types.str_ptr_type, "header")
+            .unwrap();
+        let kind_flags_ptr = unsafe {
+            b.build_gep(
+                self.context.i8_type(),
+                header,
+                &[i64t.const_int(8, false)],
+                "kind_flags_ptr",
+            )
+        }
+        .unwrap();
+        let kind_flags = b
+            .build_load(i64t, kind_flags_ptr, "kind_flags")
+            .unwrap()
+            .into_int_value();
+        let flags = b
+            .build_right_shift(kind_flags, i64t.const_int(32, false), false, "flags")
+            .unwrap();
+        // Exactly the magic: a header, not immortal, not DEAD, of a known kind
+        // (MDH_OBJ_SLOW marks any other).
+        let live = b
+            .build_int_compare(
+                IntPredicate::EQ,
+                flags,
+                i64t.const_int(OBJ_FLAG_MAGIC, false),
+                "live",
+            )
+            .unwrap();
+        let enabled = b
+            .build_load(i32t, fast_flag, "rc_fast")
+            .unwrap()
+            .into_int_value();
+        let enabled = b
+            .build_int_compare(IntPredicate::NE, enabled, i32t.const_zero(), "rc_fast_on")
+            .unwrap();
+        let mut ok = b.build_and(live, enabled, "ok").unwrap();
+        let count = b
+            .build_load(i64t, header, "count")
+            .unwrap()
+            .into_int_value();
+        if !retain {
+            // The last release frees: the runtime does that.
+            let shared = b
+                .build_int_compare(IntPredicate::SGT, count, i64t.const_int(1, false), "shared")
+                .unwrap();
+            ok = b.build_and(ok, shared, "ok").unwrap();
+        }
+        b.build_conditional_branch(ok, quick, call).unwrap();
+
+        b.position_at_end(quick);
+        let one = i64t.const_int(1, false);
+        let updated = if retain {
+            b.build_int_add(count, one, "count_up")
+        } else {
+            b.build_int_sub(count, one, "count_down")
+        }
+        .unwrap();
+        b.build_store(header, updated).unwrap();
+        b.build_unconditional_branch(done).unwrap();
+
+        b.position_at_end(call);
+        b.build_call(slow, &[data.into()], "").unwrap();
+        b.build_unconditional_branch(done).unwrap();
+
+        b.position_at_end(done);
+        b.build_return(None).unwrap();
+    }
+
+    /// `fast(value)`: the heap-tag test, then `obj(data)` (see `rc_emit_inline`).
+    fn rc_build_value_fast(&self, fast: FunctionValue<'ctx>, obj: FunctionValue<'ctx>) {
+        let i64t = self.types.i64_type;
+        let b = self.context.create_builder();
+        let entry = self.context.append_basic_block(fast, "entry");
+        let call = self.context.append_basic_block(fast, "heap");
+        let done = self.context.append_basic_block(fast, "done");
+        let v = fast.get_nth_param(0).unwrap().into_struct_value();
+        b.position_at_end(entry);
+        let tag = b.build_extract_value(v, 0, "tag").unwrap().into_int_value();
+        let data = b
+            .build_extract_value(v, 1, "data")
+            .unwrap()
+            .into_int_value();
+        let is_heap = self.rc_build_heap_test(&b, tag, "");
+        b.build_conditional_branch(is_heap, call, done).unwrap();
+        b.position_at_end(call);
+        b.build_call(obj, &[data.into()], "").unwrap();
+        b.build_unconditional_branch(done).unwrap();
+        b.position_at_end(done);
+        b.build_return(None).unwrap();
+    }
+
     /// Before `ret v` in a function that returns an owned value: give the caller its +1,
     /// then release every open temp (the epilogue releases only the variable slots).
+    ///
+    /// A value an open temp holds (the `gie` expression's own result, say) moves to the
+    /// caller (`rc_move_from_temp`), instead of a retain here and the temp's release
+    /// just after it.
     pub(super) fn rc_return_value(&mut self, v: BasicValueEnum<'ctx>) {
         if self.rc_active() {
-            self.rc_take_inline(v);
+            if !self.rc_move_from_temp(v, true) {
+                self.rc_take_inline(v);
+            }
             self.rc_release_scopes_from(0);
         }
     }

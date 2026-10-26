@@ -5150,6 +5150,7 @@ impl<'ctx> CodeGen<'ctx> {
         // Last: every function body is complete, so its blocks can be split.
         self.emit_thread_line_notes();
         self.rc_drop_unused_declarations();
+        self.rc_emit_fast_paths();
 
         Ok(())
     }

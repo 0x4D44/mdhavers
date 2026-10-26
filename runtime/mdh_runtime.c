@@ -4129,6 +4129,8 @@ MdhValue __mdh_thread_spawn(MdhValue func, MdhValue args_list) {
     if (!__mdh_line_threaded) {
         __mdh_thread_line = __mdh_current_line;
         __mdh_line_threaded = 1;
+        __mdh_rc_fast = 0; /* compiled code's inline counts stop: counts go atomic */
+        __mdh_obj_cache_drain();
     }
     t->line = __mdh_thread_line;
     t->thread = mdh_thread_create(__mdh_thread_entry, t);

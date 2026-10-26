@@ -649,3 +649,90 @@ thread_join(h4)
         }
     }
 }
+
+/// R4: a program that never spawns a thread has no thread checks left under counting
+/// (every read of `__mdh_line_threaded` folds to 0, and shared-slot calls become plain
+/// loads and stores); a program that spawns keeps them.
+#[test]
+fn a_program_without_threads_carries_no_thread_checks() {
+    let ir = |src: &str| {
+        LLVMCompiler::new()
+            .with_refcounting(true)
+            .compile_to_ir(&parse(src).expect("parse"))
+            .expect("compile to IR")
+    };
+    let single = ir(r#"
+ken g = "a"
+dae f(n) {
+    g = g + "b"
+    gie len(g) + n
+}
+ken i = 0
+whiles i < 3 {
+    ken k = f(i)
+    i = i + 1
+}
+blether g
+"#);
+    assert!(
+        !single.contains("load i32, ptr @__mdh_line_threaded"),
+        "{single}"
+    );
+    assert!(
+        !single.contains("call void @__mdh_shared_store"),
+        "{single}"
+    );
+    assert!(
+        !single.contains("call { i8, i64 } @__mdh_shared_load("),
+        "{single}"
+    );
+    let threaded = ir(r#"
+ken g = "a"
+dae w() {
+    g = "b"
+    gie 0
+}
+thread_join(thread_spawn(w, []))
+blether g
+"#);
+    assert!(
+        threaded.contains("load i32, ptr @__mdh_line_threaded"),
+        "{threaded}"
+    );
+}
+
+/// R4: objects freed at zero are reused for later allocations of their size class, and
+/// the cache is dropped at the first thread_spawn: counts stay exact either side of it.
+#[test]
+fn reused_objects_keep_counts_exact_across_the_first_spawn() {
+    let src = r#"
+dae churn(n) {
+    ken total = 0
+    ken i = 0
+    whiles i < n {
+        ken l = [i, tae_string(i), [i]]
+        ken s = "x" + tae_string(i)
+        s = s + "yy"
+        ken f = |x| x + i
+        total = total + len(l) + len(s) + f(1) - i
+        i = i + 1
+    }
+    gie total
+}
+blether churn(2000)
+ken t = thread_spawn(churn, [500])
+blether thread_join(t)
+blether churn(1000)
+"#;
+    for envs in [
+        &[("MDH_RC_REPORT", "1")][..],
+        &[("MDH_RC_REPORT", "1"), ("MDH_RC_NOFREE", "1")][..],
+    ] {
+        let run = run_native(src, envs);
+        assert_eq!(run.code, Some(0), "{}", run.stderr);
+        assert_eq!(run.stdout, "20890\n4890\n9890\n");
+        for kind in ["string", "list", "closure"] {
+            assert_eq!(reported_live(&run.stderr, kind), 0, "{}", run.stderr);
+        }
+    }
+}
