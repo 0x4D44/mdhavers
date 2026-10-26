@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00197 — eof_helpers test fails on trunk: word_scramble prints nothing after the end-of-input message
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** examples
 - **Raised:** 2026-10-26T23:46:31Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261026T234638Z-6b444765
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00197-run-fix-20261026T234638Z-6b444765
-- **Owner base:** 5464d4e306d33baf87d0e2bdead89fe5d68160a7
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-26T23:46:38Z
-- **Owner until:** 2026-10-27T03:46:38Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-26T23:46:31Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-26T23:46:31Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T23:47:40Z, deltic:auto role=fix run=fix-20261026T234638Z-6b444765 branch=task/bug-MDH-BUG-FLU-00197-run-fix-20261026T234638Z-6b444765 code=d424df9 gate=manual)
 
 ## Observation
 
