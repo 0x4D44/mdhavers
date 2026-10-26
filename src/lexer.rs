@@ -444,4 +444,36 @@ log_whisper log_mutter log_blether log_holler log_roar hurl
             .iter()
             .any(|t| { t.kind == TokenKind::FString("Hello {name}!".to_string()) }));
     }
+
+    #[test]
+    fn test_keywords_only_match_whole_identifiers() {
+        // MDH-BUG-FLU-00177: a name that merely starts with a keyword (or the long
+        // spelling of one) is an identifier, never the keyword plus a tail.
+        for name in [
+            "haudin",
+            "haud_yer_wheeshtx",
+            "haud_yer",
+            "gang_ons",
+            "kenny",
+            "ginger",
+            "log_whispers",
+            "log_roar_loud",
+            "hurler",
+            "keek_a_boo",
+            "mak_siccar_ish",
+            "hae_a_bash_it",
+            "in_range",
+            "island",
+            "orange",
+            "android",
+            "dae_it",
+        ] {
+            let tokens = lex(name).unwrap();
+            assert_eq!(
+                tokens[0].kind,
+                TokenKind::Identifier(name.to_string()),
+                "{name}"
+            );
+        }
+    }
 }
