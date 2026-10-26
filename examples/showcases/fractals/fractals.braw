@@ -190,8 +190,8 @@ dae make_padding(n) {
 }
 
 dae render(viewer) {
-    ken term_w = term_width()
-    ken term_h = term_height()
+    ken term_w = 80  # fixed width: term_width() is native-only (MDH-BUG-FLU-00175)
+    ken term_h = 24  # fixed height: term_height() is native-only (MDH-BUG-FLU-00175)
 
     # Use terminal size for rendering
     ken render_width = term_w - 2
@@ -253,6 +253,44 @@ dae render(viewer) {
     blether(frame)
 }
 
+# Read a key. When the input has ended there is no terminal: get_key fails (interpreter)
+# or hands back "" at once, much faster than a real terminal's 100ms wait (native).
+# Either way say cheerio and stop, like speir_or_awa (MDH-BUG-FLU-00156/00175).
+ken key_state = [0, 0]  # [blank keys in a row, mono_ms when that run began]
+
+dae key_input_ended() {
+    blether(CURSOR_SHOW + RESET + CLEAR_SCREEN + CURSOR_HOME)
+    blether "Input's ended - cheerio, and haste ye back!"
+    exit(0)
+}
+
+dae get_key_or_awa() {
+    ken key = naething
+    hae_a_bash {
+        key = get_key()
+    } gin_it_gangs_wrang err {
+        key = naething
+    }
+    gin key == naething {
+        key_input_ended()
+    }
+    gin key == "" {
+        gin key_state[0] == 0 {
+            key_state[1] = mono_ms()
+        }
+        key_state[0] = key_state[0] + 1
+        gin key_state[0] >= 20 {
+            gin mono_ms() - key_state[1] < 1000 {
+                key_input_ended()
+            }
+            key_state[0] = 0
+        }
+    } ither {
+        key_state[0] = 0
+    }
+    gie key
+}
+
 # === Main ===
 blether(CLEAR_SCREEN + CURSOR_HOME + CURSOR_HIDE)
 
@@ -262,7 +300,7 @@ ken quit = nae
 whiles nae quit {
     render(viewer)
 
-    ken key = get_key()
+    ken key = get_key_or_awa()
 
     gin key == "q" or key == "Q" {
         quit = aye

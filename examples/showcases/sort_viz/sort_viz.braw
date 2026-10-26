@@ -218,7 +218,7 @@ dae make_padding(n) {
 }
 
 dae render(viz) {
-    ken term_w = term_width()
+    ken term_w = 80  # fixed width: term_width() is native-only (MDH-BUG-FLU-00175)
     ken board_width = ARRAY_SIZE + 4
     ken left_pad = (term_w - board_width) / 2
     gin left_pad < 0 { left_pad = 0 }
@@ -289,6 +289,44 @@ dae render(viz) {
     blether(frame)
 }
 
+# Read a key. When the input has ended there is no terminal: get_key fails (interpreter)
+# or hands back "" at once, much faster than a real terminal's 100ms wait (native).
+# Either way say cheerio and stop, like speir_or_awa (MDH-BUG-FLU-00156/00175).
+ken key_state = [0, 0]  # [blank keys in a row, mono_ms when that run began]
+
+dae key_input_ended() {
+    blether(CURSOR_SHOW + RESET + CLEAR_SCREEN + CURSOR_HOME)
+    blether "Input's ended - cheerio, and haste ye back!"
+    exit(0)
+}
+
+dae get_key_or_awa() {
+    ken key = naething
+    hae_a_bash {
+        key = get_key()
+    } gin_it_gangs_wrang err {
+        key = naething
+    }
+    gin key == naething {
+        key_input_ended()
+    }
+    gin key == "" {
+        gin key_state[0] == 0 {
+            key_state[1] = mono_ms()
+        }
+        key_state[0] = key_state[0] + 1
+        gin key_state[0] >= 20 {
+            gin mono_ms() - key_state[1] < 1000 {
+                key_input_ended()
+            }
+            key_state[0] = 0
+        }
+    } ither {
+        key_state[0] = 0
+    }
+    gie key
+}
+
 # === Main ===
 blether(CLEAR_SCREEN + CURSOR_HOME + CURSOR_HIDE)
 
@@ -300,7 +338,7 @@ whiles nae quit {
     render(viz)
 
     gin nae viz.is_sorting {
-        ken key = get_key()
+        ken key = get_key_or_awa()
 
         gin key == "q" or key == "Q" {
             quit = aye
