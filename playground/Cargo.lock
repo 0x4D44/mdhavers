@@ -188,7 +188,7 @@ dependencies = [
 
 [[package]]
 name = "mdhavers"
-version = "0.3.91"
+version = "0.3.92"
 dependencies = [
  "cc",
  "chrono",
