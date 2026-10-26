@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00180 — Native: a nested dae inside a block reads the global, not the block's shadowing ken
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** native
 - **Raised:** 2026-10-26T07:41:51Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T194306Z-434285e2
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00180-run-verify-20261026T194306Z-434285e2
-- **Owner base:** 36750bc8afd262a99873992d919d9ed250946aef
-- **Owner fingerprint:** sha256:0093e39f620e2702955bcd3455332d06331484b943eb885222fa3d07b6ce63da
-- **Owner since:** 2026-10-26T19:43:06Z
-- **Owner until:** 2026-10-26T23:43:06Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-26T07:41:51Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T11:36:16Z, deltic:auto role=fix run=fix-20261026T091430Z-15c98ae2 branch=task/bug-MDH-BUG-FLU-00180-run-fix-20261026T091430Z-15c98ae2 code=ea4f5c4 gate=manual)
+- **State history:** Open (2026-10-26T07:41:51Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T11:36:16Z, deltic:auto role=fix run=fix-20261026T091430Z-15c98ae2 branch=task/bug-MDH-BUG-FLU-00180-run-fix-20261026T091430Z-15c98ae2 code=ea4f5c4 gate=manual) -> Closed (2026-10-26T21:44:08Z, deltic:manual role=verify run=verify-20261026T194306Z-434285e2 verified_fix_run=fix-20261026T091430Z-15c98ae2 verdict=close)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:native-a-nested-dae-inside-a-block-reads-the-gl
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T21:44:08Z, deltic:manual run=verify-20261026T194306Z-434285e2 verified_fix_run=fix-20261026T091430Z-15c98ae2 verdict=close)
+
+Verifier note: Manual verify: [verifier gpt-6-luna max (Codex), recorded by lead] ea4f5c4; block_level_local_hiding_a_global_is_captured passes on trunk; disabling block-shadow collection failed output parity with native [1,1,9,...], expected [7,1,9,...].
 
 ## Notes

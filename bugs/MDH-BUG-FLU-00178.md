@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00178 — Native: a keek match-arm binding leaks out of the arm and overwrites the outer variable
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** native
 - **Raised:** 2026-10-26T06:19:59Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T194306Z-849e71a8
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00178-run-verify-20261026T194306Z-849e71a8
-- **Owner base:** 36750bc8afd262a99873992d919d9ed250946aef
-- **Owner fingerprint:** sha256:f17e4f6a0056a92dd041b8a3e655f32bc5648181247135a7eec99bfdb14e9cd6
-- **Owner since:** 2026-10-26T19:43:06Z
-- **Owner until:** 2026-10-26T23:43:06Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-26T06:19:59Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T09:13:50Z, deltic:auto role=fix run=fix-20261026T065014Z-3a295bf0 branch=task/bug-MDH-BUG-FLU-00178-run-fix-20261026T065014Z-3a295bf0 code=85e470f gate=manual)
+- **State history:** Open (2026-10-26T06:19:59Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T09:13:50Z, deltic:auto role=fix run=fix-20261026T065014Z-3a295bf0 branch=task/bug-MDH-BUG-FLU-00178-run-fix-20261026T065014Z-3a295bf0 code=85e470f gate=manual) -> Closed (2026-10-26T21:44:08Z, deltic:manual role=verify run=verify-20261026T194306Z-849e71a8 verified_fix_run=fix-20261026T065014Z-3a295bf0 verdict=close)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:native-a-keek-match-arm-binding-leaks-out-of-th
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T21:44:08Z, deltic:manual run=verify-20261026T194306Z-849e71a8 verified_fix_run=fix-20261026T065014Z-3a295bf0 verdict=close)
+
+Verifier note: Manual verify: [verifier gpt-6-luna max (Codex), recorded by lead] 85e470f; six match-scope tests pass. Minimal repro: interpreter 5,1; native 5,1. With arm restore disabled, match_arm_binding_does_not_leak_at_top_level failed output assertion: native [5,5], expected [5,1].
 
 ## Notes

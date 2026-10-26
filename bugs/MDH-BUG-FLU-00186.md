@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00186 — Native stack guard: prior-handler chaining gaps on macOS and untested paths
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** native
 - **Raised:** 2026-10-26T09:23:41Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T194306Z-35b6ed9e
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00186-run-verify-20261026T194306Z-35b6ed9e
-- **Owner base:** 36750bc8afd262a99873992d919d9ed250946aef
-- **Owner fingerprint:** sha256:0a16e9ed82c1cd865fdfd562e020acd160a758e9bbc93fd587e9e50f9bd7fd1a
-- **Owner since:** 2026-10-26T19:43:06Z
-- **Owner until:** 2026-10-26T23:43:06Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-26T09:23:41Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T14:03:03Z, deltic:auto role=fix run=fix-20261026T122015Z-8ae40c1a branch=task/bug-MDH-BUG-FLU-00186-run-fix-20261026T122015Z-8ae40c1a code=c71068a gate=manual)
+- **State history:** Open (2026-10-26T09:23:41Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T14:03:03Z, deltic:auto role=fix run=fix-20261026T122015Z-8ae40c1a branch=task/bug-MDH-BUG-FLU-00186-run-fix-20261026T122015Z-8ae40c1a code=c71068a gate=manual) -> Closed (2026-10-26T21:44:08Z, deltic:manual role=verify run=verify-20261026T194306Z-35b6ed9e verified_fix_run=fix-20261026T122015Z-8ae40c1a verdict=close)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:native-stack-guard-prior-handler-chaining-gaps-
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T21:44:08Z, deltic:manual run=verify-20261026T194306Z-35b6ed9e verified_fix_run=fix-20261026T122015Z-8ae40c1a verdict=close)
+
+Verifier note: Manual verify: [verifier gpt-6-luna max (Codex), recorded by lead] c71068a; signals_that_are_not_a_stack_overflow_get_the_prior_action selected/pass on Darwin arm64 (SIG_IGN, SA_NODEFER masks and documented SA_RESETHAND limit); disabling the ESR check failed its assertion: expected exit 7, got SIGSEGV 11; lock-free _Static_assert compiled.
 
 ## Notes

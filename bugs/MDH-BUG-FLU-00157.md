@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00157 — Native build of examples/stdlib/game_demo.braw times out after 120 seconds
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** native
 - **Raised:** 2026-10-25T23:04:55Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T194306Z-f95e041b
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00157-run-verify-20261026T194306Z-f95e041b
-- **Owner base:** 36750bc8afd262a99873992d919d9ed250946aef
-- **Owner fingerprint:** sha256:f19dbca6bb2248a4c18c8bc065c035a9e8ef13f0e580130c38ae1d34a683fccd
-- **Owner since:** 2026-10-26T19:43:06Z
-- **Owner until:** 2026-10-26T23:43:06Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-25T23:04:55Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T01:31:35Z, deltic:auto role=fix run=fix-20261025T230506Z-6b2db5bc branch=task/bug-MDH-BUG-FLU-00157-run-fix-20261025T230506Z-6b2db5bc code=8b0ec87 gate=manual)
+- **State history:** Open (2026-10-25T23:04:55Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T01:31:35Z, deltic:auto role=fix run=fix-20261025T230506Z-6b2db5bc branch=task/bug-MDH-BUG-FLU-00157-run-fix-20261025T230506Z-6b2db5bc code=8b0ec87 gate=manual) -> Closed (2026-10-26T21:44:08Z, deltic:manual role=verify run=verify-20261026T194306Z-f95e041b verified_fix_run=fix-20261025T230506Z-6b2db5bc verdict=close)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:native-build-of-examples-stdlib-game-demo-braw-
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T21:44:08Z, deltic:manual run=verify-20261026T194306Z-f95e041b verified_fix_run=fix-20261025T230506Z-6b2db5bc verdict=close)
+
+Verifier note: Manual verify: [verifier gpt-6-luna max (Codex), recorded by lead] 8b0ec87; game_demo.braw native build completed in 105s; both dispatch tests pass. Reversing the shared-dispatch hunk made function_value_calls_do_not_blow_up_ir fail: IR 51,336 lines, limit 36,000.
 
 ## Notes

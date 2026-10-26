@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00154 — Native modules and --emit-llvm output hard-code the x86_64-linux target triple and data layout
 
-- **State:** Fixed
+- **State:** Open
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** llvm
 - **Raised:** 2026-10-25T22:16:12Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T194306Z-2c133d22
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00154-run-verify-20261026T194306Z-2c133d22
-- **Owner base:** 36750bc8afd262a99873992d919d9ed250946aef
-- **Owner fingerprint:** sha256:e0c4229856b2d4b3897961c87db2441094fd71572e84a9c2ce97d010c69b7436
-- **Owner since:** 2026-10-26T19:43:06Z
-- **Owner until:** 2026-10-26T23:43:06Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
-- **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-25T22:16:12Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T01:31:47Z, deltic:auto role=fix run=fix-20261025T230506Z-37196da3 branch=task/bug-MDH-BUG-FLU-00154-run-fix-20261025T230506Z-37196da3 code=c5abe17 gate=manual)
+- **Attempts:** fix=0, doubt=1, indeterminate=0
+- **State history:** Open (2026-10-25T22:16:12Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T01:31:47Z, deltic:auto role=fix run=fix-20261025T230506Z-37196da3 branch=task/bug-MDH-BUG-FLU-00154-run-fix-20261025T230506Z-37196da3 code=c5abe17 gate=manual) -> Open (2026-10-26T21:44:08Z, deltic:manual role=verify run=verify-20261026T194306Z-2c133d22 verified_fix_run=fix-20261025T230506Z-37196da3 verdict=doubt reason=reopen-fails-when-the-triple-is-reverted-a-layout-only-mutant-using-the-old-x86)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:native-modules-and-emit-llvm-output-hard-code-t
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T21:44:08Z, deltic:manual run=verify-20261026T194306Z-2c133d22 verified_fix_run=fix-20261025T230506Z-37196da3 verdict=doubt)
+
+Verifier note: Manual verify: [verifier gpt-6-luna max (Codex), recorded by lead] c5abe17; emitted_ir_uses_the_host_default_triple fails when the triple is reverted; a layout-only mutant using the old x86 layout kept the test green (1 selected). Test asserts only that a datalayout line exists, not the host layout.
 
 ## Notes

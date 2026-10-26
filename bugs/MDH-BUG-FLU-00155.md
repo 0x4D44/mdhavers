@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00155 — Native has placeholder bodies for builtins the interpreter implements (compose, group_by...)
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** native
 - **Raised:** 2026-10-25T23:01:52Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T194306Z-39ea6714
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00155-run-verify-20261026T194306Z-39ea6714
-- **Owner base:** 36750bc8afd262a99873992d919d9ed250946aef
-- **Owner fingerprint:** sha256:5ab0aa49d758b1119f6ec68fd124969b0668a3abddd47b9ff876b12399bfe792
-- **Owner since:** 2026-10-26T19:43:06Z
-- **Owner until:** 2026-10-26T23:43:06Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-25T23:01:52Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T03:29:08Z, deltic:auto role=fix run=fix-20261026T024153Z-fe118389 branch=task/bug-MDH-BUG-FLU-00155-run-fix-20261026T024153Z-fe118389 code=0093bc8 gate=manual)
+- **State history:** Open (2026-10-25T23:01:52Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T03:29:08Z, deltic:auto role=fix run=fix-20261026T024153Z-fe118389 branch=task/bug-MDH-BUG-FLU-00155-run-fix-20261026T024153Z-fe118389 code=0093bc8 gate=manual) -> Closed (2026-10-26T21:44:08Z, deltic:manual role=verify run=verify-20261026T194306Z-39ea6714 verified_fix_run=fix-20261026T024153Z-fe118389 verdict=close)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:native-has-placeholder-bodies-for-builtins-the-
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T21:44:08Z, deltic:manual run=verify-20261026T194306Z-39ea6714 verified_fix_run=fix-20261026T024153Z-fe118389 verdict=close)
+
+Verifier note: Manual verify: [verifier gpt-6-luna max (Codex), recorded by lead] 0093bc8; screen/key, mak_siccar, dae_times, compose/apply_n, group_by/swatch/assert_that and unit-converter tests pass on trunk. Reversing the codegen hunk failed screen_width success assertion and mak_siccar wording parity.
 
 ## Notes

@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00161 — Native graphics builtins (draw_*, get_mouse_*, screen_update...) silently return nil
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** native
 - **Raised:** 2026-10-26T03:04:10Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T194306Z-52b6e8de
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00161-run-verify-20261026T194306Z-52b6e8de
-- **Owner base:** 36750bc8afd262a99873992d919d9ed250946aef
-- **Owner fingerprint:** sha256:e6fb9fe115fd9e70b615dd34ba755ccb82c9d0ab1ca918e8df0cb94ca043baad
-- **Owner since:** 2026-10-26T19:43:06Z
-- **Owner until:** 2026-10-26T23:43:06Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-26T03:04:10Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T04:10:06Z, deltic:auto role=fix run=fix-20261026T032928Z-692239a5 branch=task/bug-MDH-BUG-FLU-00161-run-fix-20261026T032928Z-692239a5 code=bbaa9fb gate=manual)
+- **State history:** Open (2026-10-26T03:04:10Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T04:10:06Z, deltic:auto role=fix run=fix-20261026T032928Z-692239a5 branch=task/bug-MDH-BUG-FLU-00161-run-fix-20261026T032928Z-692239a5 code=bbaa9fb gate=manual) -> Closed (2026-10-26T21:44:08Z, deltic:manual role=verify run=verify-20261026T194306Z-52b6e8de verified_fix_run=fix-20261026T032928Z-692239a5 verdict=close)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:native-graphics-builtins-draw-get-mouse-screen-
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T21:44:08Z, deltic:manual run=verify-20261026T194306Z-52b6e8de verified_fix_run=fix-20261026T032928Z-692239a5 verdict=close)
+
+Verifier note: Manual verify: [verifier gpt-6-luna max (Codex), recorded by lead] bbaa9fb; native_graphics_placeholders_hurl_nae_windae_mdh_bug_flu_00161 passes (15 placeholders, normal and caught paths). Reversing the codegen hunk failed the screen_open success assertion: exit 0, expected a hurl.
 
 ## Notes

@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00185 — Native: wrong-type errors from stoater, dicht, is_a and chynge differ from the interpreter
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** native
 - **Raised:** 2026-10-26T09:14:16Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T194306Z-b53fb7b7
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00185-run-verify-20261026T194306Z-b53fb7b7
-- **Owner base:** 36750bc8afd262a99873992d919d9ed250946aef
-- **Owner fingerprint:** sha256:f630f8d1862e9c60c0f44e36a31164bb255e58c4012175374004d0ee96428081
-- **Owner since:** 2026-10-26T19:43:06Z
-- **Owner until:** 2026-10-26T23:43:06Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-26T09:14:16Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T11:36:23Z, deltic:auto role=fix run=fix-20261026T091430Z-dedd0d69 branch=task/bug-MDH-BUG-FLU-00185-run-fix-20261026T091430Z-dedd0d69 code=aa422ef gate=manual)
+- **State history:** Open (2026-10-26T09:14:16Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T11:36:23Z, deltic:auto role=fix run=fix-20261026T091430Z-dedd0d69 branch=task/bug-MDH-BUG-FLU-00185-run-fix-20261026T091430Z-dedd0d69 code=aa422ef gate=manual) -> Closed (2026-10-26T21:44:08Z, deltic:manual role=verify run=verify-20261026T194306Z-b53fb7b7 verified_fix_run=fix-20261026T091430Z-dedd0d69 verdict=close)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:native-wrong-type-errors-from-stoater-dicht-is-
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T21:44:08Z, deltic:manual run=verify-20261026T194306Z-b53fb7b7 verified_fix_run=fix-20261026T091430Z-dedd0d69 verdict=close)
+
+Verifier note: Manual verify: [verifier gpt-6-luna max (Codex), recorded by lead] aa422ef; 5 parity tests selected/pass, including wrong_type_arguments_have_the_interpreters_text, chynge_out_of_range_has_the_interpreters_text, and is_a_with_a_non_string_type_has_the_interpreters_text; stoater mutant failed native-vs-interpreter assertion (generic type error vs Scots text); old chynge range hunk failed missing Jings prefix; native/interpreter repro matched.
 
 ## Notes

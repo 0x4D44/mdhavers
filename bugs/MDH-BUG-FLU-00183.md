@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00183 — Native runtime: Rust code raises via longjmp across live Rust frames (tri, audio)
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** native
 - **Raised:** 2026-10-26T08:39:16Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T194306Z-e070a29e
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00183-run-verify-20261026T194306Z-e070a29e
-- **Owner base:** 36750bc8afd262a99873992d919d9ed250946aef
-- **Owner fingerprint:** sha256:e2a6a199e7e88bf462dce77006fc1328d5e365bdf0089a3eba13ecc37011ff43
-- **Owner since:** 2026-10-26T19:43:06Z
-- **Owner until:** 2026-10-26T23:43:06Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-26T08:39:16Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T12:19:55Z, deltic:auto role=fix run=fix-20261026T103609Z-e7d700f1 branch=task/bug-MDH-BUG-FLU-00183-run-fix-20261026T103609Z-e7d700f1 code=60643ac gate=manual)
+- **State history:** Open (2026-10-26T08:39:16Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T12:19:55Z, deltic:auto role=fix run=fix-20261026T103609Z-e7d700f1 branch=task/bug-MDH-BUG-FLU-00183-run-fix-20261026T103609Z-e7d700f1 code=60643ac gate=manual) -> Closed (2026-10-26T21:44:08Z, deltic:manual role=verify run=verify-20261026T194306Z-e070a29e verified_fix_run=fix-20261026T103609Z-e7d700f1 verdict=close)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:native-runtime-rust-code-raises-via-longjmp-acr
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T21:44:08Z, deltic:manual run=verify-20261026T194306Z-e070a29e verified_fix_run=fix-20261026T103609Z-e7d700f1 verdict=close)
+
+Verifier note: Manual verify: [verifier gpt-6-luna max (Codex), recorded by lead] 60643ac; a_caught_audio_error_leaves_audio_usable passes. Hurling inside soond_luid while holding the RefCell borrow made the repeated call panic “RefCell already borrowed” and panic across extern C; the test status assertion failed.
 
 ## Notes

@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00159 — Native clype on a class instance omits the class name
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** native
 - **Raised:** 2026-10-26T02:17:27Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T194306Z-277ea002
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00159-run-verify-20261026T194306Z-277ea002
-- **Owner base:** 36750bc8afd262a99873992d919d9ed250946aef
-- **Owner fingerprint:** sha256:9d17a7c6d68d51667cd450afa0b5a6c2194a406ffc501a59810ac4bc019c5f9c
-- **Owner since:** 2026-10-26T19:43:06Z
-- **Owner until:** 2026-10-26T23:43:06Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-26T02:17:27Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T03:29:14Z, deltic:auto role=fix run=fix-20261026T024153Z-5e9d5af4 branch=task/bug-MDH-BUG-FLU-00159-run-fix-20261026T024153Z-5e9d5af4 code=17c24d5 gate=manual)
+- **State history:** Open (2026-10-26T02:17:27Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T03:29:14Z, deltic:auto role=fix run=fix-20261026T024153Z-5e9d5af4 branch=task/bug-MDH-BUG-FLU-00159-run-fix-20261026T024153Z-5e9d5af4 code=17c24d5 gate=manual) -> Closed (2026-10-26T21:44:08Z, deltic:manual role=verify run=verify-20261026T194306Z-277ea002 verified_fix_run=fix-20261026T024153Z-5e9d5af4 verdict=close)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:native-clype-on-a-class-instance-omits-the-clas
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T21:44:08Z, deltic:manual run=verify-20261026T194306Z-277ea002 verified_fix_run=fix-20261026T024153Z-5e9d5af4 verdict=close)
+
+Verifier note: Manual verify: [verifier gpt-6-luna max (Codex), recorded by lead] 17c24d5; native_clype_names_the_class_of_an_instance passes on trunk. Reversing the MDH_TAG_INSTANCE branch made parity assert fail: native [instance] instance, expected [instance] instance o' 'Dog'.
 
 ## Notes

@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00158 — Native cannot use a builtin as a value: ken f = len fails to compile
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** native
 - **Raised:** 2026-10-26T02:17:22Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T194306Z-4839c974
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00158-run-verify-20261026T194306Z-4839c974
-- **Owner base:** 36750bc8afd262a99873992d919d9ed250946aef
-- **Owner fingerprint:** sha256:96f8c3e18f829850f8ee1b8d03486a7082181b0c3b05830b72f065caff927ced
-- **Owner since:** 2026-10-26T19:43:06Z
-- **Owner until:** 2026-10-26T23:43:06Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-26T02:17:22Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T03:56:41Z, deltic:auto role=fix run=fix-20261026T024153Z-9ac12aa3 branch=task/bug-MDH-BUG-FLU-00158-run-fix-20261026T024153Z-9ac12aa3 code=06cfc48 gate=manual)
+- **State history:** Open (2026-10-26T02:17:22Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T03:56:41Z, deltic:auto role=fix run=fix-20261026T024153Z-9ac12aa3 branch=task/bug-MDH-BUG-FLU-00158-run-fix-20261026T024153Z-9ac12aa3 code=06cfc48 gate=manual) -> Closed (2026-10-26T21:44:08Z, deltic:manual role=verify run=verify-20261026T194306Z-4839c974 verified_fix_run=fix-20261026T024153Z-9ac12aa3 verdict=close)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:native-cannot-use-a-builtin-as-a-value-ken-f-le
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T21:44:08Z, deltic:manual run=verify-20261026T194306Z-4839c974 verified_fix_run=fix-20261026T024153Z-9ac12aa3 verdict=close)
+
+Verifier note: Manual verify: [verifier gpt-6-luna max (Codex), recorded by lead] 06cfc48; builtins_work_as_values_like_the_interpreter passes on trunk; a nil-return wrapper mutant failed its output parity assert (native values were naething; expected 3, 5, etc.).
 
 ## Notes

@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00184 — Native runtime: string buffer ignores allocation failure and crashes on out-of-memory
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** native
 - **Raised:** 2026-10-26T08:44:39Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T194306Z-374fbc16
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00184-run-verify-20261026T194306Z-374fbc16
-- **Owner base:** 36750bc8afd262a99873992d919d9ed250946aef
-- **Owner fingerprint:** sha256:5a80dd2d3ba7a46c0a6ad91467ada7b8fcbd85036337c77f9c799962c4af18b9
-- **Owner since:** 2026-10-26T19:43:06Z
-- **Owner until:** 2026-10-26T23:43:06Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-26T08:44:39Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T12:20:03Z, deltic:auto role=fix run=fix-20261026T103609Z-be992a44 branch=task/bug-MDH-BUG-FLU-00184-run-fix-20261026T103609Z-be992a44 code=26cd19d gate=manual)
+- **State history:** Open (2026-10-26T08:44:39Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T12:20:03Z, deltic:auto role=fix run=fix-20261026T103609Z-be992a44 branch=task/bug-MDH-BUG-FLU-00184-run-fix-20261026T103609Z-be992a44 code=26cd19d gate=manual) -> Closed (2026-10-26T21:44:08Z, deltic:manual role=verify run=verify-20261026T194306Z-374fbc16 verified_fix_run=fix-20261026T103609Z-be992a44 verdict=close)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:native-runtime-string-buffer-ignores-allocation
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T21:44:08Z, deltic:manual run=verify-20261026T194306Z-374fbc16 verified_fix_run=fix-20261026T103609Z-be992a44 verdict=close)
+
+Verifier note: Manual verify: [verifier gpt-6-luna max (Codex), recorded by lead] 26cd19d; both running_out_of_memory tests selected/pass. Disabling the non-quiet formatter raise made running_out_of_memory_formatting_raises_the_too_big_error fail output assertion: 440311 instead of the too-big error.
 
 ## Notes

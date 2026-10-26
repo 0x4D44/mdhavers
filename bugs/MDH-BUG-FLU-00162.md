@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00162 — Native builtin values: two uses of len compare unequal, and clype(len) differs
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** native
 - **Raised:** 2026-10-26T03:56:47Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T194306Z-ec0ac31f
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00162-run-verify-20261026T194306Z-ec0ac31f
-- **Owner base:** 36750bc8afd262a99873992d919d9ed250946aef
-- **Owner fingerprint:** sha256:2d93e09ecd4b2b24917714ff50c2a4be0eee1cf9ba2dd8bd56ab4f49ce7b1163
-- **Owner since:** 2026-10-26T19:43:06Z
-- **Owner until:** 2026-10-26T23:43:06Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-26T03:56:47Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T04:59:30Z, deltic:auto role=fix run=fix-20261026T041042Z-1dd68436 branch=task/bug-MDH-BUG-FLU-00162-run-fix-20261026T041042Z-1dd68436 code=9025063 gate=manual)
+- **State history:** Open (2026-10-26T03:56:47Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T04:59:30Z, deltic:auto role=fix run=fix-20261026T041042Z-1dd68436 branch=task/bug-MDH-BUG-FLU-00162-run-fix-20261026T041042Z-1dd68436 code=9025063 gate=manual) -> Closed (2026-10-26T21:44:08Z, deltic:manual role=verify run=verify-20261026T194306Z-ec0ac31f verified_fix_run=fix-20261026T041042Z-1dd68436 verdict=close)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:native-builtin-values-two-uses-of-len-compare-u
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T21:44:08Z, deltic:manual run=verify-20261026T194306Z-ec0ac31f verified_fix_run=fix-20261026T041042Z-1dd68436 verdict=close)
+
+Verifier note: Manual verify: [verifier gpt-6-luna max (Codex), recorded by lead] 9025063; identity and clype tests pass on trunk. Reversing cache plus clype recognition made both selected assertions fail: len identity was nae; clype printed [function] instead of [native function].
 
 ## Notes

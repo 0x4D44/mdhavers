@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00166 — Native: calling a function with too many arguments crashes the LLVM verifier
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** native
 - **Raised:** 2026-10-26T05:03:31Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T194306Z-296ba444
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00166-run-verify-20261026T194306Z-296ba444
-- **Owner base:** 36750bc8afd262a99873992d919d9ed250946aef
-- **Owner fingerprint:** sha256:da5ae54e1eb3a6d37a9ffa7a06773a5373a42b8fdc8585c68af12376181eb304
-- **Owner since:** 2026-10-26T19:43:06Z
-- **Owner until:** 2026-10-26T23:43:06Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-26T05:03:31Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T06:50:02Z, deltic:auto role=fix run=fix-20261026T050440Z-116dd0d2 branch=task/bug-MDH-BUG-FLU-00166-run-fix-20261026T050440Z-116dd0d2 code=0f7096c gate=manual)
+- **State history:** Open (2026-10-26T05:03:31Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T06:50:02Z, deltic:auto role=fix run=fix-20261026T050440Z-116dd0d2 branch=task/bug-MDH-BUG-FLU-00166-run-fix-20261026T050440Z-116dd0d2 code=0f7096c gate=manual) -> Closed (2026-10-26T21:44:08Z, deltic:manual role=verify run=verify-20261026T194306Z-296ba444 verified_fix_run=fix-20261026T050440Z-116dd0d2 verdict=close)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:native-calling-a-function-with-too-many-argumen
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T21:44:08Z, deltic:manual run=verify-20261026T194306Z-296ba444 verified_fix_run=fix-20261026T050440Z-116dd0d2 verdict=close)
+
+Verifier note: Manual verify: [verifier gpt-6-luna max (Codex), recorded by lead] 0f7096c; all five arity tests pass on trunk. Reversing the checker made four wrong-arity tests fail on assertions: too-many exposed LLVM verifier text; too-few/default/method cases compiled when they must not.
 
 ## Notes
