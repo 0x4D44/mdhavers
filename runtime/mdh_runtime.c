@@ -7454,7 +7454,7 @@ MdhValue __mdh_stacktrace(void) {
 MdhValue __mdh_chynge(MdhValue list, MdhValue index, MdhValue value) {
     /* List insert (Scots: change) */
     if (list.tag != MDH_TAG_LIST) {
-        __mdh_hurl_owned(__mdh_make_string("chynge() needs a list"));
+        __mdh_builtin_error("chynge() needs a list");
         return __mdh_make_list(0);
     }
 
@@ -7464,7 +7464,7 @@ MdhValue __mdh_chynge(MdhValue list, MdhValue index, MdhValue value) {
     } else if (index.tag == MDH_TAG_FLOAT) {
         idx = __mdh_double_to_i64_saturating(__mdh_get_float(index));
     } else {
-        __mdh_hurl_owned(__mdh_make_string("chynge() needs an integer index"));
+        __mdh_builtin_error("chynge() needs an integer index");
         return __mdh_make_list(0);
     }
 
@@ -7475,8 +7475,9 @@ MdhValue __mdh_chynge(MdhValue list, MdhValue index, MdhValue value) {
     }
     if (idx < 0 || idx > len) {
         char msg[128];
-        snprintf(msg, sizeof(msg), "Index %lld oot o' bounds fer list o' length %lld", (long long)idx, (long long)len);
-        __mdh_hurl_owned(__mdh_make_string(msg));
+        /* The interpreter reports the wrapped (unsigned) index of a negative one. */
+        snprintf(msg, sizeof(msg), "Index %llu oot o' bounds fer list o' length %lld", (unsigned long long)idx, (long long)len);
+        __mdh_builtin_error(msg);
         return __mdh_make_list(0);
     }
 
@@ -10782,7 +10783,7 @@ MdhValue __mdh_clype(MdhValue val) {
 
 MdhValue __mdh_stoater(MdhValue list) {
     if (list.tag != MDH_TAG_LIST) {
-        __mdh_type_error("stoater", list.tag, 0);
+        __mdh_builtin_error("stoater() needs a list");
         return __mdh_make_nil();
     }
     MdhList *l = __mdh_get_list(list);
@@ -10888,7 +10889,7 @@ MdhValue __mdh_sclaff(MdhValue list, int64_t full) {
 
 MdhValue __mdh_dicht(MdhValue list, MdhValue index) {
     if (list.tag != MDH_TAG_LIST) {
-        __mdh_type_error("dicht", list.tag, 0);
+        __mdh_builtin_error("dicht() needs a list");
         return __mdh_make_list(0);
     }
     int64_t idx;
@@ -10897,7 +10898,7 @@ MdhValue __mdh_dicht(MdhValue list, MdhValue index) {
     } else if (index.tag == MDH_TAG_FLOAT) {
         idx = (int64_t)__mdh_get_float(index);
     } else {
-        __mdh_type_error("dicht", index.tag, 0);
+        __mdh_builtin_error("dicht() needs an integer index");
         return __mdh_make_list(0);
     }
 

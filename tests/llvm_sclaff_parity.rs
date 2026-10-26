@@ -102,3 +102,46 @@ fn is_a_with_a_non_string_type_has_the_interpreters_text() {
     let out = same_on_both(&caught("is_a(1, 2)"));
     assert!(out.ends_with("is_a() needs a type name string"), "{out}");
 }
+
+/// Wrong-type arguments to `stoater`, `dicht` and `chynge`, and an out-of-range `chynge`,
+/// raise the interpreter's text (MDH-BUG-FLU-00185).
+#[test]
+fn wrong_type_arguments_have_the_interpreters_text() {
+    let cases = [
+        ("stoater(5)", "stoater() needs a list"),
+        ("dicht(5, 0)", "dicht() needs a list"),
+        ("dicht([1, 2], \"a\")", "dicht() needs an integer index"),
+        ("chynge(5, 0, 1)", "chynge() needs a list"),
+        (
+            "chynge([1, 2], \"a\", 1)",
+            "chynge() needs an integer index",
+        ),
+    ];
+    for (call, text) in cases {
+        let out = same_on_both(&caught(call));
+        assert!(
+            out.ends_with(&format!("Jings! Something went awfy wrang: {text}")),
+            "{call}: {out}"
+        );
+    }
+}
+
+#[test]
+fn chynge_out_of_range_has_the_interpreters_text() {
+    let out = same_on_both(&caught("chynge([1, 2, 3], 5, 9)"));
+    assert!(
+        out.ends_with(
+            "Jings! Something went awfy wrang: Index 5 oot o' bounds fer list o' length 3"
+        ),
+        "{out}"
+    );
+    let out = same_on_both(&caught("chynge([1, 2, 3], -9, 9)"));
+    assert!(
+        out.contains("Index 18446744073709551610 oot o' bounds fer list o' length 3"),
+        "{out}"
+    );
+    assert_eq!(
+        same_on_both("blether chynge([1, 2, 3], 3, 9)\nblether chynge([1, 2, 3], -1, 9)\n"),
+        "[1, 2, 3, 9]\n[1, 2, 9, 3]"
+    );
+}
