@@ -10712,6 +10712,15 @@ MdhValue __mdh_clype(MdhValue val) {
         case MDH_TAG_CLASS:
             snprintf(info, sizeof(info), "class '%.200s'", (const char *)(intptr_t)val.data);
             break;
+        case MDH_TAG_INSTANCE: {
+            /* Same handle layout as the display code: handle -> data -> class-name pointer. */
+            intptr_t *handle_ptr = (intptr_t *)(intptr_t)val.data;
+            intptr_t data_ptr = handle_ptr ? *handle_ptr : 0;
+            int64_t *inst_ptr = (int64_t *)(intptr_t)data_ptr;
+            const char *class_name = inst_ptr ? (const char *)(intptr_t)inst_ptr[0] : NULL;
+            snprintf(info, sizeof(info), "instance o' '%.200s'", class_name ? class_name : "instance");
+            break;
+        }
         default:
             snprintf(info, sizeof(info), "%s", t);
             break;

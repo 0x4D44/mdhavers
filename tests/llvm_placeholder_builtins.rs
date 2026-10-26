@@ -184,3 +184,17 @@ fn native_screen_and_key_builtins_hurl_instead_of_returning_made_up_values() {
     );
     assert!(out[0].starts_with("Nae windae!"), "{out:?}");
 }
+
+#[test]
+fn native_clype_names_the_class_of_an_instance_mdh_bug_flu_00159() {
+    assert_native_matches_interpreter(
+        r#"kin Dog {
+    dae init() { masel.n = 1 }
+}
+blether clype(Dog())
+blether clype(1)
+blether clype([1])
+"#,
+        &["[instance] instance o' 'Dog'"],
+    );
+}
