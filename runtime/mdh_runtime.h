@@ -641,6 +641,7 @@ MdhValue __mdh_capitalize(MdhValue str);
 MdhValue __mdh_scunner(MdhValue val);
 MdhValue __mdh_cannie(MdhValue val);
 MdhValue __mdh_scunner_check(MdhValue val, MdhValue expected_type);
+MdhValue __mdh_assert_equal(MdhValue a, MdhValue b);
 MdhValue __mdh_clype(MdhValue val);
 MdhValue __mdh_stoater(MdhValue list);
 MdhValue __mdh_sclaff(MdhValue list, int64_t full);

@@ -11934,6 +11934,31 @@ void __mdh_assert_fail(MdhValue msg, int64_t line) {
     __mdh_hurl_owned(__mdh_string_from_buf(buf));
 }
 
+/* assert_equal(a, b): aye when equal, else the interpreter's RuntimeError text for the builtin,
+ * "Jings! Something went awfy wrang: Assertion failed: expected <a> but got <b>" (MDH-BUG-FLU-00192). */
+MdhValue __mdh_assert_equal(MdhValue a, MdhValue b) {
+    if (__mdh_eq(a, b)) return __mdh_make_bool(true);
+    const char *ta = __mdh_get_string(__mdh_to_string(a));
+    const char *tb = __mdh_get_string(__mdh_to_string(b));
+    if (!ta) ta = "";
+    if (!tb) tb = "";
+    const char *p1 = "Jings! Something went awfy wrang: Assertion failed: expected ";
+    const char *p2 = " but got ";
+    size_t l1 = strlen(p1), la = strlen(ta), l2 = strlen(p2), lb = strlen(tb);
+    size_t total = 0;
+    int overflowed = __builtin_add_overflow(l1, la, &total) ||
+                     __builtin_add_overflow(total, l2, &total) ||
+                     __builtin_add_overflow(total, lb, &total);
+    char *buf = __mdh_alloc_text(overflowed, total);
+    memcpy(buf, p1, l1);
+    memcpy(buf + l1, ta, la);
+    memcpy(buf + l1 + la, p2, l2);
+    memcpy(buf + l1 + la + l2, tb, lb + 1);
+    __mdh_hurl_owned(__mdh_string_from_buf(buf));
+    return __mdh_make_bool(true);
+}
+
+
 /* A user `hurl msg`: the interpreter's UserError text is "Hurled at line N: <msg>",
  * and that is what a catch binds and what an uncaught hurl prints (MDH-BUG-FLU-00073). */
 void __mdh_hurl_at(MdhValue msg, int64_t line) {

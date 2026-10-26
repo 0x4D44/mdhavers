@@ -25,17 +25,9 @@ tryit(|| is_even([2]))
 blether assert_equal(1, 1)
 blether assert_equal("a", "a")
 blether assert_equal([1, 2], [1, 2])
-# The failure text differs between backends (native: "expected values to be equal"), so
-# only check that it raises.
-dae raises(f) {
-    hae_a_bash {
-        f()
-        blether "no error"
-    } gin_it_gangs_wrang e {
-        blether "raised"
-    }
-}
-raises(|| assert_equal(1, 2))
-raises(|| assert_equal("a", "b"))
-raises(|| assert_equal([1], [2]))
-raises(|| assert_equal(1, 1))
+tryit(|| assert_equal(1, 2))
+tryit(|| assert_equal("a", "b"))
+tryit(|| assert_equal([1], [2]))
+tryit(|| assert_equal({"k": 1}, {"k": 2}))
+tryit(|| assert_equal(naething, 0))
+tryit(|| assert_equal(1.5, 2))

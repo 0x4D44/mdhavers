@@ -15,7 +15,9 @@ Jings! Something went awfy wrang: is_even() needs an integer
 aye
 aye
 aye
-raised
-raised
-raised
-no error
+Jings! Something went awfy wrang: Assertion failed: expected 1 but got 2
+Jings! Something went awfy wrang: Assertion failed: expected a but got b
+Jings! Something went awfy wrang: Assertion failed: expected [1] but got [2]
+Jings! Something went awfy wrang: Assertion failed: expected {"k": 1} but got {"k": 2}
+Jings! Something went awfy wrang: Assertion failed: expected naething but got 0
+Jings! Something went awfy wrang: Assertion failed: expected 1.5 but got 2

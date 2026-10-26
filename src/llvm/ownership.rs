@@ -42,6 +42,7 @@ pub enum Ret {
 pub const RUNTIME_OWNERSHIP: &[(&str, &str, Ret)] = &[
     ("__mdh_args", "", Ret::Fresh),
     ("__mdh_assert", "bs", Ret::None), // msg stored as last error (if string) via hurl
+    ("__mdh_assert_equal", "bb", Ret::None), // aye, or hurls a fresh error string
     ("__mdh_assert_fail", "b-", Ret::None), // hurls a fresh "Mak siccar failed at line N!" string
     ("__mdh_atomic_add", "bb", Ret::None), // handles are int table indices
     ("__mdh_atomic_cas", "bbb", Ret::None),

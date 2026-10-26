@@ -25707,27 +25707,31 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     let a = self.compile_expr(&args[0])?;
                     let b = self.compile_expr(&args[1])?;
-                    let eq = self
+                    // The runtime compares and, on a mismatch, hurls the interpreter's text
+                    // "Assertion failed: expected <a> but got <b>" (MDH-BUG-FLU-00192).
+                    let assert_equal_fn = match self.module.get_function("__mdh_assert_equal") {
+                        Some(f) => f,
+                        None => {
+                            let fn_type = self
+                                .types
+                                .value_type
+                                .fn_type(&[self.types.value_type.into(); 2], false);
+                            self.module.add_function(
+                                "__mdh_assert_equal",
+                                fn_type,
+                                Some(Linkage::External),
+                            )
+                        }
+                    };
+                    let result = self
                         .builder
-                        .build_call(self.libc.eq, &[a.into(), b.into()], "assert_equal_cmp")
+                        .build_call(assert_equal_fn, &[a.into(), b.into()], "assert_equal")
                         .unwrap()
                         .try_as_basic_value()
                         .basic()
-                        .compile_ok_or("__mdh_eq returned void")
-                        .unwrap()
-                        .into_int_value();
-                    let cond = self.make_bool(eq);
-                    let msg = self.compile_string_literal("expected values to be equal");
-                    let _ = self
-                        .builder
-                        .build_call(
-                            self.libc.assert_fn,
-                            &[cond.into(), msg.into()],
-                            "assert_equal",
-                        )
+                        .compile_ok_or("__mdh_assert_equal returned void")
                         .unwrap();
-                    let one = self.types.i64_type.const_int(1, false);
-                    return Ok(self.make_bool(one));
+                    return Ok(result);
                 }
                 "stoater" | "excellent" => {
                     if args.len() != 1 {
