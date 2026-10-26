@@ -2104,7 +2104,6 @@ const __havers_core = (() => {
     jings: (x) => `Jings! ${show(x)}`,
     crivvens: (x) => `Crivvens! ${show(x)}`,
     help_ma_boab: (x) => `Help ma boab! ${show(x)}`,
-    haud_yer_wheesht: () => "",
     numpty_check: (x) => {
       if (x === null || x === undefined) return "That's naething, ya numpty!";
       if (x === "") return "Empty string, ya numpty!";

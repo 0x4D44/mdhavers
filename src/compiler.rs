@@ -409,7 +409,6 @@ const RUNTIME_BINDINGS: &[&str] = &[
     "jings",
     "crivvens",
     "help_ma_boab",
-    "haud_yer_wheesht",
     "numpty_check",
     "crabbit",
     "cannie",

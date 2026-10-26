@@ -7537,16 +7537,6 @@ impl Interpreter {
             }))),
         );
 
-        // haud_yer_wheesht - tell someone to be quiet (returns empty string)
-        globals.borrow_mut().define(
-            "haud_yer_wheesht".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new(
-                "haud_yer_wheesht",
-                0,
-                |_args| Ok(Value::String("".to_string())),
-            ))),
-        );
-
         // braw - check if something is good/excellent
         globals.borrow_mut().define(
             "braw".to_string(),
@@ -21066,6 +21056,18 @@ len(a[0]) + len(b[0]) + len(c[0]) + len(d[0]) + len(e[0]) + len(f[0]) + len(g[0]
     fn test_factorial_too_big_error() {
         let result = run("factorial(21)");
         assert!(result.is_err());
+    }
+
+    // MDH-BUG-FLU-00177: `haud_yer_wheesht` is the `continue` keyword alias; there is no builtin.
+    #[test]
+    fn haud_yer_wheesht_is_a_keyword_not_a_builtin() {
+        let interp = Interpreter::new();
+        assert!(interp.globals.borrow().get("haud_yer_wheesht").is_none());
+        let result = run(
+            "ken n = 0\nken i = 0\nwhiles i < 4 {\n    i = i + 1\n    gin i == 2 { haud_yer_wheesht }\n    n = n + i\n}\nn",
+        )
+        .unwrap();
+        assert_eq!(result, Value::Integer(8));
     }
 
     #[test]
