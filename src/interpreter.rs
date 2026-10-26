@@ -8675,15 +8675,21 @@ impl Interpreter {
             }))),
         );
 
-        // heave_oot - remove item from set (heave it oot the creel!)
+        // heave_oot - remove an item from a set, or a key from a dict, in place (heave it oot the creel!)
         globals.borrow_mut().define(
             "heave_oot".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("heave_oot", 2, |args| {
-                if let Value::Set(set) = &args[0] {
-                    set.borrow_mut().remove(&args[1]);
-                    Ok(Value::Set(set.clone()))
-                } else {
-                    Err("heave_oot() needs a creel (set)".to_string())
+                match &args[0] {
+                    Value::Set(set) => {
+                        set.borrow_mut().remove(&args[1]);
+                        Ok(Value::Set(set.clone()))
+                    }
+                    // In place, like the creel: a missing key is ignored.
+                    Value::Dict(dict) => {
+                        dict.borrow_mut().remove(&args[1]);
+                        Ok(Value::Dict(dict.clone()))
+                    }
+                    _ => Err("heave_oot() needs a creel (set) or a dictionary".to_string()),
                 }
             }))),
         );

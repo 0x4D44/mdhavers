@@ -5049,12 +5049,13 @@ MdhValue __mdh_toss_in(MdhValue dict, MdhValue item) {
 }
 
 MdhValue __mdh_heave_oot(MdhValue dict, MdhValue item) {
-    if (dict.tag != MDH_TAG_SET) {
+    if (dict.tag != MDH_TAG_SET && dict.tag != MDH_TAG_DICT) {
         __mdh_type_error("heave_oot", dict.tag, 0);
         return __mdh_empty_creel();
     }
 
-    /* In place, as the interpreter: a tombstone, not a copy (MDH-BUG-FLU-00091). */
+    /* In place, as the interpreter, for a creel or a dict: a tombstone, not a copy
+     * (MDH-BUG-FLU-00091). A missing item or key is ignored; the argument is returned. */
     (void)__mdh_kv_remove(dict, item);
     return dict;
 }

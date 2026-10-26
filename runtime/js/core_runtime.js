@@ -2322,8 +2322,13 @@ const __havers_core = (() => {
       s.add(x === undefined ? null : x);
       return s;
     },
+    // In place, for a creel or a dict: a missing item or key is ignored. Returns its first argument.
     heave_oot: (s, x) => {
-      if (!(s instanceof Set)) throw native("heave_oot() needs a creel (set)");
+      if (isDict(s)) {
+        delete s[dkey(x)];
+        return s;
+      }
+      if (!(s instanceof Set)) throw native("heave_oot() needs a creel (set) or a dictionary");
       s.delete(x === undefined ? null : x);
       return s;
     },

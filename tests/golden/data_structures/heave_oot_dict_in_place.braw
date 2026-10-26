@@ -1,0 +1,65 @@
+# heave_oot_dict_in_place.braw - heave_oot(dict, key) removes the key in place, as it does for a creel
+
+ken d = {"a": 1, "b": 2, "c": 3, "d": 4}
+ken alias = d
+
+# Delete a key that is there: the dict itself changes, the alias sees it, the dict comes back.
+ken back = heave_oot(d, "b")
+blether keys(d)
+blether len(d)
+blether keys(alias)
+blether back == d
+blether dict_has(d, "b")
+
+# Delete a key that is missing: ignored, like a missing creel item.
+heave_oot(d, "zzz")
+blether len(d)
+blether keys(d)
+
+# Delete, then add the key again: it goes tae the end.
+heave_oot(d, "a")
+blether keys(d)
+d["a"] = 10
+d["b"] = 20
+blether keys(d)
+blether values(d)
+
+# Iteration order after a delete in the middle.
+ken order = []
+heave_oot(d, "d")
+fer k in keys(d) {
+    shove(order, k + "=" + tae_string(d[k]))
+}
+blether order
+
+# dict_remove keeps its copy semantics.
+ken copy = dict_remove(d, "c")
+blether keys(copy)
+blether keys(d)
+
+# Integer keys, and emptying a dict.
+ken n = {1: "one", 2: "two", 3: "three"}
+heave_oot(n, 2)
+blether keys(n)
+heave_oot(n, 1)
+heave_oot(n, 3)
+heave_oot(n, 3)
+blether len(n)
+blether n
+n[7] = "seven"
+blether n
+
+# Delete inside a loop over the keys.
+ken m = {}
+ken i = 0
+whiles i < 20 {
+    m["k" + tae_string(i)] = i
+    i = i + 1
+}
+fer k in keys(m) {
+    gin m[k] % 3 != 0 {
+        heave_oot(m, k)
+    }
+}
+blether keys(m)
+blether len(m)

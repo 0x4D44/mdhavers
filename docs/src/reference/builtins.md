@@ -139,7 +139,8 @@ These functions have distinctly Scottish names and personality!
 | `dict_merge(d1, d2)` | Merge dicts | `dict_merge({"a":1}, {"b":2})` |
 | `dict_get(d, key, default)` | Safe get | `dict_get({}, "x", 0)` → `0` |
 | `dict_has(d, key)` | Key exists? | `dict_has({"a":1}, "a")` → `aye` |
-| `dict_remove(d, key)` | Remove key | `dict_remove({"a":1}, "a")` |
+| `dict_remove(d, key)` | Copy without key (the original is untouched) | `dict_remove({"a":1}, "a")` → `{}` |
+| `heave_oot(d, key)` | Remove key from `d` in place; a missing key is ignored; returns `d`. Use it in loops that delete many keys. Also removes an item from a creel. | `heave_oot(d, "a")` |
 | `dict_invert(d)` | Swap key/value | `dict_invert({"a":1})` → `{1:"a"}` |
 | `fae_pairs(list)` | Create from pairs | `fae_pairs([["a",1]])` → `{"a":1}` |
 
