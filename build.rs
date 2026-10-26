@@ -28,6 +28,17 @@ fn main() {
     println!("cargo:rerun-if-changed=runtime/mdh_runtime_rs/src/tri_runtime.rs");
     println!("cargo:rerun-if-changed=runtime/mdh_runtime_rs/src/tri_engine.rs");
 
+    // On macOS a graphics build runs the CLI on the main thread (raylib/GLFW
+    // need it), so src/main.rs cannae spawn its big-stack thread there. Ask
+    // the linker for the same 512 MiB on the main thread instead (MDH-BUG-FLU-00165).
+    // Keep this size in step with CLI_STACK_SIZE in src/main.rs.
+    println!("cargo:rerun-if-env-changed=CARGO_FEATURE_GRAPHICS");
+    if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos")
+        && env::var("CARGO_FEATURE_GRAPHICS").is_ok()
+    {
+        println!("cargo:rustc-link-arg-bin=mdhavers=-Wl,-stack_size,0x20000000");
+    }
+
     let llvm_enabled = env::var("CARGO_FEATURE_LLVM").is_ok();
     if !llvm_enabled {
         return;

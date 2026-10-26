@@ -1380,3 +1380,28 @@ fn cli_compiled_js_speir_at_end_of_input_is_null() {
     );
     assert_eq!(stdout, "aye\naye\n");
 }
+
+// MDH-BUG-FLU-00165: the CLI must give scripts the big stack in every feature
+// configuration (a default macOS build runs on the main thread for raylib).
+#[test]
+fn cli_run_recursion_5000_deep_succeeds() {
+    let dir = tempdir().unwrap();
+    let prog = dir.path().join("deep.braw");
+    write_file(
+        &prog,
+        "dae r(n) { gin n == 0 { gie 0 } gie 1 + r(n - 1) }\nblether r(5000)\n",
+    );
+    let (code, out, err) = run_mdhavers(&["run", prog.to_str().unwrap()], None, dir.path());
+    assert_eq!(code, 0, "stderr: {err}");
+    assert_eq!(out.trim(), "5000");
+}
+
+#[test]
+fn cli_run_unbounded_recursion_gives_scots_stack_error() {
+    let dir = tempdir().unwrap();
+    let prog = dir.path().join("endless.braw");
+    write_file(&prog, "dae r(n) { gie 1 + r(n + 1) }\nblether r(0)\n");
+    let (code, _out, err) = run_mdhavers(&["run", prog.to_str().unwrap()], None, dir.path());
+    assert_eq!(code, 1, "stderr: {err}");
+    assert!(err.contains("Stack's fair puggled"), "stderr: {err}");
+}
