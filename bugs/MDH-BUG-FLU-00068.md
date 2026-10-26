@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00068 — Native: a whiles loop corrupts function parameters not used inside the loop
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** native
 - **Raised:** 2026-10-23T02:06:57Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T171637Z-dd1adf71
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00068-run-verify-20261026T171637Z-dd1adf71
-- **Owner base:** b5fbdef97d31e05c1d4f8b997c745938b368bb11
-- **Owner fingerprint:** sha256:40729803a90d470786d1dac6e30b4ed04cfc81273eb08467457af161bccf2f11
-- **Owner since:** 2026-10-26T17:16:37Z
-- **Owner until:** 2026-10-26T21:16:37Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-23T02:06:57Z, raised via `deltic bugs new` model=claude-opus-5-5@medium) -> Fixed (2026-10-23T03:05:53Z, deltic:auto role=fix run=fix-20261023T030547Z-a7d84499 branch=task/bug-MDH-BUG-FLU-00068-run-fix-20261023T030547Z-a7d84499 code=8e071f4 gate=manual)
+- **State history:** Open (2026-10-23T02:06:57Z, raised via `deltic bugs new` model=claude-opus-5-5@medium) -> Fixed (2026-10-23T03:05:53Z, deltic:auto role=fix run=fix-20261023T030547Z-a7d84499 branch=task/bug-MDH-BUG-FLU-00068-run-fix-20261023T030547Z-a7d84499 code=8e071f4 gate=manual) -> Closed (2026-10-26T18:20:05Z, deltic:manual role=verify run=verify-20261026T171637Z-dd1adf71 verified_fix_run=fix-20261023T030547Z-a7d84499 verdict=close)
 
 ## Observation
 
@@ -28,5 +28,9 @@ Found by the showcase lane 2026-10-23 (native only; interpreter correct): `dae f
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T18:20:05Z, deltic:manual run=verify-20261026T171637Z-dd1adf71 verified_fix_run=fix-20261023T030547Z-a7d84499 verdict=close)
+
+Verifier note: Manual verify: [verifier gpt-6-luna max (Codex), recorded by lead] 8e071f4; string_parameter_survives_a_loop_in_the_function: 1 passed; restored parameter shadow and loop sync failed output assertion: 4341399632 vs str.
 
 ## Notes

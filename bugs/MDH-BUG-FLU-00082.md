@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00082 — C runtime __mdh_replace computes the result size without overflow checks
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** native
 - **Raised:** 2026-10-23T03:06:28Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T171637Z-aa05480a
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00082-run-verify-20261026T171637Z-aa05480a
-- **Owner base:** b5fbdef97d31e05c1d4f8b997c745938b368bb11
-- **Owner fingerprint:** sha256:351c9f40a300041b8ea7d601903cab8435183ab6cee8ec85dccab44092a7f70e
-- **Owner since:** 2026-10-26T17:16:37Z
-- **Owner until:** 2026-10-26T21:16:37Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-23T03:06:28Z, raised via `deltic bugs new` model=claude-opus-5-5@medium) -> Fixed (2026-10-23T03:52:14Z, deltic:auto role=fix run=fix-20261023T035207Z-d349c40a branch=task/bug-MDH-BUG-FLU-00082-run-fix-20261023T035207Z-d349c40a code=6029d44 gate=manual)
+- **State history:** Open (2026-10-23T03:06:28Z, raised via `deltic bugs new` model=claude-opus-5-5@medium) -> Fixed (2026-10-23T03:52:14Z, deltic:auto role=fix run=fix-20261023T035207Z-d349c40a branch=task/bug-MDH-BUG-FLU-00082-run-fix-20261023T035207Z-d349c40a code=6029d44 gate=manual) -> Closed (2026-10-26T18:20:05Z, deltic:manual role=verify run=verify-20261026T171637Z-aa05480a verified_fix_run=fix-20261023T035207Z-d349c40a verdict=close)
 
 ## Observation
 
@@ -28,5 +28,9 @@ Found by the LLVM lane 2026-10-23: runtime/mdh_runtime.c __mdh_replace multiplie
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T18:20:05Z, deltic:manual run=verify-20261026T171637Z-aa05480a verified_fix_run=fix-20261023T035207Z-d349c40a verdict=close)
+
+Verifier note: Manual verify: [verifier gpt-6-luna max (Codex), recorded by lead] 6029d44; huge_replace_hurls_instead_of_writing_through_a_failed_allocation: 1 passed; unchecked-size/raw-allocation mutant crashed, run_ok exit assertion got None vs Some(0).
 
 ## Notes

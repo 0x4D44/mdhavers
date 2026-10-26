@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00090 — Native error line tracking is a single global shared by all threads
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** native
 - **Raised:** 2026-10-23T04:31:22Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T171637Z-d741d40b
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00090-run-verify-20261026T171637Z-d741d40b
-- **Owner base:** b5fbdef97d31e05c1d4f8b997c745938b368bb11
-- **Owner fingerprint:** sha256:b779763135c0411e3d19601f0fb34fd016410dff553f52cafe84f913b7cbbf57
-- **Owner since:** 2026-10-26T17:16:37Z
-- **Owner until:** 2026-10-26T21:16:37Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-23T04:31:22Z, raised via `deltic bugs new` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T22:24:45Z, deltic:auto role=fix run=fix-20261024T213341Z-ea604bf0 branch=task/bug-MDH-BUG-FLU-00090-run-fix-20261024T213341Z-ea604bf0 code=3f5bb72 gate=manual)
+- **State history:** Open (2026-10-23T04:31:22Z, raised via `deltic bugs new` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T22:24:45Z, deltic:auto role=fix run=fix-20261024T213341Z-ea604bf0 branch=task/bug-MDH-BUG-FLU-00090-run-fix-20261024T213341Z-ea604bf0 code=3f5bb72 gate=manual) -> Closed (2026-10-26T18:20:05Z, deltic:manual role=verify run=verify-20261026T171637Z-d741d40b verified_fix_run=fix-20261024T213341Z-ea604bf0 verdict=close)
 
 ## Observation
 
@@ -28,5 +28,9 @@ Found by the native hardening lane 2026-10-23: __mdh_current_line (runtime/mdh_r
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T18:20:05Z, deltic:manual run=verify-20261026T171637Z-d741d40b verified_fix_run=fix-20261024T213341Z-ea604bf0 verdict=close)
+
+Verifier note: Manual verify: [verifier gpt-6-luna max (Codex), recorded by lead] 67a0617/3f5bb72; loop, worker, main line tests each 1 passed; removing loop line refresh failed assert (line 6 vs 4); shared-line mutant failed worker (15 vs 4) and main (8 vs 16) output assertions.
 
 ## Notes
