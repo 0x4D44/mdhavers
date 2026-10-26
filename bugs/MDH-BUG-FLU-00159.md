@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00159 — Native clype on a class instance omits the class name
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** native
 - **Raised:** 2026-10-26T02:17:27Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261026T024153Z-5e9d5af4
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00159-run-fix-20261026T024153Z-5e9d5af4
-- **Owner base:** ccf8d410c9b13cbf39d2bee64a93505d6b6ed448
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-26T02:41:53Z
-- **Owner until:** 2026-10-26T06:41:53Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-26T02:17:27Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-26T02:17:27Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T03:29:14Z, deltic:auto role=fix run=fix-20261026T024153Z-5e9d5af4 branch=task/bug-MDH-BUG-FLU-00159-run-fix-20261026T024153Z-5e9d5af4 code=17c24d5 gate=manual)
 
 ## Observation
 
