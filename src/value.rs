@@ -96,7 +96,7 @@ fn take_children(v: &mut Value, out: &mut Vec<Value>) {
         Value::Dict(rc) if Rc::strong_count(rc) == 1 => {
             if let Ok(mut b) = rc.try_borrow_mut() {
                 b.index.clear();
-                for (k, val) in std::mem::take(&mut b.entries) {
+                for (k, val) in std::mem::take(&mut b.entries).into_iter().flatten() {
                     out.push(k);
                     out.push(val);
                 }
@@ -675,18 +675,22 @@ impl EqPair {
 
     /// The `i`th pair of children to compare: `Ok(None)` when there are no
     /// more, `Err(())` when a dict key on the left is missing on the right.
-    fn child(&self, i: usize) -> Result<Option<(Value, Value)>, ()> {
+    fn child(&self, next: &mut usize) -> Result<Option<(Value, Value)>, ()> {
         match self {
             EqPair::List(a, b) => {
                 let (xs, ys) = (a.borrow(), b.borrow());
-                match (xs.get(i), ys.get(i)) {
+                match (xs.get(*next), ys.get(*next)) {
                     (Some(x), Some(y)) => Ok(Some((x.clone(), y.clone()))),
                     _ => Ok(None),
                 }
             }
             EqPair::Dict(a, b) => {
                 let (xs, ys) = (a.borrow(), b.borrow());
-                let Some((key, x)) = xs.entries.get(i) else {
+                // Step over tombstones left by deletes.
+                while matches!(xs.entries.get(*next), Some(None)) {
+                    *next += 1;
+                }
+                let Some(Some((key, x))) = xs.entries.get(*next) else {
                     return Ok(None);
                 };
                 match ys.get(key) {
@@ -738,7 +742,7 @@ fn containers_equal(root: EqPair) -> bool {
             return true;
         };
         // Look at the next child pair of the innermost containers.
-        let child = match top.pair.child(top.next) {
+        let child = match top.pair.child(&mut top.next) {
             Err(()) => return false,
             Ok(None) => None,
             Ok(Some((x, y))) => {
@@ -828,13 +832,19 @@ impl PartialEq for Value {
     }
 }
 
+/// Insertion-ordered dictionary. Deleted entries leave a tombstone (`None`)
+/// so delete is O(1); the vector is compacted once tombstones outnumber live
+/// entries, which keeps delete amortised O(1) and iteration order intact.
 #[derive(Debug, Clone)]
 pub struct DictValue {
     index: HashMap<ValueKey, usize>,
-    entries: Vec<(Value, Value)>,
+    entries: Vec<Option<(Value, Value)>>,
 }
 
 impl DictValue {
+    /// Compact only once there are at least this many tombstones.
+    const COMPACT_MIN: usize = 32;
+
     pub fn new() -> Self {
         DictValue {
             index: HashMap::new(),
@@ -843,11 +853,11 @@ impl DictValue {
     }
 
     pub fn len(&self) -> usize {
-        self.entries.len()
+        self.index.len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.entries.is_empty()
+        self.index.is_empty()
     }
 
     pub fn contains_key(&self, key: &Value) -> bool {
@@ -858,45 +868,57 @@ impl DictValue {
         self.index
             .get(&key.as_key())
             .and_then(|&idx| self.entries.get(idx))
+            .and_then(|e| e.as_ref())
             .map(|(_, v)| v)
     }
 
     pub fn set(&mut self, key: Value, value: Value) {
         let key_id = key.as_key();
         if let Some(&idx) = self.index.get(&key_id) {
-            self.entries[idx].1 = value;
+            if let Some(entry) = self.entries[idx].as_mut() {
+                entry.1 = value;
+            }
             return;
         }
 
         let idx = self.entries.len();
-        self.entries.push((key, value));
+        self.entries.push(Some((key, value)));
         self.index.insert(key_id, idx);
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&Value, &Value)> {
-        self.entries.iter().map(|(k, v)| (k, v))
+        self.entries.iter().flatten().map(|(k, v)| (k, v))
     }
 
     pub fn keys(&self) -> impl Iterator<Item = &Value> {
-        self.entries.iter().map(|(k, _)| k)
+        self.entries.iter().flatten().map(|(k, _)| k)
     }
 
     pub fn values(&self) -> impl Iterator<Item = &Value> {
-        self.entries.iter().map(|(_, v)| v)
+        self.entries.iter().flatten().map(|(_, v)| v)
     }
 
     pub fn remove(&mut self, key: &Value) -> Option<Value> {
         let key_id = key.as_key();
         let idx = self.index.remove(&key_id)?;
-        let (_k, v) = self.entries.remove(idx);
+        let (_k, v) = self.entries[idx].take()?;
 
-        // Rebuild index for shifted entries.
-        self.index.clear();
-        for (i, (k, _)) in self.entries.iter().enumerate() {
-            self.index.insert(k.as_key(), i);
+        let tombstones = self.entries.len() - self.index.len();
+        if tombstones >= Self::COMPACT_MIN && tombstones > self.index.len() {
+            self.compact();
         }
-
         Some(v)
+    }
+
+    /// Drop tombstones and renumber the index, keeping insertion order.
+    fn compact(&mut self) {
+        self.entries.retain(|e| e.is_some());
+        self.index.clear();
+        for (i, entry) in self.entries.iter().enumerate() {
+            if let Some((k, _)) = entry {
+                self.index.insert(k.as_key(), i);
+            }
+        }
     }
 }
 
@@ -1288,6 +1310,90 @@ impl Default for Environment {
 #[allow(clippy::approx_constant)]
 mod tests {
     use super::*;
+
+    fn int_keys(d: &DictValue) -> Vec<i64> {
+        d.keys()
+            .map(|k| match k {
+                Value::Integer(n) => *n,
+                other => panic!("unexpected key {other:?}"),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn dict_order_after_delete_reinsert_and_compaction() {
+        let mut d = DictValue::new();
+        for i in 0..200 {
+            d.set(Value::Integer(i), Value::Integer(i * 10));
+        }
+        for i in [3, 50, 199] {
+            assert_eq!(d.remove(&Value::Integer(i)), Some(Value::Integer(i * 10)));
+        }
+        assert_eq!(d.remove(&Value::Integer(3)), None);
+        assert_eq!(d.len(), 197);
+        assert!(!d.contains_key(&Value::Integer(3)));
+        assert!(d.get(&Value::Integer(50)).is_none());
+        // Re-insert goes to the end.
+        d.set(Value::Integer(3), Value::Integer(-1));
+        assert_eq!(*int_keys(&d).last().unwrap(), 3);
+        assert_eq!(d.get(&Value::Integer(3)), Some(&Value::Integer(-1)));
+        // Overwrite keeps position.
+        d.set(Value::Integer(4), Value::Integer(-4));
+        assert_eq!(&int_keys(&d)[..5], &[0, 1, 2, 4, 5]);
+        // Delete enough to force compaction (tombstones exceed live entries).
+        for i in (0..150).filter(|i| *i != 3) {
+            d.remove(&Value::Integer(i));
+        }
+        let expect: Vec<i64> = (150..199).filter(|i| *i != 50).chain([3]).collect();
+        assert_eq!(int_keys(&d), expect);
+        assert_eq!(d.len(), expect.len());
+        assert_eq!(d.get(&Value::Integer(150)), Some(&Value::Integer(1500)));
+        assert_eq!(d.get(&Value::Integer(3)), Some(&Value::Integer(-1)));
+        assert_eq!(d.values().count(), expect.len());
+        assert_eq!(d.iter().count(), expect.len());
+        for k in expect {
+            d.remove(&Value::Integer(k));
+        }
+        assert!(d.is_empty());
+        d.set(Value::Integer(7), Value::Nil);
+        assert_eq!(int_keys(&d), vec![7]);
+    }
+
+    #[test]
+    fn dict_equality_skips_tombstones() {
+        let mk = |extra: bool| {
+            let mut d = DictValue::new();
+            d.set(Value::Integer(1), Value::Integer(10));
+            if extra {
+                d.set(Value::Integer(99), Value::Nil);
+            }
+            d.set(Value::Integer(2), Value::Integer(20));
+            if extra {
+                d.remove(&Value::Integer(99));
+            }
+            Value::Dict(Rc::new(RefCell::new(d)))
+        };
+        assert_eq!(mk(true), mk(false));
+    }
+
+    #[test]
+    fn dict_delete_100k_keys_is_not_quadratic() {
+        let n = 100_000;
+        let mut d = DictValue::new();
+        for i in 0..n {
+            d.set(Value::Integer(i), Value::Integer(i));
+        }
+        let start = std::time::Instant::now();
+        for i in 0..n {
+            assert!(d.remove(&Value::Integer(i)).is_some());
+        }
+        let took = start.elapsed();
+        assert!(d.is_empty());
+        assert!(
+            took < std::time::Duration::from_secs(5),
+            "deleting {n} keys took {took:?}"
+        );
+    }
 
     #[derive(Debug)]
     struct TestNative;
