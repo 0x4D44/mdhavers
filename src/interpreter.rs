@@ -5560,6 +5560,19 @@ impl Interpreter {
             }))),
         );
 
+        // clear - empty a list in place and hand the same list back (list-only, like the
+        // native runtime's __mdh_list_clear: onything else comes back unchanged)
+        // (MDH-BUG-FLU-00195)
+        globals.borrow_mut().define(
+            "clear".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("clear", 1, |args| {
+                if let Value::List(list) = &args[0] {
+                    list.borrow_mut().clear();
+                }
+                Ok(args[0].clone())
+            }))),
+        );
+
         // keys - get dictionary keys
         globals.borrow_mut().define(
             "keys".to_string(),

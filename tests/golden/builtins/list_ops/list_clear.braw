@@ -1,0 +1,15 @@
+# clear() empties a list in place and hands the same list back (MDH-BUG-FLU-00195)
+ken xs = [1, 2, 3]
+ken alias = xs
+ken back = clear(xs)
+blether len(xs)
+blether len(alias)
+blether len(back)
+shove(back, 9)
+blether xs
+blether clear([])
+blether clear(7)
+blether clear("ab")
+ken nested = [[1], [2]]
+clear(nested)
+blether nested

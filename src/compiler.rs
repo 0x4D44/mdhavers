@@ -29,6 +29,7 @@ const RUNTIME_BINDINGS: &[&str] = &[
     "tae_float",
     "shove",
     "yank",
+    "clear",
     "keys",
     "values",
     // Dict builtins wi' typed keys (core_runtime.js, MDH-BUG-FLU-00109).
@@ -1182,6 +1183,12 @@ impl Compiler {
         self.emit_line("return arr.pop();");
         self.indent -= 1;
         self.emit_line("},");
+
+        // clear: empty a list in place an' hand it back; onything else comes back as it was
+        // (the native runtime's list-only clear, MDH-BUG-FLU-00195)
+        self.emit_line(
+            "clear: (arr) => { if (Array.isArray(arr)) { arr.length = 0; } return arr; },",
+        );
 
         // keys, values, items an' the dict helpers live in core_runtime.js,
         // which keeps dict keys typed (MDH-BUG-FLU-00109).
