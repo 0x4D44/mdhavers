@@ -753,8 +753,13 @@ pub struct CodeGen<'ctx> {
     /// Names the function being compiled binds with `ken` that hide a global of the
     /// same name: locals for capture discovery, though they have no slot until bound
     /// (MDH-BUG-FLU-00179).
-    /// The value says a nested function or lambda captures it, so its `ken` boxes it.
-    shadowing_locals: HashMap<String, bool>,
+    /// The value says whether a nested function or lambda captures it (so its `ken`
+    /// boxes it) and whether only a block-level `ken` binds it (MDH-BUG-FLU-00180): such
+    /// a name is a local for capture discovery only while its `ken` is in scope.
+    shadowing_locals: HashMap<String, (bool, bool)>,
+    /// The block-level shadowing locals in scope at the nested function whose captures
+    /// `predeclare_nested_functions` is finding (MDH-BUG-FLU-00180).
+    shadow_scan_visible: HashSet<String>,
 
     /// Current 'masel' value (set during method execution)
     current_masel: Option<PointerValue<'ctx>>,
@@ -922,6 +927,7 @@ impl<'ctx> CodeGen<'ctx> {
             hidden_imported_classes: HashSet::new(),
             scan_all_names: false,
             shadowing_locals: HashMap::new(),
+            shadow_scan_visible: HashSet::new(),
             current_masel: None,
             current_class: None,
             source_path: None,
@@ -13787,7 +13793,7 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                 }
                 self.bind_block_local(name, true);
-                if self.shadowing_locals.get(name) == Some(&true) {
+                if self.shadowing_locals.get(name).is_some_and(|v| v.0) {
                     self.boxed_vars.insert(name.clone());
                 }
                 // Boxed variables: store a 1-element list cell instead of the raw value.
@@ -28935,6 +28941,18 @@ impl<'ctx> CodeGen<'ctx> {
             }
         }
 
+        let mut visible_shadows: HashMap<*const Stmt, HashSet<String>> = HashMap::new();
+        if self
+            .shadowing_locals
+            .values()
+            .any(|(_, block_only)| *block_only)
+        {
+            let mut active: Vec<String> = Vec::new();
+            for stmt in body {
+                self.shadows_visible_to_functions(stmt, &mut active, &mut visible_shadows);
+            }
+        }
+
         let mut captured_in_body: HashSet<String> = HashSet::new();
         for (stmt, top_of_body) in nested {
             let Stmt::Function {
@@ -28969,7 +28987,11 @@ impl<'ctx> CodeGen<'ctx> {
             }
 
             // Find free variables in the nested function
+            self.shadow_scan_visible = visible_shadows
+                .remove(&(stmt as *const Stmt))
+                .unwrap_or_default();
             let mut captures = self.find_free_variables_in_body(nested_body, nested_params);
+            self.shadow_scan_visible.clear();
             if self.body_uses_masel(nested_body) || self.params_use_masel(nested_params) {
                 captures.push("masel".to_string());
                 captures.sort();
@@ -29040,7 +29062,7 @@ impl<'ctx> CodeGen<'ctx> {
     fn box_captured_names(&mut self, names: HashSet<String>) {
         for name in names {
             match self.shadowing_locals.get_mut(&name) {
-                Some(captured) if !self.variables.contains_key(&name) => *captured = true,
+                Some(v) if !self.variables.contains_key(&name) => v.0 = true,
                 _ => {
                     self.boxed_vars.insert(name);
                 }
@@ -29052,15 +29074,126 @@ impl<'ctx> CodeGen<'ctx> {
         // A `ken` directly in the body of a global's name makes a local that hides the
         // global. It has no slot until bound, but a nested function or lambda reading
         // the name reads the local, so capture discovery must see it (MDH-BUG-FLU-00179).
+        // A block-level `ken` (inside `gin`, a loop...) hides it the same way, from its
+        // `ken` to the block's end (MDH-BUG-FLU-00180).
         for stmt in body {
             if let Stmt::VarDecl { name, .. } = stmt {
                 if !self.variables.contains_key(name) && self.globals.contains_key(name) {
-                    self.shadowing_locals.insert(name.clone(), false);
+                    self.shadowing_locals.insert(name.clone(), (false, false));
                 }
             }
         }
         for stmt in body {
+            self.collect_shadowing_locals(stmt);
+        }
+        for stmt in body {
             self.predeclare_locals_stmt(stmt);
+        }
+    }
+
+    /// For every `dae` in `stmt`'s blocks, the block-level shadowing locals whose `ken`
+    /// precedes it in an enclosing block: the ones it can capture (MDH-BUG-FLU-00180).
+    fn shadows_visible_to_functions(
+        &self,
+        stmt: &Stmt,
+        active: &mut Vec<String>,
+        out: &mut HashMap<*const Stmt, HashSet<String>>,
+    ) {
+        let mark = active.len();
+        match stmt {
+            Stmt::Function { .. } => {
+                out.insert(stmt as *const Stmt, active.iter().cloned().collect());
+            }
+            Stmt::VarDecl { name, .. } => {
+                if self.shadowing_locals.get(name).is_some_and(|v| v.1) {
+                    active.push(name.clone());
+                }
+                // A block's `ken` stays in scope to the block's end, not this statement's.
+                return;
+            }
+            Stmt::Block { statements, .. } => {
+                for s in statements {
+                    self.shadows_visible_to_functions(s, active, out);
+                }
+            }
+            Stmt::If {
+                then_branch,
+                else_branch,
+                ..
+            } => {
+                self.shadows_visible_to_functions(then_branch, active, out);
+                active.truncate(mark);
+                if let Some(e) = else_branch {
+                    self.shadows_visible_to_functions(e, active, out);
+                }
+            }
+            Stmt::While { body, .. } | Stmt::For { body, .. } => {
+                self.shadows_visible_to_functions(body, active, out);
+            }
+            Stmt::TryCatch {
+                try_block,
+                catch_block,
+                ..
+            } => {
+                self.shadows_visible_to_functions(try_block, active, out);
+                active.truncate(mark);
+                self.shadows_visible_to_functions(catch_block, active, out);
+            }
+            Stmt::Match { arms, .. } => {
+                for arm in arms {
+                    self.shadows_visible_to_functions(&arm.body, active, out);
+                    active.truncate(mark);
+                }
+            }
+            _ => {}
+        }
+        // The `ken`s of a nested block go out of scope with it.
+        active.truncate(mark);
+    }
+
+    /// Record every `ken` in `stmt`'s blocks (not in nested functions) whose name hides a
+    /// global and has no slot yet (MDH-BUG-FLU-00180).
+    fn collect_shadowing_locals(&mut self, stmt: &Stmt) {
+        match stmt {
+            Stmt::VarDecl { name, .. } => {
+                if !self.variables.contains_key(name) && self.globals.contains_key(name) {
+                    self.shadowing_locals
+                        .entry(name.clone())
+                        .or_insert((false, true));
+                }
+            }
+            Stmt::Block { statements, .. } => {
+                for s in statements {
+                    self.collect_shadowing_locals(s);
+                }
+            }
+            Stmt::If {
+                then_branch,
+                else_branch,
+                ..
+            } => {
+                self.collect_shadowing_locals(then_branch);
+                if let Some(e) = else_branch {
+                    self.collect_shadowing_locals(e);
+                }
+            }
+            Stmt::While { body, .. } | Stmt::For { body, .. } => {
+                self.collect_shadowing_locals(body);
+            }
+            Stmt::TryCatch {
+                try_block,
+                catch_block,
+                ..
+            } => {
+                self.collect_shadowing_locals(try_block);
+                self.collect_shadowing_locals(catch_block);
+            }
+            Stmt::Match { arms, .. } => {
+                for arm in arms {
+                    self.collect_shadowing_locals(&arm.body);
+                }
+            }
+            _ => {}
         }
     }
 
@@ -32169,7 +32302,12 @@ impl<'ctx> CodeGen<'ctx> {
                 if !bound.contains(name)
                     && (self.scan_all_names
                         || self.variables.contains_key(name)
-                        || self.shadowing_locals.contains_key(name))
+                        || self
+                            .shadowing_locals
+                            .get(name)
+                            .is_some_and(|(_, block_only)| {
+                                !block_only || self.shadow_scan_visible.contains(name)
+                            }))
                 {
                     free.insert(name.clone());
                 }

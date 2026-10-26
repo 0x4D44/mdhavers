@@ -234,3 +234,89 @@ blether reads_first()
 "#,
     );
 }
+
+/// A block-level `ken` that hides a global is what a nested function or lambda in that
+/// block reads, until the block ends (MDH-BUG-FLU-00180).
+#[test]
+fn block_level_local_hiding_a_global_is_captured() {
+    assert_parity(
+        r#"
+ken x = 1
+ken total = 100
+dae blk(c) {
+    gin c {
+        ken x = 7
+        dae g() { gie x }
+        gie g()
+    }
+    gie x
+}
+blether blk(aye)
+blether blk(nae)
+dae lam(c) {
+    gin c {
+        ken x = 8
+        ken h = || x + 1
+        gie h()
+    }
+    gie x
+}
+blether lam(aye)
+dae mut(c) {
+    blether x
+    gin c {
+        ken x = 0
+        ken inc = || { x = x + 1 gie x }
+        dae bump() { x = x + 10 gie x }
+        inc()
+        bump()
+        inc()
+        blether x
+    }
+    gie x
+}
+blether mut(aye)
+blether x
+dae loops() {
+    ken out = []
+    ken i = 0
+    whiles i < 3 {
+        ken total = i * 2
+        dae g() { total = total + 1 gie total }
+        g()
+        shove(out, g())
+        ken x = i
+        ken h = || x * 100
+        shove(out, h())
+        i = i + 1
+    }
+    fer k in [1, 2] {
+        ken x = k + 50
+        dae g2() { gie x }
+        shove(out, g2())
+    }
+    shove(out, x)
+    shove(out, total)
+    gie out
+}
+blether loops()
+dae nested(c) {
+    gin c {
+        ken x = 3
+        gin c {
+            ken x = 4
+            dae g() { gie x }
+            blether g()
+        }
+        dae g() { gie x }
+        blether g()
+    }
+    dae last() { gie x }
+    gie last()
+}
+blether nested(aye)
+blether x
+blether total
+"#,
+    );
+}
