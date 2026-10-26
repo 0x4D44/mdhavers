@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00180 — Native: a nested dae inside a block reads the global, not the block's shadowing ken
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** native
 - **Raised:** 2026-10-26T07:41:51Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261026T091430Z-15c98ae2
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00180-run-fix-20261026T091430Z-15c98ae2
-- **Owner base:** 2779582158f149cb2371904e6f78bcaa51abc16e
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-26T09:14:30Z
-- **Owner until:** 2026-10-26T13:14:30Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-26T07:41:51Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-26T07:41:51Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T11:36:16Z, deltic:auto role=fix run=fix-20261026T091430Z-15c98ae2 branch=task/bug-MDH-BUG-FLU-00180-run-fix-20261026T091430Z-15c98ae2 code=ea4f5c4 gate=manual)
 
 ## Observation
 
