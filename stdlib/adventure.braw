@@ -8,13 +8,13 @@
 # Direction Constants
 # ===============================================================
 
-# Ask for a line; if the input has ended (speir gives back naething), say cheerio and stop.
+# Ask for a line. If the input has ended (speir gives back naething), say cheerio and give back
+# naething; the caller then winds the program up.
 dae adventure_speir_or_awa(prompt) {
     ken answer = speir(prompt)
     gin answer == naething {
         blether ""
         blether "Input's ended - cheerio, and haste ye back!"
-        exit(0)
     }
     gie answer
 }
@@ -768,6 +768,10 @@ kin AdventureGame {
         whiles masel.running {
             blether ""
             ken input = adventure_speir_or_awa("> ")
+            gin input == naething {
+                masel.running = nae
+                brak
+            }
             ken response = masel.process_command(input)
             gin response != "" {
                 blether response

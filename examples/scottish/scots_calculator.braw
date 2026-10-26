@@ -3,13 +3,13 @@
 
 fetch "lib/colors"
 
-# Ask for a line; if the input has ended (speir gives back naething), say cheerio and stop.
+# Ask for a line. If the input has ended (speir gives back naething), say cheerio and give back
+# naething; the caller then winds the program up.
 dae speir_or_awa(prompt) {
     ken answer = speir(prompt)
     gin answer == naething {
         blether ""
         blether "Input's ended - cheerio, and haste ye back!"
-        exit(0)
     }
     gie answer
 }
@@ -184,6 +184,9 @@ blether ""
 
 whiles running {
     ken input = speir_or_awa(cyan("calc> "))
+    gin input == naething {
+        brak
+    }
     ken result = process_command(input)
 
     gin result == "quit" {

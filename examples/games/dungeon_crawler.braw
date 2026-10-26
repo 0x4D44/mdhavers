@@ -8,13 +8,13 @@ fetch "lib/scots_lang"
 # Game Constants
 # ===============================================================
 
-# Ask for a line; if the input has ended (speir gives back naething), say cheerio and stop.
+# Ask for a line. If the input has ended (speir gives back naething), say cheerio and give back
+# naething; the caller then winds the program up.
 dae speir_or_awa(prompt) {
     ken answer = speir(prompt)
     gin answer == naething {
         blether ""
         blether "Input's ended - cheerio, and haste ye back!"
-        exit(0)
     }
     gie answer
 }
@@ -548,15 +548,22 @@ blether ""
 blether "Survive as many floors as ye can and collect gold!"
 blether ""
 
-speir_or_awa("Press Enter tae begin yer adventure...")
+ken begin = speir_or_awa("Press Enter tae begin yer adventure...")
 
 generate_dungeon(1)
+gin begin == naething {
+    game_state["running"] = nae
+}
 
 whiles game_state["running"] {
     render_map()
 
     blether "Move (WASD/arrows) or Q tae quit:"
-    ken input = lower(wheesht(speir_or_awa("> ")))
+    ken raw_input = speir_or_awa("> ")
+    gin raw_input == naething {
+        brak
+    }
+    ken input = lower(wheesht(raw_input))
 
     gin input == "q" or input == "quit" {
         game_state["running"] = nae

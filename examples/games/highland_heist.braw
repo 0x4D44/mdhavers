@@ -4,13 +4,13 @@
 fetch "lib/colors"
 fetch "lib/scots_lang"
 
-# Ask for a line; if the input has ended (speir gives back naething), say cheerio and stop.
+# Ask for a line. If the input has ended (speir gives back naething), say cheerio and give back
+# naething; the caller then winds the program up.
 dae speir_or_awa(prompt) {
     ken answer = speir(prompt)
     gin answer == naething {
         blether ""
         blether "Input's ended - cheerio, and haste ye back!"
-        exit(0)
     }
     gie answer
 }
@@ -212,21 +212,26 @@ blether ""
 blether "Steal whit ye can an' escape before the alarm reaches 100%!"
 blether ""
 
-speir_or_awa("Press Enter tae begin yer heist...")
+ken begin = speir_or_awa("Press Enter tae begin yer heist...")
 
 # Main game loop
-whiles nae player["caught"] an nae player["escaped"] {
+whiles nae player["caught"] an nae player["escaped"] an begin != naething {
     show_stats()
     show_menu()
 
-    ken choice = wheesht(speir_or_awa("Yer choice (1-6): "))
+    ken raw_choice = speir_or_awa("Yer choice (1-6): ")
+    gin raw_choice == naething {
+        brak
+    }
+    ken choice = wheesht(raw_choice)
 
     gin choice == "1" {
         ken available = show_treasures()
         gin len(available) == 0 {
             blether yellow("There's naething left tae steal!")
         } ither {
-            ken pick = wheesht(speir_or_awa("Which treasure? (number or 'back'): "))
+            ken raw_pick = speir_or_awa("Which treasure? (number or 'back'): ")
+            ken pick = gin raw_pick == naething than "back" ither wheesht(raw_pick)
             gin pick != "back" {
                 ken idx = tae_int(pick) - 1
                 gin idx >= 0 an idx < len(castle["treasures"]) {
@@ -276,7 +281,7 @@ gin player["escaped"] {
     } ither {
         blether "Ye escaped wi' yer life, but no' much else!"
     }
-} ither {
+} ither gin player["caught"] {
     blether red("╔══════════════════════════════════════════════╗")
     blether red("║           YE GOT CAUGHT!                     ║")
     blether red("╚══════════════════════════════════════════════╝")

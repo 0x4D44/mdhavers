@@ -4,13 +4,13 @@
 fetch "lib/colors"
 fetch "lib/scots_lang"
 
-# Ask for a line; if the input has ended (speir gives back naething), say cheerio and stop.
+# Ask for a line. If the input has ended (speir gives back naething), say cheerio and give back
+# naething; the caller then winds the program up.
 dae speir_or_awa(prompt) {
     ken answer = speir(prompt)
     gin answer == naething {
         blether ""
         blether "Input's ended - cheerio, and haste ye back!"
-        exit(0)
     }
     gie answer
 }
@@ -179,7 +179,11 @@ dae push() {
 dae play_round() {
     # Get bet
     blether ""
-    ken bet_input = wheesht(speir_or_awa(f"How much dae ye want tae bet? (1-{player_chips}): "))
+    ken raw_bet = speir_or_awa(f"How much dae ye want tae bet? (1-{player_chips}): ")
+    gin raw_bet == naething {
+        gie nae
+    }
+    ken bet_input = wheesht(raw_bet)
     
     hae_a_bash {
         current_bet = tae_int(bet_input)
@@ -238,7 +242,13 @@ dae play_round() {
         }
         blether ""
 
-        ken action = lower(wheesht(speir_or_awa("Yer choice: ")))
+        ken raw_action = speir_or_awa("Yer choice: ")
+        gin raw_action == naething {
+            # Input ended mid-hand: hand the bet back and stop.
+            player_chips = player_chips + current_bet
+            gie nae
+        }
+        ken action = lower(wheesht(raw_action))
 
         gin action == "h" or action == "hit" {
             shove(player_hand, deal_card())
@@ -312,7 +322,10 @@ deck = shuffle_deck(create_deck())
 
 ken playing = aye
 whiles playing an player_chips > 0 {
-    play_round()
+    ken round_ok = play_round()
+    gin nae round_ok {
+        brak
+    }
 
     gin player_chips <= 0 {
         blether ""
@@ -320,7 +333,8 @@ whiles playing an player_chips > 0 {
         playing = nae
     } ither {
         blether ""
-        ken again = lower(wheesht(speir_or_awa("Play another round? (aye/nae): ")))
+        ken again_raw = speir_or_awa("Play another round? (aye/nae): ")
+        ken again = gin again_raw == naething than "" ither lower(wheesht(again_raw))
         gin again != "aye" an again != "y" an again != "yes" {
             playing = nae
         }

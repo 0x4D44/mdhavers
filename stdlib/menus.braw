@@ -7,13 +7,16 @@
 # Simple Menu
 # ===============================================================
 
-# Ask for a line; if the input has ended (speir gives back naething), say cheerio and stop.
+# Ask for a line. If the input has ended (speir gives back naething), say cheerio, remember
+# it in menus_state[0] and give back naething; the callers below pass that on.
+ken menus_state = [nae]
+
 dae menus_speir_or_awa(prompt) {
     ken answer = speir(prompt)
     gin answer == naething {
         blether ""
         blether "Input's ended - cheerio, and haste ye back!"
-        exit(0)
+        menus_state[0] = aye
     }
     gie answer
 }
@@ -59,6 +62,9 @@ kin Menu {
         blether ""
 
         ken choice = menus_speir_or_awa("Enter yer choice: ")
+        gin choice == naething {
+            gie naething
+        }
         ken idx = tae_int(choice) - 1
 
         gin idx >= 0 an idx < len(masel.options) {
@@ -70,7 +76,7 @@ kin Menu {
     # Show menu and loop until valid choice
     dae show_required() {
         ken choice = masel.show()
-        whiles choice == naething {
+        whiles choice == naething an menus_state[0] == nae {
             blether "Och, that's no' a valid choice. Try again!"
             choice = masel.show()
         }
@@ -91,6 +97,9 @@ kin Menu {
 dae confirm(question, default = nae) {
     ken default_hint = gin default than "[Y/n]" ither "[y/N]"
     ken answer = menus_speir_or_awa(f"{question} {default_hint} ")
+    gin answer == naething {
+        gie default
+    }
     ken lower_answer = lower(wheesht(answer))
 
     gin lower_answer == "" {
@@ -158,6 +167,9 @@ kin TextInput {
         prompt_text = prompt_text + ": "
 
         ken value = menus_speir_or_awa(prompt_text)
+        gin value == naething {
+            gie naething
+        }
 
         gin wheesht(value) == "" {
             gin masel.default != naething {
@@ -226,6 +238,9 @@ kin NumberInput {
         prompt_text = prompt_text + ": "
 
         ken value = menus_speir_or_awa(prompt_text)
+        gin value == naething {
+            gie naething
+        }
 
         gin wheesht(value) == "" an masel.default != naething {
             gie masel.default
@@ -290,6 +305,9 @@ kin ChoiceInput {
         }
 
         ken value = menus_speir_or_awa("Enter choice: ")
+        gin value == naething {
+            gie naething
+        }
 
         gin wheesht(value) == "" an masel.default_idx != naething {
             gie masel.choices[masel.default_idx - 1]["value"]

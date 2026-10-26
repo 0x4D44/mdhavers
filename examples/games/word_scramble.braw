@@ -4,13 +4,13 @@
 fetch "lib/colors"
 fetch "lib/scots_lang"
 
-# Ask for a line; if the input has ended (speir gives back naething), say cheerio and stop.
+# Ask for a line. If the input has ended (speir gives back naething), say cheerio and give back
+# naething; the caller then winds the program up.
 dae speir_or_awa(prompt) {
     ken answer = speir(prompt)
     gin answer == naething {
         blether ""
         blether "Input's ended - cheerio, and haste ye back!"
-        exit(0)
     }
     gie answer
 }
@@ -159,7 +159,12 @@ fer word_data in game_words {
     blether ""
 
     whiles attempts > 0 an nae solved {
-        ken guess = lower(wheesht(speir_or_awa("> ")))
+        ken raw_guess = speir_or_awa("> ")
+        gin raw_guess == naething {
+            quit_requested = aye
+            brak
+        }
+        ken guess = lower(wheesht(raw_guess))
 
         gin guess == "quit" or guess == "exit" {
             blether ""

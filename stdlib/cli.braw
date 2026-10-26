@@ -8,13 +8,13 @@
 # Text Styling (without color module dependency)
 # ===============================================================
 
-# Ask for a line; if the input has ended (speir gives back naething), say cheerio and stop.
+# Ask for a line. If the input has ended (speir gives back naething), say cheerio and give
+# back naething; the prompts below pass that on (or use their default).
 dae cli_speir_or_awa(prompt) {
     ken answer = speir(prompt)
     gin answer == naething {
         blether ""
         blether "Input's ended - cheerio, and haste ye back!"
-        exit(0)
     }
     gie answer
 }
@@ -478,7 +478,11 @@ dae prompt_text(message, default = naething) {
         prompt = prompt + f" [{default}]"
     }
     prompt = prompt + ": "
-    ken answer = wheesht(cli_speir_or_awa(prompt))
+    ken raw = cli_speir_or_awa(prompt)
+    gin raw == naething {
+        gie default
+    }
+    ken answer = wheesht(raw)
     gin answer == "" an default != naething {
         gie default
     }
@@ -487,7 +491,11 @@ dae prompt_text(message, default = naething) {
 
 dae prompt_confirm(message, default = aye) {
     ken hint = gin default than "[Y/n]" ither "[y/N]"
-    ken answer = lower(wheesht(cli_speir_or_awa(f"{message} {hint}: ")))
+    ken raw = cli_speir_or_awa(f"{message} {hint}: ")
+    gin raw == naething {
+        gie default
+    }
+    ken answer = lower(wheesht(raw))
 
     gin answer == "" {
         gie default
@@ -509,7 +517,11 @@ dae prompt_choice(message, choices) {
     ken valid = nae
     ken choice = 0
     whiles nae valid {
-        ken answer = wheesht(cli_speir_or_awa("Enter number: "))
+        ken raw = cli_speir_or_awa("Enter number: ")
+        gin raw == naething {
+            gie naething
+        }
+        ken answer = wheesht(raw)
         hae_a_bash {
             choice = tae_int(answer)
             gin choice >= 1 an choice <= len(choices) {
@@ -526,8 +538,11 @@ dae prompt_choice(message, choices) {
 
 dae prompt_password(message) {
     # Note: This is just a regular prompt since we can't disable echo
-    ken answer = wheesht(cli_speir_or_awa(message + ": "))
-    gie answer
+    ken raw = cli_speir_or_awa(message + ": ")
+    gin raw == naething {
+        gie naething
+    }
+    gie wheesht(raw)
 }
 
 # ===============================================================

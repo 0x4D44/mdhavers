@@ -315,13 +315,13 @@ dae render(game) {
 
 # Read a key. When the input has ended there is no terminal: get_key fails (interpreter)
 # or hands back "" at once, much faster than a real terminal's 100ms wait (native).
-# Either way say cheerio and stop, like speir_or_awa (MDH-BUG-FLU-00156/00175).
+# Either way say cheerio and give back naething, like speir_or_awa (MDH-BUG-FLU-00156/00175);
+# the main loop quits on naething.
 ken key_state = [0, 0]  # [blank keys in a row, mono_ms when that run began]
 
 dae key_input_ended() {
     blether(CURSOR_SHOW + RESET + CLEAR_SCREEN + CURSOR_HOME)
     blether "Input's ended - cheerio, and haste ye back!"
-    exit(0)
 }
 
 dae get_key_or_awa() {
@@ -333,6 +333,7 @@ dae get_key_or_awa() {
     }
     gin key == naething {
         key_input_ended()
+        gie naething
     }
     gin key == "" {
         gin key_state[0] == 0 {
@@ -342,6 +343,7 @@ dae get_key_or_awa() {
         gin key_state[0] >= 20 {
             gin mono_ms() - key_state[1] < 1000 {
                 key_input_ended()
+                gie naething
             }
             key_state[0] = 0
         }
@@ -378,7 +380,7 @@ whiles nae quit {
 
     ken key = get_key_or_awa()
 
-    gin key == "q" or key == "Q" {
+    gin key == naething or key == "q" or key == "Q" {
         quit = aye
     } ither gin key == " " {
         game.running = nae game.running

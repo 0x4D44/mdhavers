@@ -4,13 +4,13 @@
 fetch "lib/colors"
 fetch "lib/scots_lang"
 
-# Ask for a line; if the input has ended (speir gives back naething), say cheerio and stop.
+# Ask for a line. If the input has ended (speir gives back naething), say cheerio and give back
+# naething; the caller then winds the program up.
 dae speir_or_awa(prompt) {
     ken answer = speir(prompt)
     gin answer == naething {
         blether ""
         blether "Input's ended - cheerio, and haste ye back!"
-        exit(0)
     }
     gie answer
 }
@@ -246,16 +246,21 @@ blether "Legends say it grants wisdom tae whoever finds it."
 blether "Will ye be the one tae find it?"
 blether ""
 
-player["name"] = speir_or_awa("Whit's yer name, brave adventurer? ")
+ken name_answer = speir_or_awa("Whit's yer name, brave adventurer? ")
+player["name"] = gin name_answer == naething than "wanderer" ither name_answer
 blether ""
 blether f"Welcome, {bold(player['name'])}! Yer adventure begins..."
 
 show_help()
 show_location()
 
-whiles nae player["has_won"] {
+whiles nae player["has_won"] an name_answer != naething {
     blether ""
-    ken command = lower(wheesht(speir_or_awa("> ")))
+    ken raw_command = speir_or_awa("> ")
+    gin raw_command == naething {
+        brak
+    }
+    ken command = lower(wheesht(raw_command))
 
     gin command == "quit" or command == "exit" {
         blether ""
