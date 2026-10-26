@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00165 — Interpreter recursion overflows at about 700-900 calls deep in a default-features macOS build
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** High
 - **Area:** interpreter
 - **Raised:** 2026-10-26T05:03:26Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T214519Z-1e9b3021
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00165-run-verify-20261026T214519Z-1e9b3021
-- **Owner base:** 40936bf267283acf21ab790379d91007fd6c2e00
-- **Owner fingerprint:** sha256:d3657bf4f2b31a0a1fba375862c4f0ad84aaa6fe3f4323f3d154b437be56cde2
-- **Owner since:** 2026-10-26T21:45:19Z
-- **Owner until:** 2026-10-27T01:45:19Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-26T05:03:26Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T06:25:12Z, deltic:auto role=fix run=fix-20261026T050440Z-c0058d8e branch=task/bug-MDH-BUG-FLU-00165-run-fix-20261026T050440Z-c0058d8e code=eaf1af8 gate=manual)
+- **State history:** Open (2026-10-26T05:03:26Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T06:25:12Z, deltic:auto role=fix run=fix-20261026T050440Z-c0058d8e branch=task/bug-MDH-BUG-FLU-00165-run-fix-20261026T050440Z-c0058d8e code=eaf1af8 gate=manual) -> Closed (2026-10-26T22:40:14Z, deltic:manual role=verify run=verify-20261026T214519Z-1e9b3021 verified_fix_run=fix-20261026T050440Z-c0058d8e verdict=close)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:interpreter-recursion-overflows-at-about-700-90
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T22:40:14Z, deltic:manual run=verify-20261026T214519Z-1e9b3021 verified_fix_run=fix-20261026T050440Z-c0058d8e verdict=close)
+
+Verifier note: Manual verify: [o1b sol] eaf1af8: default graphics macOS cli_run_recursion_5000_deep_succeeds 1 passed; reverting linker stack to 8MiB fails success assertion with stack error. Original r(900) prints 900; 512MiB linker setting applies all profiles; restored clean.
 
 ## Notes

@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00066 — stdlib/functional.braw does not parse (lambda returning a dict literal)
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** High
 - **Area:** stdlib
 - **Raised:** 2026-10-23T02:06:57Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T214519Z-9b8d8b8b
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00066-run-verify-20261026T214519Z-9b8d8b8b
-- **Owner base:** 40936bf267283acf21ab790379d91007fd6c2e00
-- **Owner fingerprint:** sha256:3474dc845f88e40d819d344ff4ac383be8cde5368c0309c865c3ef37487cedf9
-- **Owner since:** 2026-10-26T21:45:19Z
-- **Owner until:** 2026-10-27T01:45:19Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-23T02:06:57Z, raised via `deltic bugs new` model=claude-opus-5-5@medium) -> Fixed (2026-10-23T03:15:30Z, deltic:auto role=fix run=fix-20261023T031524Z-c93f9577 branch=task/bug-MDH-BUG-FLU-00066-run-fix-20261023T031524Z-c93f9577 code=e5fbb29 gate=manual)
+- **State history:** Open (2026-10-23T02:06:57Z, raised via `deltic bugs new` model=claude-opus-5-5@medium) -> Fixed (2026-10-23T03:15:30Z, deltic:auto role=fix run=fix-20261023T031524Z-c93f9577 branch=task/bug-MDH-BUG-FLU-00066-run-fix-20261023T031524Z-c93f9577 code=e5fbb29 gate=manual) -> Closed (2026-10-26T22:40:14Z, deltic:manual role=verify run=verify-20261026T214519Z-9b8d8b8b verified_fix_run=fix-20261023T031524Z-c93f9577 verdict=close)
 
 ## Observation
 
@@ -28,5 +28,9 @@ Confirmed 2026-10-23 on trunk before and after the parser fixes: `mdhavers check
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T22:40:14Z, deltic:manual run=verify-20261026T214519Z-9b8d8b8b verified_fix_run=fix-20261023T031524Z-c93f9577 verdict=close)
+
+Verifier note: Manual verify: [o1b sol] e5fbb29: functional_sort_by_works 1 passed; disabling lambda dict lookahead fails sort_by should run assertion (Unexpected colon). stdlib check and fetch/sort print a,bb,ccc; legacy example removed by 1afd2be; restored clean.
 
 ## Notes
