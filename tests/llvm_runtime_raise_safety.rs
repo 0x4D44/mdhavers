@@ -1,7 +1,7 @@
 #![cfg(feature = "llvm")]
 //! Native backend: runtime errors raised from the Rust runtime leave it in a usable state
 //! (MDH-BUG-FLU-00183), and running out of memory while building a string raises the
-//! "ower muckle" error instead of crashing (MDH-BUG-FLU-00184).
+//! "ower muckle" error instead of crashing (MDH-BUG-FLU-00184, -00188, -00189).
 
 use std::process::{Command, Stdio};
 
@@ -151,5 +151,178 @@ blether len(regex_replace("abc", "b", "xyz"))
             vec![TOO_BIG, TOO_BIG, TOO_BIG, TOO_BIG, "5"],
             "rc={refcounting}"
         );
+    }
+}
+
+const LIST_TOO_BIG: &str = "Och! This list's grown ower muckle";
+const DICT_TOO_BIG: &str = "Och! That dictionary would be ower muckle tae fit in memory";
+
+/// Compiled code copied strings with `__mdh_obj_strdup` and no NULL check: getenv's
+/// value, split's last token (multi-character delimiter) and the key of a new instance
+/// field (MDH-BUG-FLU-00189). With every string of 1000 bytes or more failing, each copy
+/// gave a string with no text, which crashed the program. They now raise the "ower
+/// muckle" error. The split source is a literal (static, so not allocated).
+#[cfg(debug_assertions)]
+#[test]
+fn compiled_string_copies_raise_the_too_big_error() {
+    let field = format!("f{}", "a".repeat(1500));
+    let src = format!(
+        r#"ken lang = "a::{tail}"
+kin Thing {{
+    dae init() {{
+        masel.{field} = 1
+    }}
+}}
+fer k in 0..2 {{
+    hae_a_bash {{
+        blether len(getenv("MDH_BIG"))
+    }} gin_it_gangs_wrang e {{
+        blether e
+    }}
+    hae_a_bash {{
+        ken parts = split(lang, "::")
+        blether len(parts[1])
+    }} gin_it_gangs_wrang e {{
+        blether e
+    }}
+    hae_a_bash {{
+        ken t = Thing()
+        blether t.{field}
+    }} gin_it_gangs_wrang e {{
+        blether e
+    }}
+}}
+blether len(split("a::bc", "::")[1])
+"#,
+        tail = "y".repeat(1500),
+    );
+    let big = "z".repeat(1500);
+    for refcounting in [false, true] {
+        let run = run_native_with_env(
+            &src,
+            refcounting,
+            &[("MDH_TEST_ALLOC_FAIL_OVER", "1000"), ("MDH_BIG", &big)],
+        );
+        assert_eq!(run.code, Some(0), "rc={refcounting}: {}", run.stderr);
+        let lines: Vec<&str> = run.stdout.lines().collect();
+        assert_eq!(
+            lines,
+            vec![TOO_BIG, TOO_BIG, TOO_BIG, TOO_BIG, TOO_BIG, TOO_BIG, "2"],
+            "rc={refcounting}"
+        );
+    }
+}
+
+/// With the knob's buffer form, every list or dict backing array of 1 MiB or more fails
+/// (MDH-BUG-FLU-00189): growing a list and a dict raise their "ower muckle" errors, and so
+/// does a list made with room for 200000 items, by the C runtime (`skelp`) and by the
+/// Rust runtime (`json_parse`). `__mdh_make_list` used to hand back a list with no items
+/// array, which the first push wrote through.
+#[cfg(debug_assertions)]
+#[test]
+fn container_buffers_out_of_memory_raise_the_too_big_errors() {
+    let src = r#"ken xs = []
+ken d = {}
+fer k in 0..2 {
+    hae_a_bash {
+        fer i in 0..200000 {
+            shove(xs, i)
+        }
+        blether len(xs)
+    } gin_it_gangs_wrang e {
+        blether e
+    }
+    hae_a_bash {
+        fer i in 0..200000 {
+            d[i] = i
+        }
+        blether len(d)
+    } gin_it_gangs_wrang e {
+        blether e
+    }
+    hae_a_bash {
+        blether len(skelp("x" * 200000, 1))
+    } gin_it_gangs_wrang e {
+        blether e
+    }
+    hae_a_bash {
+        blether len(json_parse("[" + ("0," * 199999) + "0]"))
+    } gin_it_gangs_wrang e {
+        blether e
+    }
+}
+blether len(skelp("abcd", 2))
+"#;
+    for refcounting in [false, true] {
+        let run = run_native_with_env(src, refcounting, &[("MDH_TEST_BUF_FAIL_OVER", "1048576")]);
+        assert_eq!(run.code, Some(0), "rc={refcounting}: {}", run.stderr);
+        let lines: Vec<&str> = run.stdout.lines().collect();
+        let once = [LIST_TOO_BIG, DICT_TOO_BIG, TOO_BIG, TOO_BIG];
+        let mut expected = [once, once].concat();
+        expected.push("2");
+        assert_eq!(lines, expected, "rc={refcounting}");
+    }
+}
+
+/// An empty dict whose 16-byte payload cannot get memory: `__mdh_empty_dict` used to
+/// write through the NULL, from the C runtime (`date_now`) and from the Rust runtime
+/// (`regex_match`). Both now raise the "ower muckle" error (MDH-BUG-FLU-00189).
+#[cfg(debug_assertions)]
+#[test]
+fn empty_dict_out_of_memory_raises_the_too_big_error() {
+    let src = r#"fer k in 0..2 {
+    hae_a_bash {
+        ken now = date_now()
+        blether "date"
+    } gin_it_gangs_wrang e {
+        blether e
+    }
+    hae_a_bash {
+        ken m = regex_match("abc", "b")
+        blether "regex"
+    } gin_it_gangs_wrang e {
+        blether e
+    }
+}
+blether "efter"
+"#;
+    for refcounting in [false, true] {
+        let run = run_native_with_env(src, refcounting, &[("MDH_TEST_BUF_FAIL_OVER", "16")]);
+        assert_eq!(run.code, Some(0), "rc={refcounting}: {}", run.stderr);
+        let lines: Vec<&str> = run.stdout.lines().collect();
+        assert_eq!(
+            lines,
+            vec![TOO_BIG, TOO_BIG, TOO_BIG, TOO_BIG, "efter"],
+            "rc={refcounting}"
+        );
+    }
+}
+
+/// `slurp`, `lines` and `words` copied their text through a temporary buffer that they
+/// never checked (or freed): with every buffer of 1 MiB or more failing, a 2 MiB file or
+/// line wrote through NULL. They now build the string directly, so they need no buffer
+/// at all and succeed (MDH-BUG-FLU-00189).
+#[cfg(debug_assertions)]
+#[test]
+fn slurp_lines_and_words_need_no_temporary_buffer() {
+    let dir = tempdir().expect("temp dir");
+    let big_path = dir.path().join("big.txt");
+    std::fs::write(&big_path, "x".repeat(2 * 1024 * 1024)).expect("write big file");
+    let src = format!(
+        r#"ken big = "x" * 2097152
+fer k in 0..2 {{
+    blether len(slurp("{}"))
+    blether len(lines(big)[0])
+    blether len(words(big)[0])
+}}
+"#,
+        big_path.display()
+    );
+    for refcounting in [false, true] {
+        let run = run_native_with_env(&src, refcounting, &[("MDH_TEST_BUF_FAIL_OVER", "1048576")]);
+        assert_eq!(run.code, Some(0), "rc={refcounting}: {}", run.stderr);
+        let lines: Vec<&str> = run.stdout.lines().collect();
+        let once = ["2097152", "2097152", "2097152"];
+        assert_eq!(lines, [once, once].concat(), "rc={refcounting}");
     }
 }
