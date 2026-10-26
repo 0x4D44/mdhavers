@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00162 — Native builtin values: two uses of len compare unequal, and clype(len) differs
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** native
 - **Raised:** 2026-10-26T03:56:47Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261026T041042Z-1dd68436
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00162-run-fix-20261026T041042Z-1dd68436
-- **Owner base:** 1755fc87f779c8f25afbc1c7977a00e1652c3c25
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-26T04:10:42Z
-- **Owner until:** 2026-10-26T08:10:42Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-26T03:56:47Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-26T03:56:47Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T04:59:30Z, deltic:auto role=fix run=fix-20261026T041042Z-1dd68436 branch=task/bug-MDH-BUG-FLU-00162-run-fix-20261026T041042Z-1dd68436 code=9025063 gate=manual)
 
 ## Observation
 
