@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00174 — Native RC leaks in string destructuring, items, roar, log_span, module alias, grup_up
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** native
 - **Raised:** 2026-10-26T05:04:17Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261026T062548Z-7823bb9e
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00174-run-fix-20261026T062548Z-7823bb9e
-- **Owner base:** 4ffece3d3d26505f9de5d1c9215a722f349772f3
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-26T06:25:48Z
-- **Owner until:** 2026-10-26T10:25:48Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-26T05:04:17Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-26T05:04:17Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T08:27:50Z, deltic:auto role=fix run=fix-20261026T062548Z-7823bb9e branch=task/bug-MDH-BUG-FLU-00174-run-fix-20261026T062548Z-7823bb9e code=349da95 gate=manual)
 
 ## Observation
 
