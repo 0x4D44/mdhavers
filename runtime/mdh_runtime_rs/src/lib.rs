@@ -82,7 +82,6 @@ extern "C" {
     fn __mdh_make_bool(value: bool) -> MdhValue;
     fn __mdh_make_int(value: i64) -> MdhValue;
     fn __mdh_make_float(value: f64) -> MdhValue;
-    fn __mdh_make_list(capacity: i32) -> MdhValue;
     // These never raise, which would longjmp across our frames: out of memory, they
     // return 0 (MDH-BUG-FLU-00188). Every value this file stores is one it has just made,
     // so it hands its reference over: push/set_owned take the caller's +1 (reference
@@ -91,8 +90,9 @@ extern "C" {
     fn __mdh_list_push_owned_try(list: MdhValue, value: MdhValue) -> i32;
     fn __mdh_bytes_new_try(size: i64, out: *mut MdhValue) -> i32;
     fn __mdh_dict_set_owned_try(dict: MdhValue, key: MdhValue, value: MdhValue) -> i32;
+    fn __mdh_make_list_try(capacity: i32, out: *mut MdhValue) -> i32;
+    fn __mdh_empty_dict_try(out: *mut MdhValue) -> i32;
     fn __mdh_out_of_memory_message() -> MdhValue;
-    fn __mdh_empty_dict() -> MdhValue;
     fn __mdh_dict_get_default(dict: MdhValue, key: MdhValue, default_val: MdhValue) -> MdhValue;
     fn __mdh_to_string_checked(value: MdhValue, out: *mut MdhValue) -> i32;
     fn __mdh_kv_densify(value: MdhValue) -> i32;
@@ -180,6 +180,26 @@ pub(crate) unsafe fn mdh_error_string(msg: &str) -> MdhValue {
     let mut out = __mdh_make_nil();
     if __mdh_make_string_try(cstr.as_ptr(), &mut out) == 0 {
         return __mdh_out_of_memory_message();
+    }
+    out
+}
+
+/// A new empty list with room for `capacity` items, or nil with the failure noted (see
+/// NO_MEMORY). Pushing onto that nil fails quietly too (MDH-BUG-FLU-00189).
+pub(crate) unsafe fn mdh_new_list(capacity: i32) -> MdhValue {
+    let mut out = __mdh_make_nil();
+    if __mdh_make_list_try(capacity, &mut out) == 0 {
+        note_no_memory();
+    }
+    out
+}
+
+/// A new empty dict, or nil with the failure noted (see NO_MEMORY). Setting a key on that
+/// nil fails quietly too (MDH-BUG-FLU-00189).
+pub(crate) unsafe fn mdh_new_dict() -> MdhValue {
+    let mut out = __mdh_make_nil();
+    if __mdh_empty_dict_try(&mut out) == 0 {
+        note_no_memory();
     }
     out
 }
@@ -1004,7 +1024,7 @@ fn json_to_mdh(value: &JsonValue) -> Result<MdhValue, String> {
             }
             JsonValue::String(s) => Ok(mdh_make_string_from_rust(s)),
             JsonValue::Array(items) => {
-                let list = __mdh_make_list(items.len() as i32);
+                let list = mdh_new_list(items.len() as i32);
                 for item in items {
                     let v = json_to_mdh(item)?;
                     mdh_list_push(list, v);
@@ -1012,7 +1032,7 @@ fn json_to_mdh(value: &JsonValue) -> Result<MdhValue, String> {
                 Ok(list)
             }
             JsonValue::Object(map) => {
-                let dict = __mdh_empty_dict();
+                let dict = mdh_new_dict();
                 for (k, v) in map.iter() {
                     let key = mdh_make_string_from_rust(k);
                     let val = json_to_mdh(v)?;
@@ -1098,7 +1118,7 @@ pub extern "C" fn __mdh_rs_regex_match(text: MdhValue, pattern: MdhValue) -> Mdh
         };
 
         if let Some(m) = re.find(&text_s) {
-            let dict = __mdh_empty_dict();
+            let dict = mdh_new_dict();
             mdh_dict_set(
                 dict,
                 mdh_make_string_from_rust("match"),
@@ -1138,9 +1158,9 @@ pub extern "C" fn __mdh_rs_regex_match_all(text: MdhValue, pattern: MdhValue) ->
             Err(e) => return mdh_err(&format!("Invalid regex '{}': {}", pat_s, e)),
         };
 
-        let result = __mdh_make_list(8);
+        let result = mdh_new_list(8);
         for m in re.find_iter(&text_s) {
-            let dict = __mdh_empty_dict();
+            let dict = mdh_new_dict();
             mdh_dict_set(
                 dict,
                 mdh_make_string_from_rust("match"),
@@ -1239,7 +1259,7 @@ pub extern "C" fn __mdh_rs_regex_split(text: MdhValue, pattern: MdhValue) -> Mdh
             Err(e) => return mdh_err(&format!("Invalid regex '{}': {}", pat_s, e)),
         };
 
-        let result = __mdh_make_list(8);
+        let result = mdh_new_list(8);
         for part in re.split(&text_s) {
             mdh_list_push(result, mdh_make_string_from_rust(part));
         }
@@ -1273,10 +1293,10 @@ pub extern "C" fn __mdh_rs_dns_srv(service: MdhValue, domain: MdhValue) -> MdhRs
             Ok(l) => l,
             Err(e) => return mdh_err(&format!("DNS SRV lookup failed: {}", e)),
         };
-        let list = __mdh_make_list(8);
+        let list = mdh_new_list(8);
         for rdata in lookup.iter() {
             if let RData::SRV(srv) = rdata {
-                let dict = __mdh_empty_dict();
+                let dict = mdh_new_dict();
                 mdh_dict_set(
                     dict,
                     mdh_make_string_from_rust("priority"),
@@ -1322,10 +1342,10 @@ pub extern "C" fn __mdh_rs_dns_naptr(domain: MdhValue) -> MdhRsResult {
             Ok(l) => l,
             Err(e) => return mdh_err(&format!("DNS NAPTR lookup failed: {}", e)),
         };
-        let list = __mdh_make_list(8);
+        let list = mdh_new_list(8);
         for rdata in lookup.iter() {
             if let RData::NAPTR(naptr) = rdata {
-                let dict = __mdh_empty_dict();
+                let dict = mdh_new_dict();
                 mdh_dict_set(
                     dict,
                     mdh_make_string_from_rust("order"),
@@ -1871,7 +1891,7 @@ pub extern "C" fn __mdh_rs_dtls_handshake(dtls: MdhValue, sock: MdhValue) -> Mdh
         let client_salt = &material[(2 * key_len)..(2 * key_len + salt_len)];
         let server_salt = &material[(2 * key_len + salt_len)..(2 * key_len + 2 * salt_len)];
 
-        let dict = __mdh_empty_dict();
+        let dict = mdh_new_dict();
         mdh_dict_set(
             dict,
             mdh_make_string_from_rust("profile"),

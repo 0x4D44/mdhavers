@@ -145,6 +145,10 @@ int32_t __mdh_make_string_try(const char *value, MdhValue *out);
 int32_t __mdh_list_push_owned_try(MdhValue list, MdhValue value);
 int32_t __mdh_dict_set_owned_try(MdhValue dict, MdhValue key, MdhValue value);
 int32_t __mdh_bytes_new_try(int64_t size, MdhValue *out);
+int32_t __mdh_make_list_try(int32_t capacity, MdhValue *out);
+int32_t __mdh_empty_dict_try(MdhValue *out);
+/* __mdh_obj_strdup that raises "ower muckle" instead of returning NULL (compiled code). */
+char *__mdh_obj_strdup_checked(const char *s);
 MdhValue __mdh_out_of_memory_message(void);
 /* Hurl a message the caller hands over (__mdh_last_error takes its reference). */
 static void __mdh_hurl_owned(MdhValue msg);
@@ -231,6 +235,20 @@ MdhValue __mdh_out_of_memory_message(void) {
 /* Out of memory: raise the "ower muckle" error. */
 static void __mdh_raise_too_big(void) {
     __mdh_hurl_owned(__mdh_out_of_memory_message());
+}
+
+/* `p`, an allocation's result: when it is NULL (no memory), the "ower muckle" error is
+ * raised instead, so a builtin never writes through NULL (MDH-BUG-FLU-00189). Not for
+ * anything the Rust runtime calls, which must never be longjmp'd through. */
+static void *__mdh_need(void *p) {
+    if (__builtin_expect(p == NULL, 0)) __mdh_raise_too_big();
+    return p;
+}
+
+/* __mdh_obj_strdup for compiled code: raises the "ower muckle" error instead of
+ * returning NULL (MDH-BUG-FLU-00189). */
+char *__mdh_obj_strdup_checked(const char *s) {
+    return (char *)__mdh_need(__mdh_obj_strdup(s));
 }
 
 /* The string buffer could not get memory: raise the too-big error, or in quiet mode
@@ -399,16 +417,33 @@ int32_t __mdh_make_string_try(const char *value, MdhValue *out) {
     return 1;
 }
 
+/* An empty list with room for `capacity` items (8 when it is not positive) in *out: 1,
+ * or 0 with nil in *out when there was no memory. Never raises, so Rust uses it too
+ * (see __mdh_make_string_try). */
+int32_t __mdh_make_list_try(int32_t capacity, MdhValue *out) {
+    *out = __mdh_make_nil();
+    int64_t cap = capacity > 0 ? capacity : 8;
+    /* The items first: when the list object then fails, they are all there is to free. */
+    MdhValue *items = (MdhValue *)__mdh_buf_alloc(sizeof(MdhValue) * (size_t)cap);
+    if (!items) return 0;
+    MdhList *list = (MdhList *)__mdh_obj_alloc(MDH_KIND_LIST, sizeof(MdhList));
+    if (!list) {
+        __mdh_buf_free(items);
+        return 0;
+    }
+    list->items = items;
+    list->length = 0;
+    list->capacity = cap;
+    out->tag = MDH_TAG_LIST;
+    out->data = (int64_t)(intptr_t)list;
+    return 1;
+}
+
+/* An empty list with room for `capacity` items; raises the "ower muckle" error when there
+ * is no memory for it (MDH-BUG-FLU-00189). */
 MdhValue __mdh_make_list(int32_t capacity) {
     MdhValue v;
-    v.tag = MDH_TAG_LIST;
-
-    MdhList *list = (MdhList *)__mdh_obj_alloc(MDH_KIND_LIST, sizeof(MdhList));
-    list->length = 0;
-    list->capacity = capacity > 0 ? capacity : 8;
-    list->items = (MdhValue *)__mdh_buf_alloc(sizeof(MdhValue) * list->capacity);
-
-    v.data = (int64_t)(intptr_t)list;
+    if (!__mdh_make_list_try(capacity, &v)) __mdh_raise_too_big();
     return v;
 }
 
@@ -524,6 +559,15 @@ static char *__mdh_alloc_text(int size_overflowed, size_t out_len) {
         __mdh_raise_too_big();
     }
     return buf;
+}
+
+/* The first `len` bytes of `s` as a new string; raises the "ower muckle" error when there
+ * is no memory for it (MDH-BUG-FLU-00189). */
+static MdhValue __mdh_make_string_n(const char *s, size_t len) {
+    char *buf = __mdh_alloc_text(0, len);
+    memcpy(buf, s, len);
+    buf[len] = '\0';
+    return __mdh_string_from_buf(buf);
 }
 
 /* s repeated n times (n > 0); hurls instead of overflowing the size computation. */
@@ -1198,7 +1242,7 @@ static int __mdh_tri_has_transform(const char *kind) {
 }
 
 static MdhNativeObject *__mdh_tri_object_new(const char *kind) {
-    MdhNativeObject *obj = (MdhNativeObject *)__mdh_obj_alloc(MDH_KIND_NATIVE, sizeof(MdhNativeObject));
+    MdhNativeObject *obj = (MdhNativeObject *)__mdh_need(__mdh_obj_alloc(MDH_KIND_NATIVE, sizeof(MdhNativeObject)));
     __mdh_obj_immortal(obj); /* the tri runtime keeps these by address */
     obj->kind = MDH_NATIVE_TRI_OBJECT;
     obj->type_name = kind;
@@ -1365,7 +1409,7 @@ static void __mdh_tri_remove_children(MdhNativeObject *obj, int argc, MdhValue *
 
 static MdhValue __mdh_tri_clone_object(MdhNativeObject *obj) {
     if (!obj) return __mdh_make_nil();
-    MdhNativeObject *clone = (MdhNativeObject *)__mdh_obj_alloc(MDH_KIND_NATIVE, sizeof(MdhNativeObject));
+    MdhNativeObject *clone = (MdhNativeObject *)__mdh_need(__mdh_obj_alloc(MDH_KIND_NATIVE, sizeof(MdhNativeObject)));
     __mdh_obj_immortal(clone);
     clone->kind = MDH_NATIVE_TRI_OBJECT;
     clone->type_name = obj->type_name;
@@ -1381,7 +1425,7 @@ static MdhValue __mdh_tri_make_object(const char *kind, int argc, MdhValue *args
 }
 
 static MdhValue __mdh_tri_make_ctor(const char *kind) {
-    MdhNativeObject *obj = (MdhNativeObject *)__mdh_obj_alloc(MDH_KIND_NATIVE, sizeof(MdhNativeObject));
+    MdhNativeObject *obj = (MdhNativeObject *)__mdh_need(__mdh_obj_alloc(MDH_KIND_NATIVE, sizeof(MdhNativeObject)));
     __mdh_obj_immortal(obj);
     obj->kind = MDH_NATIVE_TRI_CTOR;
     obj->type_name = "native function";
@@ -1672,7 +1716,7 @@ MdhValue __mdh_tri_module(void) {
     static int initialized = 0;
     static MdhValue module;
     if (!initialized) {
-        MdhNativeObject *obj = (MdhNativeObject *)__mdh_obj_alloc(MDH_KIND_NATIVE, sizeof(MdhNativeObject));
+        MdhNativeObject *obj = (MdhNativeObject *)__mdh_need(__mdh_obj_alloc(MDH_KIND_NATIVE, sizeof(MdhNativeObject)));
         __mdh_obj_immortal(obj);
         obj->kind = MDH_NATIVE_TRI_MODULE;
         obj->type_name = "tri.module";
@@ -2504,7 +2548,7 @@ static void __mdh_bytes_ensure_capacity(MdhBytes *bytes, int64_t needed) {
     while (new_cap < needed) {
         new_cap *= 2;
     }
-    bytes->data = (uint8_t *)__mdh_buf_realloc(bytes->data, (size_t)new_cap);
+    bytes->data = (uint8_t *)__mdh_need(__mdh_buf_realloc(bytes->data, (size_t)new_cap));
     bytes->capacity = new_cap;
 }
 
@@ -2559,11 +2603,11 @@ MdhValue __mdh_bytes_from_string(MdhValue s) {
     const char *str = __mdh_get_string(str_val);
     size_t len = str ? strlen(str) : 0;
 
-    MdhBytes *bytes = (MdhBytes *)__mdh_obj_alloc(MDH_KIND_BYTES, sizeof(MdhBytes));
+    MdhBytes *bytes = (MdhBytes *)__mdh_need(__mdh_obj_alloc(MDH_KIND_BYTES, sizeof(MdhBytes)));
     bytes->length = (int64_t)len;
     bytes->capacity = (int64_t)len;
     if (len > 0) {
-        bytes->data = (uint8_t *)__mdh_buf_alloc(len);
+        bytes->data = (uint8_t *)__mdh_need(__mdh_buf_alloc(len));
         memcpy(bytes->data, str, len);
     } else {
         bytes->data = NULL;
@@ -3695,7 +3739,7 @@ static void __mdh_loop_ensure_watch_cap(MdhEventLoop *loop, int64_t needed) {
     if (loop->watch_cap >= needed) return;
     int64_t new_cap = loop->watch_cap > 0 ? loop->watch_cap * 2 : 8;
     while (new_cap < needed) new_cap *= 2;
-    loop->watches = (MdhWatch *)__mdh_buf_realloc(loop->watches, sizeof(MdhWatch) * (size_t)new_cap);
+    loop->watches = (MdhWatch *)__mdh_need(__mdh_buf_realloc(loop->watches, sizeof(MdhWatch) * (size_t)new_cap));
     loop->watch_cap = new_cap;
 }
 
@@ -3703,23 +3747,24 @@ static void __mdh_loop_ensure_timer_cap(MdhEventLoop *loop, int64_t needed) {
     if (loop->timer_cap >= needed) return;
     int64_t new_cap = loop->timer_cap > 0 ? loop->timer_cap * 2 : 8;
     while (new_cap < needed) new_cap *= 2;
-    loop->timers = (MdhTimer *)__mdh_buf_realloc(loop->timers, sizeof(MdhTimer) * (size_t)new_cap);
+    loop->timers = (MdhTimer *)__mdh_need(__mdh_buf_realloc(loop->timers, sizeof(MdhTimer) * (size_t)new_cap));
     loop->timer_cap = new_cap;
 }
 
 static int64_t __mdh_loop_register(MdhEventLoop *loop) {
     if (__mdh_loop_registry.cap == 0) {
         __mdh_loop_registry.cap = 8;
-        __mdh_loop_registry.ids = (int64_t *)__mdh_buf_alloc(sizeof(int64_t) * 8);
-        __mdh_loop_registry.loops = (MdhEventLoop **)__mdh_buf_alloc(sizeof(MdhEventLoop *) * 8);
+        __mdh_loop_registry.ids = (int64_t *)__mdh_need(__mdh_buf_alloc(sizeof(int64_t) * 8));
+        __mdh_loop_registry.loops = (MdhEventLoop **)__mdh_need(__mdh_buf_alloc(sizeof(MdhEventLoop *) * 8));
     } else if (__mdh_loop_registry.len >= __mdh_loop_registry.cap) {
         int64_t new_cap = __mdh_loop_registry.cap * 2;
-        __mdh_loop_registry.ids =
-            (int64_t *)__mdh_buf_realloc(__mdh_loop_registry.ids, sizeof(int64_t) * (size_t)new_cap);
-        __mdh_loop_registry.loops = (MdhEventLoop **)__mdh_buf_realloc(
+        __mdh_loop_registry.ids = (int64_t *)__mdh_need(
+            __mdh_buf_realloc(__mdh_loop_registry.ids, sizeof(int64_t) * (size_t)new_cap)
+        );
+        __mdh_loop_registry.loops = (MdhEventLoop **)__mdh_need(__mdh_buf_realloc(
             __mdh_loop_registry.loops,
             sizeof(MdhEventLoop *) * (size_t)new_cap
-        );
+        ));
         __mdh_loop_registry.cap = new_cap;
     }
     int64_t id = __mdh_loop_registry.next_id++;
@@ -3761,7 +3806,7 @@ static MdhValue __mdh_make_event(const char *kind, int64_t sock, int64_t timer_i
 }
 
 MdhValue __mdh_event_loop_new(void) {
-    MdhEventLoop *loop = (MdhEventLoop *)__mdh_buf_alloc(sizeof(MdhEventLoop));
+    MdhEventLoop *loop = (MdhEventLoop *)__mdh_need(__mdh_buf_alloc(sizeof(MdhEventLoop)));
     memset(loop, 0, sizeof(MdhEventLoop));
     loop->next_timer_id = 1;
     int64_t id = __mdh_loop_register(loop);
@@ -3896,7 +3941,7 @@ MdhValue __mdh_event_loop_poll(MdhValue loop_val, MdhValue timeout_val) {
     int64_t nfds = loop->watch_len;
     struct pollfd *fds = NULL;
     if (nfds > 0) {
-        fds = (struct pollfd *)__mdh_buf_alloc(sizeof(struct pollfd) * (size_t)nfds);
+        fds = (struct pollfd *)__mdh_need(__mdh_buf_alloc(sizeof(struct pollfd) * (size_t)nfds));
         for (int64_t i = 0; i < nfds; i++) {
             fds[i].fd = loop->watches[i].fd;
             fds[i].events = 0;
@@ -4350,7 +4395,7 @@ static void *__mdh_thread_entry(void *arg) {
 }
 
 MdhValue __mdh_thread_spawn(MdhValue func, MdhValue args_list) {
-    MdhThread *t = (MdhThread *)__mdh_buf_alloc(sizeof(MdhThread));
+    MdhThread *t = (MdhThread *)__mdh_need(__mdh_buf_alloc(sizeof(MdhThread)));
     memset(t, 0, sizeof(MdhThread));
     t->func = __mdh_retained(func);
     t->args = __mdh_retained(args_list);
@@ -4413,7 +4458,7 @@ MdhValue __mdh_thread_detach(MdhValue thread_handle) {
 }
 
 MdhValue __mdh_mutex_new(void) {
-    MdhMutex *m = (MdhMutex *)__mdh_buf_alloc(sizeof(MdhMutex));
+    MdhMutex *m = (MdhMutex *)__mdh_need(__mdh_buf_alloc(sizeof(MdhMutex)));
     m->mutex = mdh_mutex_create();
     return __mdh_handle_new(MDH_HANDLE_MUTEX, m);
 }
@@ -4440,7 +4485,7 @@ MdhValue __mdh_mutex_try_lock(MdhValue mutex) {
 }
 
 MdhValue __mdh_condvar_new(void) {
-    MdhCondvar *c = (MdhCondvar *)__mdh_buf_alloc(sizeof(MdhCondvar));
+    MdhCondvar *c = (MdhCondvar *)__mdh_need(__mdh_buf_alloc(sizeof(MdhCondvar)));
     c->cond = mdh_cond_create();
     return __mdh_handle_new(MDH_HANDLE_CONDVAR, c);
 }
@@ -4491,7 +4536,7 @@ MdhValue __mdh_atomic_new(MdhValue initial_int) {
     if (!__mdh_int_value("atomic_new", initial_int, &val)) {
         return __mdh_make_nil();
     }
-    MdhAtomic *a = (MdhAtomic *)__mdh_buf_alloc(sizeof(MdhAtomic));
+    MdhAtomic *a = (MdhAtomic *)__mdh_need(__mdh_buf_alloc(sizeof(MdhAtomic)));
     a->lock = mdh_mutex_create();
     a->value = val;
     return __mdh_handle_new(MDH_HANDLE_ATOMIC, a);
@@ -4553,15 +4598,19 @@ MdhValue __mdh_atomic_cas(MdhValue atomic, MdhValue expected, MdhValue desired) 
     return __mdh_make_bool(ok);
 }
 
-static void __mdh_chan_grow(MdhChan *ch, int64_t new_cap) {
+/* Room for new_cap items: 1, or 0 when there was no memory (the channel is unchanged). */
+static int __mdh_chan_grow(MdhChan *ch, int64_t new_cap) {
     MdhValue *new_buf = (MdhValue *)__mdh_buf_alloc(sizeof(MdhValue) * (size_t)new_cap);
+    if (!new_buf) return 0;
     for (int64_t i = 0; i < ch->count; i++) {
         new_buf[i] = ch->buf[(ch->head + i) % ch->cap];
     }
+    __mdh_buf_free(ch->buf);
     ch->buf = new_buf;
     ch->cap = new_cap;
     ch->head = 0;
     ch->tail = ch->count;
+    return 1;
 }
 
 MdhValue __mdh_chan_new(MdhValue capacity_int) {
@@ -4573,7 +4622,16 @@ MdhValue __mdh_chan_new(MdhValue capacity_int) {
         __mdh_hurl_owned(__mdh_make_string("chan_new expects non-negative capacity"));
         return __mdh_make_nil();
     }
+    MdhValue *buf = NULL;
+    if (cap > 0 && (uint64_t)cap <= SIZE_MAX / sizeof(MdhValue)) {
+        buf = (MdhValue *)__mdh_buf_alloc(sizeof(MdhValue) * (size_t)cap);
+    }
     MdhChan *ch = (MdhChan *)__mdh_buf_alloc(sizeof(MdhChan));
+    if ((cap > 0 && !buf) || !ch) {
+        __mdh_buf_free(buf);
+        __mdh_buf_free(ch);
+        __mdh_raise_too_big();
+    }
     memset(ch, 0, sizeof(MdhChan));
     ch->lock = mdh_mutex_create();
     ch->not_empty = mdh_cond_create();
@@ -4585,7 +4643,7 @@ MdhValue __mdh_chan_new(MdhValue capacity_int) {
     } else {
         ch->unbounded = 0;
         ch->cap = cap;
-        ch->buf = (MdhValue *)__mdh_buf_alloc(sizeof(MdhValue) * (size_t)cap);
+        ch->buf = buf;
     }
     return __mdh_handle_new(MDH_HANDLE_CHAN, ch);
 }
@@ -4601,12 +4659,12 @@ MdhValue __mdh_chan_send(MdhValue chan, MdhValue value) {
         mdh_mutex_unlock(ch->lock);
         return __mdh_make_bool(false);
     }
-    if (ch->unbounded) {
-        if (ch->cap == 0) {
-            ch->cap = 16;
-            ch->buf = (MdhValue *)__mdh_buf_alloc(sizeof(MdhValue) * 16);
-        } else if (ch->count >= ch->cap) {
-            __mdh_chan_grow(ch, ch->cap * 2);
+    if (ch->unbounded && ch->count >= ch->cap) {
+        /* An empty channel has cap 0, buf NULL and count 0, so this grows it to 16. */
+        if (!__mdh_chan_grow(ch, ch->cap > 0 ? ch->cap * 2 : 16)) {
+            /* Not raised with the lock held (MDH-BUG-FLU-00189). */
+            mdh_mutex_unlock(ch->lock);
+            __mdh_raise_too_big();
         }
     }
     ch->buf[ch->tail] = __mdh_retained(value);
@@ -4843,8 +4901,11 @@ void __mdh_rc_children(uint32_t kind, void *payload, MdhRcVisit visit, void *ctx
     }
 }
 
+/* A dict/creel handle for `payload`, or NULL when there was no memory (the payload is
+ * then still the caller's). */
 static intptr_t *__mdh_kv_new_handle(int64_t *payload) {
     intptr_t *handle = (intptr_t *)__mdh_obj_alloc(MDH_KIND_KV, MDH_KV_HANDLE_WORDS * sizeof(intptr_t));
+    if (!handle) return NULL;
     handle[0] = (intptr_t)payload;
     handle[1] = 0;
     handle[2] = 0;
@@ -4852,31 +4913,41 @@ static intptr_t *__mdh_kv_new_handle(int64_t *payload) {
     return handle;
 }
 
-MdhValue __mdh_empty_dict(void) {
+/* An empty dict (MDH_TAG_DICT, marker 0) or creel (MDH_TAG_SET, MDH_CREEL_SENTINEL) in
+ * *out: 1, or 0 with nil in *out when there was no memory. Never raises. */
+static int __mdh_kv_empty_try(uint8_t tag, int64_t marker, MdhValue *out) {
+    *out = __mdh_make_nil();
     /* Allocate 16 bytes so empty dicts/creels can be disambiguated safely. */
     int64_t *payload = (int64_t *)__mdh_buf_alloc(16);
+    if (!payload) return 0;
     payload[0] = 0; /* count = 0 */
-    payload[1] = 0; /* marker */
-
+    payload[1] = marker;
     intptr_t *handle = __mdh_kv_new_handle(payload);
+    if (!handle) {
+        __mdh_buf_free(payload);
+        return 0;
+    }
+    out->tag = tag;
+    out->data = (int64_t)(intptr_t)handle;
+    return 1;
+}
 
+/* __mdh_empty_dict for Rust (see __mdh_make_string_try): 1, or 0 with nil in *out. */
+int32_t __mdh_empty_dict_try(MdhValue *out) {
+    return __mdh_kv_empty_try(MDH_TAG_DICT, 0, out);
+}
+
+/* An empty dict; raises the "ower muckle" error when there is no memory for it
+ * (MDH-BUG-FLU-00189). */
+MdhValue __mdh_empty_dict(void) {
     MdhValue v;
-    v.tag = MDH_TAG_DICT;
-    v.data = (int64_t)(intptr_t)handle;
+    if (!__mdh_kv_empty_try(MDH_TAG_DICT, 0, &v)) __mdh_raise_too_big();
     return v;
 }
 
 MdhValue __mdh_empty_creel(void) {
-    /* Allocate 16 bytes so empty dicts/creels can be disambiguated safely. */
-    int64_t *payload = (int64_t *)__mdh_buf_alloc(16);
-    payload[0] = 0; /* count = 0 */
-    payload[1] = MDH_CREEL_SENTINEL; /* marker */
-
-    intptr_t *handle = __mdh_kv_new_handle(payload);
-
     MdhValue v;
-    v.tag = MDH_TAG_SET;
-    v.data = (int64_t)(intptr_t)handle;
+    if (!__mdh_kv_empty_try(MDH_TAG_SET, MDH_CREEL_SENTINEL, &v)) __mdh_raise_too_big();
     return v;
 }
 
@@ -5314,6 +5385,11 @@ MdhValue __mdh_dict_remove(MdhValue dict, MdhValue key) {
             (size_t)(count - found - 1) * 2 * sizeof(MdhValue)
         );
     }
+    intptr_t *handle = __mdh_kv_new_handle(payload);
+    if (!handle) {
+        __mdh_buf_free(payload);
+        __mdh_raise_too_big();
+    }
     /* The new dict holds its own reference to every key and value it copied. */
     for (int64_t i = 0; i < new_count * 2; i++) {
         __mdh_retain(dst[i]);
@@ -5321,7 +5397,7 @@ MdhValue __mdh_dict_remove(MdhValue dict, MdhValue key) {
 
     MdhValue result;
     result.tag = MDH_TAG_DICT;
-    result.data = (int64_t)(intptr_t)__mdh_kv_new_handle(payload);
+    result.data = (int64_t)(intptr_t)handle;
     return result;
 }
 
@@ -5419,15 +5495,18 @@ MdhValue __mdh_slurp(MdhValue path) {
     fseek(f, 0, SEEK_END);
     long size = ftell(f);
     fseek(f, 0, SEEK_SET);
-    char *buf = (char *)__mdh_buf_alloc(size + 1);
-    if (size > 0) {
-        size_t read_count = fread(buf, 1, size, f);
-        buf[read_count] = '\0';
-    } else {
-        buf[0] = '\0';
+    if (size < 0) size = 0;
+    /* Read straight into the string's own text: no temporary copy (it leaked), and no
+     * memory raises the "ower muckle" error (MDH-BUG-FLU-00189). */
+    char *buf = (char *)__mdh_obj_alloc(MDH_KIND_STRING, (size_t)size + 1);
+    if (!buf) {
+        fclose(f);
+        __mdh_raise_too_big();
     }
+    size_t read_count = size > 0 ? fread(buf, 1, (size_t)size, f) : 0;
+    buf[read_count] = '\0';
     fclose(f);
-    return __mdh_make_string(buf);
+    return __mdh_string_from_buf(buf);
 }
 
 /* scrieve(path, content): the interpreter's file write. The content is shown as blether
@@ -5488,10 +5567,7 @@ MdhValue __mdh_lines(MdhValue path) {
             if (len > 0 && p > start && p[-1] == '\r') {
                 len--;
             }
-            char *line = (char *)__mdh_buf_alloc(len + 1);
-            memcpy(line, start, len);
-            line[len] = '\0';
-            __mdh_list_push_owned(result, __mdh_make_string(line));
+            __mdh_list_push_owned(result, __mdh_make_string_n(start, len));
             start = p + 1;
         }
         p++;
@@ -5499,10 +5575,7 @@ MdhValue __mdh_lines(MdhValue path) {
     /* Handle last line without newline (do not strip lone '\r'). */
     if (start != p) {
         size_t len = (size_t)(p - start);
-        char *line = (char *)__mdh_buf_alloc(len + 1);
-        memcpy(line, start, len);
-        line[len] = '\0';
-        __mdh_list_push_owned(result, __mdh_make_string(line));
+        __mdh_list_push_owned(result, __mdh_make_string_n(start, len));
     }
     return result;
 }
@@ -5522,10 +5595,7 @@ MdhValue __mdh_words(MdhValue str) {
             if (start != NULL) {
                 /* End of word */
                 size_t len = p - start;
-                char *word = (char *)__mdh_buf_alloc(len + 1);
-                memcpy(word, start, len);
-                word[len] = '\0';
-                __mdh_list_push_owned(result, __mdh_make_string(word));
+                __mdh_list_push_owned(result, __mdh_make_string_n(start, len));
                 start = NULL;
             }
             if (*p == '\0') break;
@@ -5603,15 +5673,12 @@ static uint64_t __mdh_next_span_id(void) {
 }
 
 static void __mdh_span_stack_push(MdhNativeObject *span) {
-    if (!__mdh_span_stack.items) {
-        __mdh_span_stack.cap = 8;
-        __mdh_span_stack.items = (MdhNativeObject **)__mdh_buf_alloc(sizeof(MdhNativeObject *) * __mdh_span_stack.cap);
-    }
     if (__mdh_span_stack.len >= __mdh_span_stack.cap) {
-        size_t new_cap = __mdh_span_stack.cap * 2;
-        MdhNativeObject **next = (MdhNativeObject **)__mdh_buf_alloc(sizeof(MdhNativeObject *) * new_cap);
-        memcpy(next, __mdh_span_stack.items, sizeof(MdhNativeObject *) * __mdh_span_stack.len);
-        __mdh_span_stack.items = next;
+        size_t new_cap = __mdh_span_stack.cap > 0 ? __mdh_span_stack.cap * 2 : 8;
+        /* Grown in place (the old copy leaked); raises with the stack unchanged. */
+        __mdh_span_stack.items = (MdhNativeObject **)__mdh_need(
+            __mdh_buf_realloc(__mdh_span_stack.items, sizeof(MdhNativeObject *) * new_cap)
+        );
         __mdh_span_stack.cap = new_cap;
     }
     __mdh_span_stack.items[__mdh_span_stack.len++] = span;
@@ -5759,7 +5826,7 @@ MdhValue __mdh_log_set_filter(MdhValue spec) {
     if (spec.tag == MDH_TAG_STRING) {
         const char *s = __mdh_get_string(spec);
         size_t len = strlen(s);
-        char *buf = (char *)__mdh_buf_alloc(len + 1);
+        char *buf = (char *)__mdh_need(__mdh_buf_alloc(len + 1));
         memcpy(buf, s, len);
         buf[len] = '\0';
         __mdh_log_filter = buf;
@@ -5987,7 +6054,7 @@ MdhValue __mdh_log_span_begin(MdhValue name, MdhValue level, MdhValue fields, Md
         return __mdh_make_nil();
     }
     int lvl = __mdh_log_level_strict(level);
-    MdhNativeObject *obj = (MdhNativeObject *)__mdh_obj_alloc(MDH_KIND_NATIVE, sizeof(MdhNativeObject));
+    MdhNativeObject *obj = (MdhNativeObject *)__mdh_need(__mdh_obj_alloc(MDH_KIND_NATIVE, sizeof(MdhNativeObject)));
     obj->kind = MDH_NATIVE_LOG_SPAN;
     obj->type_name = "log_span";
     obj->ctor_kind = NULL;
@@ -6532,10 +6599,7 @@ MdhValue __mdh_rtrim(MdhValue str) {
     if (end == len) return __mdh_retained(str);  /* No trailing whitespace */
     if (end == 0) return __mdh_make_string("");  /* All whitespace */
 
-    char *buf = (char *)__mdh_buf_alloc(end + 1);
-    memcpy(buf, s, end);
-    buf[end] = '\0';
-    return __mdh_make_string(buf);
+    return __mdh_make_string_n(s, (size_t)end);
 }
 
 /* Forward decl (implementation later in file). */
@@ -7029,8 +7093,8 @@ MdhValue __mdh_slice_string(MdhValue str, MdhValue start_opt, MdhValue end_opt, 
     }
 
     // Materialize per-codepoint byte slices (ptr + byte length).
-    const unsigned char **ptrs = (const unsigned char **)__mdh_buf_alloc(sizeof(unsigned char *) * (size_t)char_len);
-    size_t *lens = (size_t *)__mdh_buf_alloc(sizeof(size_t) * (size_t)char_len);
+    const unsigned char **ptrs = (const unsigned char **)__mdh_need(__mdh_buf_alloc(sizeof(unsigned char *) * (size_t)char_len));
+    size_t *lens = (size_t *)__mdh_need(__mdh_buf_alloc(sizeof(size_t) * (size_t)char_len));
     p = s;
     for (int64_t i = 0; i < char_len; i++) {
         uint32_t code = 0;
@@ -7221,10 +7285,10 @@ MdhValue __mdh_list_copy(MdhValue list) {
         return __mdh_retained(list);
     }
     MdhList *src = (MdhList *)(intptr_t)list.data;
-    MdhList *dst = (MdhList *)__mdh_obj_alloc(MDH_KIND_LIST, sizeof(MdhList));
+    MdhList *dst = (MdhList *)__mdh_need(__mdh_obj_alloc(MDH_KIND_LIST, sizeof(MdhList)));
     dst->length = src->length;
     dst->capacity = src->length;
-    dst->items = (MdhValue *)__mdh_buf_alloc(sizeof(MdhValue) * src->length);
+    dst->items = (MdhValue *)__mdh_need(__mdh_buf_alloc(sizeof(MdhValue) * src->length));
     for (int64_t i = 0; i < src->length; i++) {
         dst->items[i] = __mdh_retained(src->items[i]);
     }
@@ -7438,10 +7502,10 @@ MdhValue __mdh_unique(MdhValue list) {
     if (src->length == 0) return __mdh_make_list(0);
 
     /* Create result list with same capacity */
-    MdhList *dst = (MdhList *)__mdh_obj_alloc(MDH_KIND_LIST, sizeof(MdhList));
+    MdhList *dst = (MdhList *)__mdh_need(__mdh_obj_alloc(MDH_KIND_LIST, sizeof(MdhList)));
     dst->length = 0;
     dst->capacity = src->length;
-    dst->items = (MdhValue *)__mdh_buf_alloc(sizeof(MdhValue) * src->length);
+    dst->items = (MdhValue *)__mdh_need(__mdh_buf_alloc(sizeof(MdhValue) * src->length));
 
     /* Add items that aren't already in result */
     for (int64_t i = 0; i < src->length; i++) {
@@ -7522,7 +7586,7 @@ MdhValue __mdh_creel_tae_list(MdhValue dict) {
         return __mdh_make_list(0);
     }
 
-    MdhCreelSortItem *items = (MdhCreelSortItem *)__mdh_buf_alloc(sizeof(MdhCreelSortItem) * (size_t)count);
+    MdhCreelSortItem *items = (MdhCreelSortItem *)__mdh_need(__mdh_buf_alloc(sizeof(MdhCreelSortItem) * (size_t)count));
     for (int64_t i = 0; i < count; i++) {
         MdhValue key = entries[i * 2];
         MdhValue key_str_val = __mdh_to_string(key);
@@ -7782,7 +7846,7 @@ MdhValue __mdh_median(MdhValue list) {
     }
 
     size_t n = (size_t)l->length;
-    double *nums = (double *)__mdh_buf_alloc(sizeof(double) * n);
+    double *nums = (double *)__mdh_need(__mdh_buf_alloc(sizeof(double) * n));
     for (size_t i = 0; i < n; i++) {
         MdhValue item = l->items[(int64_t)i];
         if (item.tag == MDH_TAG_INT) {
@@ -7977,10 +8041,10 @@ MdhValue __mdh_list_sort(MdhValue list) {
     if (l->length == 0) return __mdh_make_list(0);
 
     /* Create a copy of the list */
-    MdhList *result = (MdhList *)__mdh_obj_alloc(MDH_KIND_LIST, sizeof(MdhList));
+    MdhList *result = (MdhList *)__mdh_need(__mdh_obj_alloc(MDH_KIND_LIST, sizeof(MdhList)));
     result->capacity = l->length;
     result->length = l->length;
-    result->items = (MdhValue *)__mdh_buf_alloc(sizeof(MdhValue) * l->length);
+    result->items = (MdhValue *)__mdh_need(__mdh_buf_alloc(sizeof(MdhValue) * l->length));
     for (int64_t i = 0; i < l->length; i++) {
         result->items[i] = __mdh_retained(l->items[i]);
     }
@@ -7988,7 +8052,7 @@ MdhValue __mdh_list_sort(MdhValue list) {
     /* Total order shared with the interpreter; the index tie-break keeps it stable. */
     if (result->length > 1) {
         int64_t n = result->length;
-        MdhSortItem *items = (MdhSortItem *)__mdh_buf_alloc(sizeof(MdhSortItem) * (size_t)n);
+        MdhSortItem *items = (MdhSortItem *)__mdh_need(__mdh_buf_alloc(sizeof(MdhSortItem) * (size_t)n));
         for (int64_t i = 0; i < n; i++) {
             items[i].value = result->items[i];
             items[i].index = i;
@@ -8012,10 +8076,10 @@ MdhValue __mdh_list_uniq(MdhValue list) {
     if (l->length == 0) return __mdh_make_list(0);
 
     /* Create new list */
-    MdhList *result = (MdhList *)__mdh_obj_alloc(MDH_KIND_LIST, sizeof(MdhList));
+    MdhList *result = (MdhList *)__mdh_need(__mdh_obj_alloc(MDH_KIND_LIST, sizeof(MdhList)));
     result->capacity = l->length;
     result->length = 0;
-    result->items = (MdhValue *)__mdh_buf_alloc(sizeof(MdhValue) * l->length);
+    result->items = (MdhValue *)__mdh_need(__mdh_buf_alloc(sizeof(MdhValue) * l->length));
 
     /* Add each element only if not already in result */
     for (int64_t i = 0; i < l->length; i++) {
@@ -8048,10 +8112,10 @@ MdhValue __mdh_range(int64_t start, int64_t end, int64_t step) {
     if (length < 0) length = 0;
 
     /* Create list */
-    MdhList *result = (MdhList *)__mdh_obj_alloc(MDH_KIND_LIST, sizeof(MdhList));
+    MdhList *result = (MdhList *)__mdh_need(__mdh_obj_alloc(MDH_KIND_LIST, sizeof(MdhList)));
     result->capacity = length > 0 ? length : 1;
     result->length = length;
-    result->items = (MdhValue *)__mdh_buf_alloc(sizeof(MdhValue) * result->capacity);
+    result->items = (MdhValue *)__mdh_need(__mdh_buf_alloc(sizeof(MdhValue) * result->capacity));
 
     /* Fill list */
     int64_t val = start;
@@ -8077,7 +8141,7 @@ MdhValue __mdh_list_slice(MdhValue list, int64_t start, int64_t end) {
     if (end > l->length) end = l->length;
     if (start >= end || start >= l->length) {
         /* Return empty list */
-        MdhList *result = (MdhList *)__mdh_obj_alloc(MDH_KIND_LIST, sizeof(MdhList));
+        MdhList *result = (MdhList *)__mdh_need(__mdh_obj_alloc(MDH_KIND_LIST, sizeof(MdhList)));
         result->capacity = 0;
         result->length = 0;
         result->items = NULL;
@@ -8085,10 +8149,10 @@ MdhValue __mdh_list_slice(MdhValue list, int64_t start, int64_t end) {
     }
 
     int64_t new_len = end - start;
-    MdhList *result = (MdhList *)__mdh_obj_alloc(MDH_KIND_LIST, sizeof(MdhList));
+    MdhList *result = (MdhList *)__mdh_need(__mdh_obj_alloc(MDH_KIND_LIST, sizeof(MdhList)));
     result->capacity = new_len;
     result->length = new_len;
-    result->items = (MdhValue *)__mdh_buf_alloc(sizeof(MdhValue) * new_len);
+    result->items = (MdhValue *)__mdh_need(__mdh_buf_alloc(sizeof(MdhValue) * new_len));
     for (int64_t i = 0; i < new_len; i++) {
         result->items[i] = __mdh_retained(l->items[start + i]);
     }
@@ -8428,7 +8492,7 @@ static char *__mdh_shell_quote_single(const char *s) {
 
     /* Surround with single quotes and escape internal single quotes as: '\'' */
     size_t out_len = 2 + len + quotes * 3;
-    char *out = (char *)__mdh_buf_alloc(out_len + 1);
+    char *out = (char *)__mdh_need(__mdh_buf_alloc(out_len + 1));
 
     size_t j = 0;
     out[j++] = '\'';
@@ -8457,7 +8521,7 @@ static char *__mdh_build_shell_command(const char *cmd, bool redirect_stderr) {
     const char *redir = redirect_stderr ? " 2>&1" : "";
 
     size_t needed = strlen(shell) + strlen(" -c ") + strlen(quoted) + strlen(redir) + 1;
-    char *full = (char *)__mdh_buf_alloc(needed);
+    char *full = (char *)__mdh_need(__mdh_buf_alloc(needed));
     snprintf(full, needed, "%s -c %s%s", shell, quoted, redir);
     return full;
 }
@@ -8491,7 +8555,7 @@ MdhValue __mdh_shell(MdhValue cmd) {
     char *err_q = __mdh_shell_quote_single(err_template);
 
     size_t script_len = strlen(cmd_str) + strlen(out_q) * 4 + strlen(err_q) * 3 + 128;
-    char *script = (char *)__mdh_buf_alloc(script_len);
+    char *script = (char *)__mdh_need(__mdh_buf_alloc(script_len));
     snprintf(
         script,
         script_len,
@@ -8610,32 +8674,31 @@ static int __mdh_mkdir_p(const char *path) {
         return -1;
     }
 
-    char *tmp = __mdh_buf_strdup(path);
+    char *tmp = (char *)__mdh_need(__mdh_buf_strdup(path));
     size_t len = strlen(tmp);
-    if (len == 0) {
-        return -1;
-    }
 
     if (tmp[len - 1] == '/') {
         tmp[len - 1] = '\0';
     }
 
+    int rc = 0;
     for (char *p = tmp + 1; *p; p++) {
         if (*p == '/') {
             *p = '\0';
             if (mkdir(tmp, 0755) != 0 && errno != EEXIST) {
-                *p = '/';
-                return -1;
+                rc = -1;
+                break;
             }
             *p = '/';
         }
     }
 
-    if (mkdir(tmp, 0755) != 0 && errno != EEXIST) {
-        return -1;
+    if (rc == 0 && mkdir(tmp, 0755) != 0 && errno != EEXIST) {
+        rc = -1;
     }
-
-    return 0;
+    /* The copy leaked on every path before (MDH-BUG-FLU-00189). */
+    __mdh_buf_free(tmp);
+    return rc;
 }
 
 MdhValue __mdh_make_dir(MdhValue path) {
@@ -10068,7 +10131,7 @@ MdhValue __mdh_strip_left(MdhValue str, MdhValue chars) {
         return __mdh_retained(str);
     }
 
-    uint32_t *set_codes = (uint32_t *)__mdh_buf_alloc(sizeof(uint32_t) * (size_t)set_len);
+    uint32_t *set_codes = (uint32_t *)__mdh_need(__mdh_buf_alloc(sizeof(uint32_t) * (size_t)set_len));
     int64_t set_i = 0;
     const unsigned char *sp = set_bytes;
     while (*sp) {
@@ -10133,7 +10196,7 @@ MdhValue __mdh_strip_right(MdhValue str, MdhValue chars) {
         return __mdh_retained(str);
     }
 
-    uint32_t *set_codes = (uint32_t *)__mdh_buf_alloc(sizeof(uint32_t) * (size_t)set_len);
+    uint32_t *set_codes = (uint32_t *)__mdh_need(__mdh_buf_alloc(sizeof(uint32_t) * (size_t)set_len));
     int64_t set_i = 0;
     const unsigned char *sp = set_bytes;
     while (*sp) {
@@ -10155,8 +10218,8 @@ MdhValue __mdh_strip_right(MdhValue str, MdhValue chars) {
     }
 
     const unsigned char **starts =
-        (const unsigned char **)__mdh_buf_alloc(sizeof(unsigned char *) * (size_t)char_len);
-    uint32_t *codes = (uint32_t *)__mdh_buf_alloc(sizeof(uint32_t) * (size_t)char_len);
+        (const unsigned char **)__mdh_need(__mdh_buf_alloc(sizeof(unsigned char *) * (size_t)char_len));
+    uint32_t *codes = (uint32_t *)__mdh_need(__mdh_buf_alloc(sizeof(uint32_t) * (size_t)char_len));
 
     int64_t idx = 0;
     const unsigned char *p = sb;
@@ -10361,8 +10424,8 @@ MdhValue __mdh_blooter(MdhValue str) {
     }
 
     const unsigned char **starts =
-        (const unsigned char **)__mdh_buf_alloc(sizeof(unsigned char *) * (size_t)char_len);
-    size_t *lens = (size_t *)__mdh_buf_alloc(sizeof(size_t) * (size_t)char_len);
+        (const unsigned char **)__mdh_need(__mdh_buf_alloc(sizeof(unsigned char *) * (size_t)char_len));
+    size_t *lens = (size_t *)__mdh_need(__mdh_buf_alloc(sizeof(size_t) * (size_t)char_len));
 
     int64_t idx = 0;
     const unsigned char *p = sb;
@@ -10605,7 +10668,7 @@ MdhValue __mdh_clarty(MdhValue val) {
             return __mdh_make_bool(false);
         }
 
-        uint32_t *seen = (uint32_t *)__mdh_buf_alloc(sizeof(uint32_t) * (size_t)char_len);
+        uint32_t *seen = (uint32_t *)__mdh_need(__mdh_buf_alloc(sizeof(uint32_t) * (size_t)char_len));
         int64_t seen_len = 0;
 
         const unsigned char *p = s;

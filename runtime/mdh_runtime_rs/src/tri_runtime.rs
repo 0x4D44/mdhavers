@@ -10,8 +10,8 @@ use std::{env, fmt};
 use crate::tri_engine::{with_engine, LoopCallback, MeshData, RenderItem};
 use crate::{
     mdh_dict_get_named, mdh_dict_set, mdh_error_string, mdh_float_value, mdh_list_push,
-    mdh_make_string_from_rust, mdh_value_to_string, take_no_memory, Abandon,
-    MdhList, MdhValue, MDH_TAG_BOOL, MDH_TAG_CLOSURE, MDH_TAG_DICT, MDH_TAG_FLOAT,
+    mdh_make_string_from_rust, mdh_new_dict, mdh_new_list, mdh_value_to_string, take_no_memory,
+    Abandon, MdhList, MdhValue, MDH_TAG_BOOL, MDH_TAG_CLOSURE, MDH_TAG_DICT, MDH_TAG_FLOAT,
     MDH_TAG_FUNCTION, MDH_TAG_INT, MDH_TAG_LIST, MDH_TAG_NATIVE, MDH_TAG_NIL, MDH_TAG_STRING,
     STRING_TOO_BIG_MSG,
 };
@@ -237,7 +237,7 @@ unsafe fn new_native_object(
         kind,
         type_name: leak_cstring(type_name),
         ctor_kind: ctor_kind.map(leak_cstring).unwrap_or(std::ptr::null()),
-        fields: __mdh_empty_dict(),
+        fields: mdh_new_dict(),
     };
     let ptr = __mdh_obj_alloc(MDH_KIND_NATIVE, std::mem::size_of::<MdhNativeObject>())
         as *mut MdhNativeObject;
@@ -422,7 +422,7 @@ unsafe fn tri_make_object(kind: &str, args: &[MdhValue]) -> TriResult {
             tri_make_vec3("Euler", 0.0, 0.0, 0.0),
         );
         fields.insert("scale".to_string(), tri_make_vec3("Vec3", 1.0, 1.0, 1.0));
-        fields.insert("children".to_string(), __mdh_make_list(0));
+        fields.insert("children".to_string(), mdh_new_list(0));
         fields.insert("parent".to_string(), __mdh_make_nil());
     }
 
@@ -478,7 +478,7 @@ unsafe fn tri_method_add(obj: &mut TriObject, args: &[MdhValue]) {
     let list_val = match children {
         Some(val) if val.tag == MDH_TAG_LIST => val,
         _ => {
-            let list = __mdh_make_list(0);
+            let list = mdh_new_list(0);
             tri_method_set_field(obj, "children", list);
             __mdh_release(list); // the fields dict holds it now
             list
@@ -1680,10 +1680,8 @@ extern "C" {
     fn __mdh_make_nil() -> MdhValue;
     fn __mdh_make_int(value: i64) -> MdhValue;
     fn __mdh_make_float(value: f64) -> MdhValue;
-    fn __mdh_make_list(capacity: i32) -> MdhValue;
     fn __mdh_list_get(list: MdhValue, index: i64) -> MdhValue;
     fn __mdh_list_len(list: MdhValue) -> i64;
-    fn __mdh_empty_dict() -> MdhValue;
     fn __mdh_out_of_memory_message() -> MdhValue;
     fn __mdh_hurl(value: MdhValue);
     fn __mdh_key_not_found(key: MdhValue);
