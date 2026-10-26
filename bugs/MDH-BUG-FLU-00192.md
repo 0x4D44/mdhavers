@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00192 — Prelude duplicates is_even, is_odd, assert_equal differ from native builtins
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** prelude
 - **Raised:** 2026-10-26T15:32:39Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261026T222551Z-2f3cc478
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00192-run-fix-20261026T222551Z-2f3cc478
-- **Owner base:** efdddadccec9f1f3f4b091529508eb5d54466d04
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-26T22:25:51Z
-- **Owner until:** 2026-10-27T02:25:51Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-26T15:32:39Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-26T15:32:39Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T22:26:30Z, deltic:auto role=fix run=fix-20261026T222551Z-2f3cc478 branch=task/bug-MDH-BUG-FLU-00192-run-fix-20261026T222551Z-2f3cc478 code=9b8ace6 gate=manual)
 
 ## Observation
 
