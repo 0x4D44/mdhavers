@@ -92,3 +92,55 @@ fn builtin_values_are_constants_under_reference_counting() {
     assert_eq!(native, expected);
     assert!(stderr.contains("total=0"), "{stderr}");
 }
+
+// MDH-BUG-FLU-00162: one function value per builtin, and clype names it a native function.
+const IDENTITY: &str = r#"
+ken f = len
+ken g = len
+blether f == g
+blether len == len
+blether len == tae_string
+blether f == tae_string
+dae foo() { gie 1 }
+blether foo == foo
+ken h = foo
+blether h == foo
+blether foo == len
+blether [len] == [len]
+"#;
+
+const CLYPE: &str = r#"
+blether clype(len)
+ken f = tae_string
+blether clype(f)
+dae foo() { gie 1 }
+blether clype(foo)
+blether tae_string(len)
+blether len
+blether f"{len}"
+"#;
+
+#[test]
+fn two_uses_of_a_builtin_are_the_same_value() {
+    let expected = run_interpreter(IDENTITY);
+    assert!(expected.starts_with("aye\naye\nnae\nnae\n"), "{expected}");
+    for rc in [false, true] {
+        let (native, stderr) = run_native(IDENTITY, rc);
+        assert_eq!(native, expected, "refcounting={rc}");
+        if rc {
+            assert!(stderr.contains("total=0"), "{stderr}");
+        }
+    }
+}
+
+#[test]
+fn clype_of_a_builtin_value_matches_the_interpreter() {
+    let expected = run_interpreter(CLYPE);
+    assert!(
+        expected.starts_with("[native function] native function 'len'\n"),
+        "{expected}"
+    );
+    assert!(expected.contains("<native dae len>"), "{expected}");
+    let (native, _) = run_native(CLYPE, false);
+    assert_eq!(native, expected);
+}

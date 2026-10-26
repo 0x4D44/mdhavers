@@ -10713,6 +10713,15 @@ MdhValue __mdh_clype(MdhValue val) {
         case MDH_TAG_FUNCTION:
         case MDH_TAG_CLOSURE: {
             const char *fname = __mdh_function_name(val);
+            /* A builtin used as a value is registered as "<native dae NAME>"; the
+               interpreter calls it a native function. */
+            if (fname && strncmp(fname, "<native dae ", 12) == 0 && fname[12] != '\0') {
+                size_t n = strlen(fname + 12);
+                if (fname[12 + n - 1] == '>') n--;
+                t = "native function";
+                snprintf(info, sizeof(info), "native function '%.*s'", n > 200 ? 200 : (int)n, fname + 12);
+                break;
+            }
             snprintf(info, sizeof(info), "function '%.200s'", fname ? fname : "<lambda>");
             break;
         }

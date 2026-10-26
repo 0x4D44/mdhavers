@@ -687,6 +687,8 @@ pub struct CodeGen<'ctx> {
     lambda_counter: u32,
     /// Every function that becomes a value, with the name it displays as (`<dae name>`).
     fn_value_names: Vec<(FunctionValue<'ctx>, String)>,
+    /// One wrapper function per builtin used as a value (MDH-BUG-FLU-00162).
+    builtin_value_fns: HashMap<String, FunctionValue<'ctx>>,
 
     /// Late-bound function-value dispatchers, keyed by argument count. A call through a
     /// function value only knows the functions that exist when the call site is compiled;
@@ -873,6 +875,7 @@ impl<'ctx> CodeGen<'ctx> {
             in_user_function: false,
             lambda_counter: 0,
             fn_value_names: Vec::new(),
+            builtin_value_fns: HashMap::new(),
             late_call_dispatchers: HashMap::new(),
             in_late_dispatch: false,
             pipe_tmp_counter: 0,
@@ -5169,6 +5172,32 @@ impl<'ctx> CodeGen<'ctx> {
                 "'{name}' takes a varying number o' arguments, so it cannae be used as a value in a native build; wrap it in a dae"
             )));
         }
+        // One wrapper per builtin, so every use of it is the same function value.
+        if let Some(func) = self.builtin_value_fns.get(name).copied() {
+            let ptr_int = self
+                .builder
+                .build_ptr_to_int(
+                    func.as_global_value().as_pointer_value(),
+                    self.types.i64_type,
+                    "bi_fn_int",
+                )
+                .unwrap();
+            let tag = self
+                .types
+                .i8_type
+                .const_int(ValueTag::Function.as_u8() as u64, false);
+            let undef = self.types.value_type.get_undef();
+            let v1 = self
+                .builder
+                .build_insert_value(undef, tag, 0, "v1")
+                .unwrap();
+            let val = self
+                .builder
+                .build_insert_value(v1, ptr_int, 1, "bi_fn_val")
+                .unwrap()
+                .into_struct_value();
+            return Ok(val.into());
+        }
         let span = Span::new(0, 0);
         let params: Vec<String> = (0..arity).map(|i| format!("__bi_arg{i}")).collect();
         let body = Expr::Call {
@@ -5188,6 +5217,7 @@ impl<'ctx> CodeGen<'ctx> {
         let value = self.compile_lambda(&params, &body)?;
         if let Some(entry) = self.fn_value_names.last_mut() {
             entry.1 = format!("<native dae {name}>");
+            self.builtin_value_fns.insert(name.to_string(), entry.0);
         }
         Ok(value)
     }
