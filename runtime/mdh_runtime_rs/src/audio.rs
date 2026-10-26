@@ -160,14 +160,29 @@ thread_local! {
     static AUDIO_STATE: RefCell<AudioState> = RefCell::new(AudioState::new());
 }
 
+/// Run `func` on the audio state. An error it returns is raised only once the state's
+/// borrow, the mixer lock and every other Rust value of the call are dropped: raising
+/// inside would longjmp past them and leave the state borrowed for good
+/// (MDH-BUG-FLU-00183).
 fn with_state<F>(func: F) -> MdhValue
 where
-    F: FnOnce(&mut AudioState) -> MdhValue,
+    F: FnOnce(&mut AudioState) -> Result<MdhValue, String>,
 {
-    AUDIO_STATE.with(|state| {
+    let result = AUDIO_STATE.with(|state| {
         let mut state = state.borrow_mut();
         func(&mut state)
-    })
+    });
+    match result {
+        Ok(value) => value,
+        Err(msg) => {
+            let error = unsafe { mdh_make_string_from_rust(&msg) };
+            drop(msg);
+            unsafe {
+                __mdh_hurl(error);
+                __mdh_make_nil()
+            }
+        }
+    }
 }
 
 fn clamp01(value: f32) -> f32 {
@@ -432,13 +447,6 @@ fn expect_string(value: MdhValue, name: &str) -> Result<String, String> {
     }
 }
 
-fn hurl_msg(msg: &str) -> MdhValue {
-    unsafe {
-        __mdh_hurl(mdh_make_string_from_rust(msg));
-        __mdh_make_nil()
-    }
-}
-
 extern "C" {
     fn __mdh_make_nil() -> MdhValue;
     fn __mdh_make_bool(value: bool) -> MdhValue;
@@ -449,9 +457,9 @@ extern "C" {
 
 #[no_mangle]
 pub extern "C" fn __mdh_soond_stairt() -> MdhValue {
-    with_state(|state| match state.ensure_audio() {
-        Ok(()) => unsafe { __mdh_make_nil() },
-        Err(msg) => hurl_msg(&msg),
+    with_state(|state| {
+        state.ensure_audio()?;
+        Ok(unsafe { __mdh_make_nil() })
     })
 }
 
@@ -459,57 +467,38 @@ pub extern "C" fn __mdh_soond_stairt() -> MdhValue {
 pub extern "C" fn __mdh_soond_steek() -> MdhValue {
     with_state(|state| {
         state.shutdown();
-        unsafe { __mdh_make_nil() }
+        Ok(unsafe { __mdh_make_nil() })
     })
 }
 
 #[no_mangle]
 pub extern "C" fn __mdh_soond_wheesht(value: MdhValue) -> MdhValue {
     with_state(|state| {
-        let wheesht = match expect_bool(value, "soond_wheesht") {
-            Ok(v) => v,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        if let Err(msg) = state.ensure_audio() {
-            return hurl_msg(&msg);
-        }
-        let mut mixer = match state.mixer() {
-            Ok(m) => m,
-            Err(msg) => return hurl_msg(&msg),
-        };
+        let wheesht = expect_bool(value, "soond_wheesht")?;
+        state.ensure_audio()?;
+        let mut mixer = state.mixer()?;
         mixer.muted = wheesht;
-        unsafe { __mdh_make_nil() }
+        Ok(unsafe { __mdh_make_nil() })
     })
 }
 
 #[no_mangle]
 pub extern "C" fn __mdh_soond_luid(value: MdhValue) -> MdhValue {
     with_state(|state| {
-        let mut volume = match expect_number(value, "soond_luid") {
-            Ok(v) => v as f32,
-            Err(msg) => return hurl_msg(&msg),
-        };
+        let mut volume = expect_number(value, "soond_luid")? as f32;
         volume = clamp01(volume);
-        if let Err(msg) = state.ensure_audio() {
-            return hurl_msg(&msg);
-        }
-        let mut mixer = match state.mixer() {
-            Ok(m) => m,
-            Err(msg) => return hurl_msg(&msg),
-        };
+        state.ensure_audio()?;
+        let mut mixer = state.mixer()?;
         mixer.master_volume = volume;
-        unsafe { __mdh_make_nil() }
+        Ok(unsafe { __mdh_make_nil() })
     })
 }
 
 #[no_mangle]
 pub extern "C" fn __mdh_soond_hou_luid() -> MdhValue {
     with_state(|state| {
-        let mixer = match state.mixer() {
-            Ok(m) => m,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        unsafe { __mdh_make_float(mixer.master_volume as f64) }
+        let mixer = state.mixer()?;
+        Ok(unsafe { __mdh_make_float(mixer.master_volume as f64) })
     })
 }
 
@@ -517,24 +506,16 @@ pub extern "C" fn __mdh_soond_hou_luid() -> MdhValue {
 pub extern "C" fn __mdh_soond_haud_gang() -> MdhValue {
     with_state(|state| {
         let _ = state;
-        unsafe { __mdh_make_nil() }
+        Ok(unsafe { __mdh_make_nil() })
     })
 }
 
 #[no_mangle]
 pub extern "C" fn __mdh_soond_lade(path_val: MdhValue) -> MdhValue {
     with_state(|state| {
-        let path = match expect_string(path_val, "soond_lade") {
-            Ok(p) => p,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        if let Err(msg) = state.ensure_audio() {
-            return hurl_msg(&msg);
-        }
-        let buffer = match decode_audio(&path, "Cannae lade the soond") {
-            Ok(buf) => buf,
-            Err(msg) => return hurl_msg(&msg),
-        };
+        let path = expect_string(path_val, "soond_lade")?;
+        state.ensure_audio()?;
+        let buffer = decode_audio(&path, "Cannae lade the soond")?;
         let entry = SoundEntry {
             buffer,
             position: 0.0,
@@ -544,268 +525,179 @@ pub extern "C" fn __mdh_soond_lade(path_val: MdhValue) -> MdhValue {
             pan: 0.0,
             pitch: 1.0,
         };
-        let mut mixer = match state.mixer() {
-            Ok(m) => m,
-            Err(msg) => return hurl_msg(&msg),
-        };
+        let mut mixer = state.mixer()?;
         let handle = AudioState::alloc_handle(&mut mixer.sounds, entry);
-        unsafe { __mdh_make_int(handle) }
+        Ok(unsafe { __mdh_make_int(handle) })
     })
 }
 
 #[no_mangle]
 pub extern "C" fn __mdh_soond_spiel(handle_val: MdhValue) -> MdhValue {
     with_state(|state| {
-        let handle = match expect_handle(handle_val, "soond_spiel") {
-            Ok(h) => h,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        let mut mixer = match state.mixer() {
-            Ok(m) => m,
-            Err(msg) => return hurl_msg(&msg),
-        };
+        let handle = expect_handle(handle_val, "soond_spiel")?;
+        let mut mixer = state.mixer()?;
         let entry = match mixer.sounds.get_mut(handle).and_then(|e| e.as_mut()) {
             Some(entry) => entry,
-            None => return hurl_msg(ERR_BAD_HANDLE),
+            None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         entry.position = 0.0;
         entry.state = PlayState::Playing;
-        unsafe { __mdh_make_nil() }
+        Ok(unsafe { __mdh_make_nil() })
     })
 }
 
 #[no_mangle]
 pub extern "C" fn __mdh_soond_haud(handle_val: MdhValue) -> MdhValue {
     with_state(|state| {
-        let handle = match expect_handle(handle_val, "soond_haud") {
-            Ok(h) => h,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        let mut mixer = match state.mixer() {
-            Ok(m) => m,
-            Err(msg) => return hurl_msg(&msg),
-        };
+        let handle = expect_handle(handle_val, "soond_haud")?;
+        let mut mixer = state.mixer()?;
         let entry = match mixer.sounds.get_mut(handle).and_then(|e| e.as_mut()) {
             Some(entry) => entry,
-            None => return hurl_msg(ERR_BAD_HANDLE),
+            None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         entry.state = PlayState::Paused;
-        unsafe { __mdh_make_nil() }
+        Ok(unsafe { __mdh_make_nil() })
     })
 }
 
 #[no_mangle]
 pub extern "C" fn __mdh_soond_gae_on(handle_val: MdhValue) -> MdhValue {
     with_state(|state| {
-        let handle = match expect_handle(handle_val, "soond_gae_on") {
-            Ok(h) => h,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        let mut mixer = match state.mixer() {
-            Ok(m) => m,
-            Err(msg) => return hurl_msg(&msg),
-        };
+        let handle = expect_handle(handle_val, "soond_gae_on")?;
+        let mut mixer = state.mixer()?;
         let entry = match mixer.sounds.get_mut(handle).and_then(|e| e.as_mut()) {
             Some(entry) => entry,
-            None => return hurl_msg(ERR_BAD_HANDLE),
+            None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         entry.state = PlayState::Playing;
-        unsafe { __mdh_make_nil() }
+        Ok(unsafe { __mdh_make_nil() })
     })
 }
 
 #[no_mangle]
 pub extern "C" fn __mdh_soond_stap(handle_val: MdhValue) -> MdhValue {
     with_state(|state| {
-        let handle = match expect_handle(handle_val, "soond_stap") {
-            Ok(h) => h,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        let mut mixer = match state.mixer() {
-            Ok(m) => m,
-            Err(msg) => return hurl_msg(&msg),
-        };
+        let handle = expect_handle(handle_val, "soond_stap")?;
+        let mut mixer = state.mixer()?;
         let entry = match mixer.sounds.get_mut(handle).and_then(|e| e.as_mut()) {
             Some(entry) => entry,
-            None => return hurl_msg(ERR_BAD_HANDLE),
+            None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         entry.state = PlayState::Stopped;
         entry.position = 0.0;
-        unsafe { __mdh_make_nil() }
+        Ok(unsafe { __mdh_make_nil() })
     })
 }
 
 #[no_mangle]
 pub extern "C" fn __mdh_soond_unlade(handle_val: MdhValue) -> MdhValue {
     with_state(|state| {
-        let handle = match expect_handle(handle_val, "soond_unlade") {
-            Ok(h) => h,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        let mut mixer = match state.mixer() {
-            Ok(m) => m,
-            Err(msg) => return hurl_msg(&msg),
-        };
+        let handle = expect_handle(handle_val, "soond_unlade")?;
+        let mut mixer = state.mixer()?;
         let entry = match mixer.sounds.get_mut(handle).and_then(|e| e.as_mut()) {
             Some(entry) => entry,
-            None => return hurl_msg(ERR_BAD_HANDLE),
+            None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         entry.state = PlayState::Stopped;
         mixer.sounds[handle] = None;
-        unsafe { __mdh_make_nil() }
+        Ok(unsafe { __mdh_make_nil() })
     })
 }
 
 #[no_mangle]
 pub extern "C" fn __mdh_soond_is_spielin(handle_val: MdhValue) -> MdhValue {
     with_state(|state| {
-        let handle = match expect_handle(handle_val, "soond_is_spielin") {
-            Ok(h) => h,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        let mixer = match state.mixer() {
-            Ok(m) => m,
-            Err(msg) => return hurl_msg(&msg),
-        };
+        let handle = expect_handle(handle_val, "soond_is_spielin")?;
+        let mixer = state.mixer()?;
         let entry = match mixer.sounds.get(handle).and_then(|e| e.as_ref()) {
             Some(entry) => entry,
-            None => return hurl_msg(ERR_BAD_HANDLE),
+            None => return Err(ERR_BAD_HANDLE.to_string()),
         };
-        unsafe { __mdh_make_bool(entry.state == PlayState::Playing) }
+        Ok(unsafe { __mdh_make_bool(entry.state == PlayState::Playing) })
     })
 }
 
 #[no_mangle]
 pub extern "C" fn __mdh_soond_pit_luid(handle_val: MdhValue, val: MdhValue) -> MdhValue {
     with_state(|state| {
-        let handle = match expect_handle(handle_val, "soond_pit_luid") {
-            Ok(h) => h,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        let mut value = match expect_number(val, "soond_pit_luid") {
-            Ok(v) => v as f32,
-            Err(msg) => return hurl_msg(&msg),
-        };
+        let handle = expect_handle(handle_val, "soond_pit_luid")?;
+        let mut value = expect_number(val, "soond_pit_luid")? as f32;
         value = clamp01(value);
-        let mut mixer = match state.mixer() {
-            Ok(m) => m,
-            Err(msg) => return hurl_msg(&msg),
-        };
+        let mut mixer = state.mixer()?;
         let entry = match mixer.sounds.get_mut(handle).and_then(|e| e.as_mut()) {
             Some(entry) => entry,
-            None => return hurl_msg(ERR_BAD_HANDLE),
+            None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         entry.volume = value;
-        unsafe { __mdh_make_nil() }
+        Ok(unsafe { __mdh_make_nil() })
     })
 }
 
 #[no_mangle]
 pub extern "C" fn __mdh_soond_pit_pan(handle_val: MdhValue, val: MdhValue) -> MdhValue {
     with_state(|state| {
-        let handle = match expect_handle(handle_val, "soond_pit_pan") {
-            Ok(h) => h,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        let pan = match expect_number(val, "soond_pit_pan") {
-            Ok(v) => v as f32,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        let mut mixer = match state.mixer() {
-            Ok(m) => m,
-            Err(msg) => return hurl_msg(&msg),
-        };
+        let handle = expect_handle(handle_val, "soond_pit_pan")?;
+        let pan = expect_number(val, "soond_pit_pan")? as f32;
+        let mut mixer = state.mixer()?;
         let entry = match mixer.sounds.get_mut(handle).and_then(|e| e.as_mut()) {
             Some(entry) => entry,
-            None => return hurl_msg(ERR_BAD_HANDLE),
+            None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         entry.pan = pan;
-        unsafe { __mdh_make_nil() }
+        Ok(unsafe { __mdh_make_nil() })
     })
 }
 
 #[no_mangle]
 pub extern "C" fn __mdh_soond_pit_tune(handle_val: MdhValue, val: MdhValue) -> MdhValue {
     with_state(|state| {
-        let handle = match expect_handle(handle_val, "soond_pit_tune") {
-            Ok(h) => h,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        let pitch = match expect_number(val, "soond_pit_tune") {
-            Ok(v) => v as f32,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        let mut mixer = match state.mixer() {
-            Ok(m) => m,
-            Err(msg) => return hurl_msg(&msg),
-        };
+        let handle = expect_handle(handle_val, "soond_pit_tune")?;
+        let pitch = expect_number(val, "soond_pit_tune")? as f32;
+        let mut mixer = state.mixer()?;
         let entry = match mixer.sounds.get_mut(handle).and_then(|e| e.as_mut()) {
             Some(entry) => entry,
-            None => return hurl_msg(ERR_BAD_HANDLE),
+            None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         entry.pitch = pitch;
-        unsafe { __mdh_make_nil() }
+        Ok(unsafe { __mdh_make_nil() })
     })
 }
 
 #[no_mangle]
 pub extern "C" fn __mdh_soond_pit_rin_roond(handle_val: MdhValue, val: MdhValue) -> MdhValue {
     with_state(|state| {
-        let handle = match expect_handle(handle_val, "soond_pit_rin_roond") {
-            Ok(h) => h,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        let looped = match expect_bool(val, "soond_pit_rin_roond") {
-            Ok(v) => v,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        let mut mixer = match state.mixer() {
-            Ok(m) => m,
-            Err(msg) => return hurl_msg(&msg),
-        };
+        let handle = expect_handle(handle_val, "soond_pit_rin_roond")?;
+        let looped = expect_bool(val, "soond_pit_rin_roond")?;
+        let mut mixer = state.mixer()?;
         let entry = match mixer.sounds.get_mut(handle).and_then(|e| e.as_mut()) {
             Some(entry) => entry,
-            None => return hurl_msg(ERR_BAD_HANDLE),
+            None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         entry.looped = looped;
-        unsafe { __mdh_make_nil() }
+        Ok(unsafe { __mdh_make_nil() })
     })
 }
 
 #[no_mangle]
 pub extern "C" fn __mdh_soond_ready(handle_val: MdhValue) -> MdhValue {
     with_state(|state| {
-        let handle = match expect_handle(handle_val, "soond_ready") {
-            Ok(h) => h,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        let mixer = match state.mixer() {
-            Ok(m) => m,
-            Err(msg) => return hurl_msg(&msg),
-        };
+        let handle = expect_handle(handle_val, "soond_ready")?;
+        let mixer = state.mixer()?;
         let entry = match mixer.sounds.get(handle).and_then(|e| e.as_ref()) {
             Some(entry) => entry,
-            None => return hurl_msg(ERR_BAD_HANDLE),
+            None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         let _ = entry;
-        unsafe { __mdh_make_bool(true) }
+        Ok(unsafe { __mdh_make_bool(true) })
     })
 }
 
 #[no_mangle]
 pub extern "C" fn __mdh_muisic_lade(path_val: MdhValue) -> MdhValue {
     with_state(|state| {
-        let path = match expect_string(path_val, "muisic_lade") {
-            Ok(p) => p,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        if let Err(msg) = state.ensure_audio() {
-            return hurl_msg(&msg);
-        }
-        let buffer = match decode_audio(&path, "Cannae lade the muisic") {
-            Ok(buf) => buf,
-            Err(msg) => return hurl_msg(&msg),
-        };
+        let path = expect_string(path_val, "muisic_lade")?;
+        state.ensure_audio()?;
+        let buffer = decode_audio(&path, "Cannae lade the muisic")?;
         let entry = MusicEntry {
             buffer,
             position: 0.0,
@@ -815,358 +707,248 @@ pub extern "C" fn __mdh_muisic_lade(path_val: MdhValue) -> MdhValue {
             pan: 0.0,
             pitch: 1.0,
         };
-        let mut mixer = match state.mixer() {
-            Ok(m) => m,
-            Err(msg) => return hurl_msg(&msg),
-        };
+        let mut mixer = state.mixer()?;
         let handle = AudioState::alloc_handle(&mut mixer.music, entry);
-        unsafe { __mdh_make_int(handle) }
+        Ok(unsafe { __mdh_make_int(handle) })
     })
 }
 
 #[no_mangle]
 pub extern "C" fn __mdh_muisic_spiel(handle_val: MdhValue) -> MdhValue {
     with_state(|state| {
-        let handle = match expect_handle(handle_val, "muisic_spiel") {
-            Ok(h) => h,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        let mut mixer = match state.mixer() {
-            Ok(m) => m,
-            Err(msg) => return hurl_msg(&msg),
-        };
+        let handle = expect_handle(handle_val, "muisic_spiel")?;
+        let mut mixer = state.mixer()?;
         let entry = match mixer.music.get_mut(handle).and_then(|e| e.as_mut()) {
             Some(entry) => entry,
-            None => return hurl_msg(ERR_BAD_HANDLE),
+            None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         if entry.state == PlayState::Stopped {
             entry.position = 0.0;
         }
         entry.state = PlayState::Playing;
-        unsafe { __mdh_make_nil() }
+        Ok(unsafe { __mdh_make_nil() })
     })
 }
 
 #[no_mangle]
 pub extern "C" fn __mdh_muisic_haud(handle_val: MdhValue) -> MdhValue {
     with_state(|state| {
-        let handle = match expect_handle(handle_val, "muisic_haud") {
-            Ok(h) => h,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        let mut mixer = match state.mixer() {
-            Ok(m) => m,
-            Err(msg) => return hurl_msg(&msg),
-        };
+        let handle = expect_handle(handle_val, "muisic_haud")?;
+        let mut mixer = state.mixer()?;
         let entry = match mixer.music.get_mut(handle).and_then(|e| e.as_mut()) {
             Some(entry) => entry,
-            None => return hurl_msg(ERR_BAD_HANDLE),
+            None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         entry.state = PlayState::Paused;
-        unsafe { __mdh_make_nil() }
+        Ok(unsafe { __mdh_make_nil() })
     })
 }
 
 #[no_mangle]
 pub extern "C" fn __mdh_muisic_gae_on(handle_val: MdhValue) -> MdhValue {
     with_state(|state| {
-        let handle = match expect_handle(handle_val, "muisic_gae_on") {
-            Ok(h) => h,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        let mut mixer = match state.mixer() {
-            Ok(m) => m,
-            Err(msg) => return hurl_msg(&msg),
-        };
+        let handle = expect_handle(handle_val, "muisic_gae_on")?;
+        let mut mixer = state.mixer()?;
         let entry = match mixer.music.get_mut(handle).and_then(|e| e.as_mut()) {
             Some(entry) => entry,
-            None => return hurl_msg(ERR_BAD_HANDLE),
+            None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         entry.state = PlayState::Playing;
-        unsafe { __mdh_make_nil() }
+        Ok(unsafe { __mdh_make_nil() })
     })
 }
 
 #[no_mangle]
 pub extern "C" fn __mdh_muisic_stap(handle_val: MdhValue) -> MdhValue {
     with_state(|state| {
-        let handle = match expect_handle(handle_val, "muisic_stap") {
-            Ok(h) => h,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        let mut mixer = match state.mixer() {
-            Ok(m) => m,
-            Err(msg) => return hurl_msg(&msg),
-        };
+        let handle = expect_handle(handle_val, "muisic_stap")?;
+        let mut mixer = state.mixer()?;
         let entry = match mixer.music.get_mut(handle).and_then(|e| e.as_mut()) {
             Some(entry) => entry,
-            None => return hurl_msg(ERR_BAD_HANDLE),
+            None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         entry.state = PlayState::Stopped;
         entry.position = 0.0;
-        unsafe { __mdh_make_nil() }
+        Ok(unsafe { __mdh_make_nil() })
     })
 }
 
 #[no_mangle]
 pub extern "C" fn __mdh_muisic_unlade(handle_val: MdhValue) -> MdhValue {
     with_state(|state| {
-        let handle = match expect_handle(handle_val, "muisic_unlade") {
-            Ok(h) => h,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        let mut mixer = match state.mixer() {
-            Ok(m) => m,
-            Err(msg) => return hurl_msg(&msg),
-        };
+        let handle = expect_handle(handle_val, "muisic_unlade")?;
+        let mut mixer = state.mixer()?;
         let entry = match mixer.music.get_mut(handle).and_then(|e| e.as_mut()) {
             Some(entry) => entry,
-            None => return hurl_msg(ERR_BAD_HANDLE),
+            None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         entry.state = PlayState::Stopped;
         mixer.music[handle] = None;
-        unsafe { __mdh_make_nil() }
+        Ok(unsafe { __mdh_make_nil() })
     })
 }
 
 #[no_mangle]
 pub extern "C" fn __mdh_muisic_is_spielin(handle_val: MdhValue) -> MdhValue {
     with_state(|state| {
-        let handle = match expect_handle(handle_val, "muisic_is_spielin") {
-            Ok(h) => h,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        let mixer = match state.mixer() {
-            Ok(m) => m,
-            Err(msg) => return hurl_msg(&msg),
-        };
+        let handle = expect_handle(handle_val, "muisic_is_spielin")?;
+        let mixer = state.mixer()?;
         let entry = match mixer.music.get(handle).and_then(|e| e.as_ref()) {
             Some(entry) => entry,
-            None => return hurl_msg(ERR_BAD_HANDLE),
+            None => return Err(ERR_BAD_HANDLE.to_string()),
         };
-        unsafe { __mdh_make_bool(entry.state == PlayState::Playing) }
+        Ok(unsafe { __mdh_make_bool(entry.state == PlayState::Playing) })
     })
 }
 
 #[no_mangle]
 pub extern "C" fn __mdh_muisic_loup(handle_val: MdhValue, seconds_val: MdhValue) -> MdhValue {
     with_state(|state| {
-        let handle = match expect_handle(handle_val, "muisic_loup") {
-            Ok(h) => h,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        let pos = match expect_number(seconds_val, "muisic_loup") {
-            Ok(v) => v as f64,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        let mut mixer = match state.mixer() {
-            Ok(m) => m,
-            Err(msg) => return hurl_msg(&msg),
-        };
+        let handle = expect_handle(handle_val, "muisic_loup")?;
+        let pos = expect_number(seconds_val, "muisic_loup")?;
+        let mut mixer = state.mixer()?;
         let entry = match mixer.music.get_mut(handle).and_then(|e| e.as_mut()) {
             Some(entry) => entry,
-            None => return hurl_msg(ERR_BAD_HANDLE),
+            None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         let target = (pos * OUTPUT_SAMPLE_RATE as f64).max(0.0);
         entry.position = target.min(entry.buffer.frames as f64);
-        unsafe { __mdh_make_nil() }
+        Ok(unsafe { __mdh_make_nil() })
     })
 }
 
 #[no_mangle]
 pub extern "C" fn __mdh_muisic_hou_lang(handle_val: MdhValue) -> MdhValue {
     with_state(|state| {
-        let handle = match expect_handle(handle_val, "muisic_hou_lang") {
-            Ok(h) => h,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        let mixer = match state.mixer() {
-            Ok(m) => m,
-            Err(msg) => return hurl_msg(&msg),
-        };
+        let handle = expect_handle(handle_val, "muisic_hou_lang")?;
+        let mixer = state.mixer()?;
         let entry = match mixer.music.get(handle).and_then(|e| e.as_ref()) {
             Some(entry) => entry,
-            None => return hurl_msg(ERR_BAD_HANDLE),
+            None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         let length = entry.buffer.frames as f64 / OUTPUT_SAMPLE_RATE as f64;
-        unsafe { __mdh_make_float(length) }
+        Ok(unsafe { __mdh_make_float(length) })
     })
 }
 
 #[no_mangle]
 pub extern "C" fn __mdh_muisic_whaur(handle_val: MdhValue) -> MdhValue {
     with_state(|state| {
-        let handle = match expect_handle(handle_val, "muisic_whaur") {
-            Ok(h) => h,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        let mixer = match state.mixer() {
-            Ok(m) => m,
-            Err(msg) => return hurl_msg(&msg),
-        };
+        let handle = expect_handle(handle_val, "muisic_whaur")?;
+        let mixer = state.mixer()?;
         let entry = match mixer.music.get(handle).and_then(|e| e.as_ref()) {
             Some(entry) => entry,
-            None => return hurl_msg(ERR_BAD_HANDLE),
+            None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         let pos = entry.position / OUTPUT_SAMPLE_RATE as f64;
-        unsafe { __mdh_make_float(pos) }
+        Ok(unsafe { __mdh_make_float(pos) })
     })
 }
 
 #[no_mangle]
 pub extern "C" fn __mdh_muisic_pit_luid(handle_val: MdhValue, val: MdhValue) -> MdhValue {
     with_state(|state| {
-        let handle = match expect_handle(handle_val, "muisic_pit_luid") {
-            Ok(h) => h,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        let mut value = match expect_number(val, "muisic_pit_luid") {
-            Ok(v) => v as f32,
-            Err(msg) => return hurl_msg(&msg),
-        };
+        let handle = expect_handle(handle_val, "muisic_pit_luid")?;
+        let mut value = expect_number(val, "muisic_pit_luid")? as f32;
         value = clamp01(value);
-        let mut mixer = match state.mixer() {
-            Ok(m) => m,
-            Err(msg) => return hurl_msg(&msg),
-        };
+        let mut mixer = state.mixer()?;
         let entry = match mixer.music.get_mut(handle).and_then(|e| e.as_mut()) {
             Some(entry) => entry,
-            None => return hurl_msg(ERR_BAD_HANDLE),
+            None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         entry.volume = value;
-        unsafe { __mdh_make_nil() }
+        Ok(unsafe { __mdh_make_nil() })
     })
 }
 
 #[no_mangle]
 pub extern "C" fn __mdh_muisic_pit_pan(handle_val: MdhValue, val: MdhValue) -> MdhValue {
     with_state(|state| {
-        let handle = match expect_handle(handle_val, "muisic_pit_pan") {
-            Ok(h) => h,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        let pan = match expect_number(val, "muisic_pit_pan") {
-            Ok(v) => v as f32,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        let mut mixer = match state.mixer() {
-            Ok(m) => m,
-            Err(msg) => return hurl_msg(&msg),
-        };
+        let handle = expect_handle(handle_val, "muisic_pit_pan")?;
+        let pan = expect_number(val, "muisic_pit_pan")? as f32;
+        let mut mixer = state.mixer()?;
         let entry = match mixer.music.get_mut(handle).and_then(|e| e.as_mut()) {
             Some(entry) => entry,
-            None => return hurl_msg(ERR_BAD_HANDLE),
+            None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         entry.pan = pan;
-        unsafe { __mdh_make_nil() }
+        Ok(unsafe { __mdh_make_nil() })
     })
 }
 
 #[no_mangle]
 pub extern "C" fn __mdh_muisic_pit_tune(handle_val: MdhValue, val: MdhValue) -> MdhValue {
     with_state(|state| {
-        let handle = match expect_handle(handle_val, "muisic_pit_tune") {
-            Ok(h) => h,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        let pitch = match expect_number(val, "muisic_pit_tune") {
-            Ok(v) => v as f32,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        let mut mixer = match state.mixer() {
-            Ok(m) => m,
-            Err(msg) => return hurl_msg(&msg),
-        };
+        let handle = expect_handle(handle_val, "muisic_pit_tune")?;
+        let pitch = expect_number(val, "muisic_pit_tune")? as f32;
+        let mut mixer = state.mixer()?;
         let entry = match mixer.music.get_mut(handle).and_then(|e| e.as_mut()) {
             Some(entry) => entry,
-            None => return hurl_msg(ERR_BAD_HANDLE),
+            None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         entry.pitch = pitch;
-        unsafe { __mdh_make_nil() }
+        Ok(unsafe { __mdh_make_nil() })
     })
 }
 
 #[no_mangle]
 pub extern "C" fn __mdh_muisic_pit_rin_roond(handle_val: MdhValue, val: MdhValue) -> MdhValue {
     with_state(|state| {
-        let handle = match expect_handle(handle_val, "muisic_pit_rin_roond") {
-            Ok(h) => h,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        let looped = match expect_bool(val, "muisic_pit_rin_roond") {
-            Ok(v) => v,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        let mut mixer = match state.mixer() {
-            Ok(m) => m,
-            Err(msg) => return hurl_msg(&msg),
-        };
+        let handle = expect_handle(handle_val, "muisic_pit_rin_roond")?;
+        let looped = expect_bool(val, "muisic_pit_rin_roond")?;
+        let mut mixer = state.mixer()?;
         let entry = match mixer.music.get_mut(handle).and_then(|e| e.as_mut()) {
             Some(entry) => entry,
-            None => return hurl_msg(ERR_BAD_HANDLE),
+            None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         entry.looped = looped;
-        unsafe { __mdh_make_nil() }
+        Ok(unsafe { __mdh_make_nil() })
     })
 }
 
 #[no_mangle]
 pub extern "C" fn __mdh_midi_lade(midi_val: MdhValue, sf_val: MdhValue) -> MdhValue {
     with_state(|state| {
-        let midi_path = match expect_string(midi_val, "midi_lade") {
-            Ok(p) => p,
-            Err(msg) => return hurl_msg(&msg),
-        };
+        let midi_path = expect_string(midi_val, "midi_lade")?;
 
         let sf = if sf_val.tag == MDH_TAG_NIL {
             if let Ok(mut mixer) = state.mixer() {
                 if let Some(sf) = &mixer.default_soundfont {
                     Arc::clone(sf)
                 } else {
-                    let path = match resolve_default_soundfont() {
-                        Ok(p) => p,
-                        Err(msg) => return hurl_msg(&msg),
-                    };
-                    let sf = match load_soundfont(path.as_path()) {
-                        Ok(sf) => sf,
-                        Err(msg) => return hurl_msg(&msg),
-                    };
+                    let path = resolve_default_soundfont()?;
+                    let sf = load_soundfont(path.as_path())?;
                     mixer.default_soundfont = Some(Arc::clone(&sf));
                     sf
                 }
             } else {
-                return hurl_msg(ERR_NO_DEVICE);
+                return Err(ERR_NO_DEVICE.to_string());
             }
         } else if sf_val.tag == MDH_TAG_STRING {
             let path = unsafe { mdh_string_to_rust(sf_val) };
-            match load_soundfont(Path::new(&path)) {
-                Ok(sf) => sf,
-                Err(msg) => return hurl_msg(&msg),
-            }
+            load_soundfont(Path::new(&path))?
         } else {
-            return hurl_msg("midi_lade needs a soondfont path or naething");
+            return Err("midi_lade needs a soondfont path or naething".to_string());
         };
 
         let mut midi_file = match File::open(&midi_path) {
             Ok(f) => f,
-            Err(_) => return hurl_msg("Cannae open the midi file"),
+            Err(_) => return Err("Cannae open the midi file".to_string()),
         };
         let midi = match MidiFile::new(&mut midi_file) {
             Ok(m) => m,
-            Err(_) => return hurl_msg("Cannae read the midi"),
+            Err(_) => return Err("Cannae read the midi".to_string()),
         };
         let midi = Arc::new(midi);
 
         let settings = SynthesizerSettings::new(OUTPUT_SAMPLE_RATE as i32);
         let synth = match Synthesizer::new(&sf, &settings) {
             Ok(s) => s,
-            Err(_) => return hurl_msg("Cannae set up the synth"),
+            Err(_) => return Err("Cannae set up the synth".to_string()),
         };
         let sequencer = MidiFileSequencer::new(synth);
 
-        if let Err(msg) = state.ensure_audio() {
-            return hurl_msg(&msg);
-        }
+        state.ensure_audio()?;
 
         let entry = MidiEntry {
             midi,
@@ -1180,272 +962,183 @@ pub extern "C" fn __mdh_midi_lade(midi_val: MdhValue, sf_val: MdhValue) -> MdhVa
             scratch_right: Vec::new(),
         };
 
-        let mut mixer = match state.mixer() {
-            Ok(m) => m,
-            Err(msg) => return hurl_msg(&msg),
-        };
+        let mut mixer = state.mixer()?;
         let handle = AudioState::alloc_handle(&mut mixer.midi, entry);
-        unsafe { __mdh_make_int(handle) }
+        Ok(unsafe { __mdh_make_int(handle) })
     })
 }
 
 #[no_mangle]
 pub extern "C" fn __mdh_midi_spiel(handle_val: MdhValue) -> MdhValue {
     with_state(|state| {
-        let handle = match expect_handle(handle_val, "midi_spiel") {
-            Ok(h) => h,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        let mut mixer = match state.mixer() {
-            Ok(m) => m,
-            Err(msg) => return hurl_msg(&msg),
-        };
+        let handle = expect_handle(handle_val, "midi_spiel")?;
+        let mut mixer = state.mixer()?;
         let entry = match mixer.midi.get_mut(handle).and_then(|e| e.as_mut()) {
             Some(entry) => entry,
-            None => return hurl_msg(ERR_BAD_HANDLE),
+            None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         if entry.state == PlayState::Stopped {
             entry.sequencer.play(&entry.midi, entry.looped);
         }
         entry.state = PlayState::Playing;
-        unsafe { __mdh_make_nil() }
+        Ok(unsafe { __mdh_make_nil() })
     })
 }
 
 #[no_mangle]
 pub extern "C" fn __mdh_midi_haud(handle_val: MdhValue) -> MdhValue {
     with_state(|state| {
-        let handle = match expect_handle(handle_val, "midi_haud") {
-            Ok(h) => h,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        let mut mixer = match state.mixer() {
-            Ok(m) => m,
-            Err(msg) => return hurl_msg(&msg),
-        };
+        let handle = expect_handle(handle_val, "midi_haud")?;
+        let mut mixer = state.mixer()?;
         let entry = match mixer.midi.get_mut(handle).and_then(|e| e.as_mut()) {
             Some(entry) => entry,
-            None => return hurl_msg(ERR_BAD_HANDLE),
+            None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         entry.state = PlayState::Paused;
-        unsafe { __mdh_make_nil() }
+        Ok(unsafe { __mdh_make_nil() })
     })
 }
 
 #[no_mangle]
 pub extern "C" fn __mdh_midi_gae_on(handle_val: MdhValue) -> MdhValue {
     with_state(|state| {
-        let handle = match expect_handle(handle_val, "midi_gae_on") {
-            Ok(h) => h,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        let mut mixer = match state.mixer() {
-            Ok(m) => m,
-            Err(msg) => return hurl_msg(&msg),
-        };
+        let handle = expect_handle(handle_val, "midi_gae_on")?;
+        let mut mixer = state.mixer()?;
         let entry = match mixer.midi.get_mut(handle).and_then(|e| e.as_mut()) {
             Some(entry) => entry,
-            None => return hurl_msg(ERR_BAD_HANDLE),
+            None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         entry.state = PlayState::Playing;
-        unsafe { __mdh_make_nil() }
+        Ok(unsafe { __mdh_make_nil() })
     })
 }
 
 #[no_mangle]
 pub extern "C" fn __mdh_midi_stap(handle_val: MdhValue) -> MdhValue {
     with_state(|state| {
-        let handle = match expect_handle(handle_val, "midi_stap") {
-            Ok(h) => h,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        let mut mixer = match state.mixer() {
-            Ok(m) => m,
-            Err(msg) => return hurl_msg(&msg),
-        };
+        let handle = expect_handle(handle_val, "midi_stap")?;
+        let mut mixer = state.mixer()?;
         let entry = match mixer.midi.get_mut(handle).and_then(|e| e.as_mut()) {
             Some(entry) => entry,
-            None => return hurl_msg(ERR_BAD_HANDLE),
+            None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         entry.sequencer.stop();
         entry.state = PlayState::Stopped;
-        unsafe { __mdh_make_nil() }
+        Ok(unsafe { __mdh_make_nil() })
     })
 }
 
 #[no_mangle]
 pub extern "C" fn __mdh_midi_unlade(handle_val: MdhValue) -> MdhValue {
     with_state(|state| {
-        let handle = match expect_handle(handle_val, "midi_unlade") {
-            Ok(h) => h,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        let mut mixer = match state.mixer() {
-            Ok(m) => m,
-            Err(msg) => return hurl_msg(&msg),
-        };
+        let handle = expect_handle(handle_val, "midi_unlade")?;
+        let mut mixer = state.mixer()?;
         let entry = match mixer.midi.get_mut(handle).and_then(|e| e.as_mut()) {
             Some(entry) => entry,
-            None => return hurl_msg(ERR_BAD_HANDLE),
+            None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         entry.sequencer.stop();
         mixer.midi[handle] = None;
-        unsafe { __mdh_make_nil() }
+        Ok(unsafe { __mdh_make_nil() })
     })
 }
 
 #[no_mangle]
 pub extern "C" fn __mdh_midi_is_spielin(handle_val: MdhValue) -> MdhValue {
     with_state(|state| {
-        let handle = match expect_handle(handle_val, "midi_is_spielin") {
-            Ok(h) => h,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        let mixer = match state.mixer() {
-            Ok(m) => m,
-            Err(msg) => return hurl_msg(&msg),
-        };
+        let handle = expect_handle(handle_val, "midi_is_spielin")?;
+        let mixer = state.mixer()?;
         let entry = match mixer.midi.get(handle).and_then(|e| e.as_ref()) {
             Some(entry) => entry,
-            None => return hurl_msg(ERR_BAD_HANDLE),
+            None => return Err(ERR_BAD_HANDLE.to_string()),
         };
-        unsafe { __mdh_make_bool(entry.state == PlayState::Playing) }
+        Ok(unsafe { __mdh_make_bool(entry.state == PlayState::Playing) })
     })
 }
 
 #[no_mangle]
 pub extern "C" fn __mdh_midi_loup(handle_val: MdhValue, seconds_val: MdhValue) -> MdhValue {
     with_state(|state| {
-        let handle = match expect_handle(handle_val, "midi_loup") {
-            Ok(h) => h,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        let pos = match expect_number(seconds_val, "midi_loup") {
-            Ok(v) => v,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        let mut mixer = match state.mixer() {
-            Ok(m) => m,
-            Err(msg) => return hurl_msg(&msg),
-        };
+        let handle = expect_handle(handle_val, "midi_loup")?;
+        let pos = expect_number(seconds_val, "midi_loup")?;
+        let mut mixer = state.mixer()?;
         let entry = match mixer.midi.get_mut(handle).and_then(|e| e.as_mut()) {
             Some(entry) => entry,
-            None => return hurl_msg(ERR_BAD_HANDLE),
+            None => return Err(ERR_BAD_HANDLE.to_string()),
         };
-        if let Err(msg) = seek_midi(entry, pos) {
-            return hurl_msg(&msg);
-        }
-        unsafe { __mdh_make_nil() }
+        seek_midi(entry, pos)?;
+        Ok(unsafe { __mdh_make_nil() })
     })
 }
 
 #[no_mangle]
 pub extern "C" fn __mdh_midi_hou_lang(handle_val: MdhValue) -> MdhValue {
     with_state(|state| {
-        let handle = match expect_handle(handle_val, "midi_hou_lang") {
-            Ok(h) => h,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        let mixer = match state.mixer() {
-            Ok(m) => m,
-            Err(msg) => return hurl_msg(&msg),
-        };
+        let handle = expect_handle(handle_val, "midi_hou_lang")?;
+        let mixer = state.mixer()?;
         let entry = match mixer.midi.get(handle).and_then(|e| e.as_ref()) {
             Some(entry) => entry,
-            None => return hurl_msg(ERR_BAD_HANDLE),
+            None => return Err(ERR_BAD_HANDLE.to_string()),
         };
-        unsafe { __mdh_make_float(entry.midi.get_length() as f64) }
+        Ok(unsafe { __mdh_make_float(entry.midi.get_length() as f64) })
     })
 }
 
 #[no_mangle]
 pub extern "C" fn __mdh_midi_whaur(handle_val: MdhValue) -> MdhValue {
     with_state(|state| {
-        let handle = match expect_handle(handle_val, "midi_whaur") {
-            Ok(h) => h,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        let mixer = match state.mixer() {
-            Ok(m) => m,
-            Err(msg) => return hurl_msg(&msg),
-        };
+        let handle = expect_handle(handle_val, "midi_whaur")?;
+        let mixer = state.mixer()?;
         let entry = match mixer.midi.get(handle).and_then(|e| e.as_ref()) {
             Some(entry) => entry,
-            None => return hurl_msg(ERR_BAD_HANDLE),
+            None => return Err(ERR_BAD_HANDLE.to_string()),
         };
-        unsafe { __mdh_make_float(entry.sequencer.get_position() as f64) }
+        Ok(unsafe { __mdh_make_float(entry.sequencer.get_position() as f64) })
     })
 }
 
 #[no_mangle]
 pub extern "C" fn __mdh_midi_pit_luid(handle_val: MdhValue, val: MdhValue) -> MdhValue {
     with_state(|state| {
-        let handle = match expect_handle(handle_val, "midi_pit_luid") {
-            Ok(h) => h,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        let mut value = match expect_number(val, "midi_pit_luid") {
-            Ok(v) => v as f32,
-            Err(msg) => return hurl_msg(&msg),
-        };
+        let handle = expect_handle(handle_val, "midi_pit_luid")?;
+        let mut value = expect_number(val, "midi_pit_luid")? as f32;
         value = clamp01(value);
-        let mut mixer = match state.mixer() {
-            Ok(m) => m,
-            Err(msg) => return hurl_msg(&msg),
-        };
+        let mut mixer = state.mixer()?;
         let entry = match mixer.midi.get_mut(handle).and_then(|e| e.as_mut()) {
             Some(entry) => entry,
-            None => return hurl_msg(ERR_BAD_HANDLE),
+            None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         entry.volume = value;
-        unsafe { __mdh_make_nil() }
+        Ok(unsafe { __mdh_make_nil() })
     })
 }
 
 #[no_mangle]
 pub extern "C" fn __mdh_midi_pit_pan(handle_val: MdhValue, val: MdhValue) -> MdhValue {
     with_state(|state| {
-        let handle = match expect_handle(handle_val, "midi_pit_pan") {
-            Ok(h) => h,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        let pan = match expect_number(val, "midi_pit_pan") {
-            Ok(v) => v as f32,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        let mut mixer = match state.mixer() {
-            Ok(m) => m,
-            Err(msg) => return hurl_msg(&msg),
-        };
+        let handle = expect_handle(handle_val, "midi_pit_pan")?;
+        let pan = expect_number(val, "midi_pit_pan")? as f32;
+        let mut mixer = state.mixer()?;
         let entry = match mixer.midi.get_mut(handle).and_then(|e| e.as_mut()) {
             Some(entry) => entry,
-            None => return hurl_msg(ERR_BAD_HANDLE),
+            None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         entry.pan = pan;
-        unsafe { __mdh_make_nil() }
+        Ok(unsafe { __mdh_make_nil() })
     })
 }
 
 #[no_mangle]
 pub extern "C" fn __mdh_midi_pit_rin_roond(handle_val: MdhValue, val: MdhValue) -> MdhValue {
     with_state(|state| {
-        let handle = match expect_handle(handle_val, "midi_pit_rin_roond") {
-            Ok(h) => h,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        let looped = match expect_bool(val, "midi_pit_rin_roond") {
-            Ok(v) => v,
-            Err(msg) => return hurl_msg(&msg),
-        };
-        let mut mixer = match state.mixer() {
-            Ok(m) => m,
-            Err(msg) => return hurl_msg(&msg),
-        };
+        let handle = expect_handle(handle_val, "midi_pit_rin_roond")?;
+        let looped = expect_bool(val, "midi_pit_rin_roond")?;
+        let mut mixer = state.mixer()?;
         let entry = match mixer.midi.get_mut(handle).and_then(|e| e.as_mut()) {
             Some(entry) => entry,
-            None => return hurl_msg(ERR_BAD_HANDLE),
+            None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         entry.looped = looped;
-        unsafe { __mdh_make_nil() }
+        Ok(unsafe { __mdh_make_nil() })
     })
 }

@@ -1,16 +1,17 @@
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
+use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::{env, fmt};
 
 use crate::tri_engine::{with_engine, LoopCallback, MeshData, RenderItem};
 use crate::{
-    mdh_dict_get_named, mdh_float_value, mdh_make_string_from_rust, mdh_value_to_string,
-    mdh_value_to_string_or_raise, MdhList, MdhValue, MDH_TAG_BOOL, MDH_TAG_CLOSURE, MDH_TAG_DICT,
-    MDH_TAG_FLOAT, MDH_TAG_FUNCTION, MDH_TAG_INT, MDH_TAG_LIST, MDH_TAG_NATIVE, MDH_TAG_NIL,
-    MDH_TAG_STRING,
+    mdh_dict_get_named, mdh_float_value, mdh_make_string_from_rust, mdh_value_to_string, MdhList,
+    MdhValue, MDH_TAG_BOOL, MDH_TAG_CLOSURE, MDH_TAG_DICT, MDH_TAG_FLOAT, MDH_TAG_FUNCTION,
+    MDH_TAG_INT, MDH_TAG_LIST, MDH_TAG_NATIVE, MDH_TAG_NIL, MDH_TAG_STRING,
 };
 use glam::{EulerRot, Mat4, Quat, Vec3};
 
@@ -92,6 +93,46 @@ fn leak_cstring(value: &str) -> *const c_char {
         .into_raw()
 }
 
+/// A tri error on its way out. The extern entry raises it (`tri_finish`) once every
+/// Rust value of the call (strings, maps, the state lock, the engine borrow) is
+/// dropped: raising where it arises would longjmp past their destructors
+/// (MDH-BUG-FLU-00183).
+#[derive(Clone, Copy)]
+enum TriRaise {
+    /// Hurl this value (owned).
+    Hurl(MdhValue),
+    /// The runtime's "hasnae been defined" error for this key (owned).
+    KeyNotFound(MdhValue),
+}
+
+type TriResult = Result<MdhValue, TriRaise>;
+
+unsafe fn tri_hurl(msg: &str) -> TriRaise {
+    TriRaise::Hurl(mdh_make_string_from_rust(msg))
+}
+
+/// The value, or the error raised: only ever the last thing an extern entry does, with
+/// nothing of its own alive.
+unsafe fn tri_finish(result: TriResult) -> MdhValue {
+    match result {
+        Ok(value) => value,
+        Err(TriRaise::Hurl(msg)) => {
+            __mdh_hurl(msg);
+            __mdh_make_nil()
+        }
+        Err(TriRaise::KeyNotFound(key)) => {
+            __mdh_key_not_found(key);
+            __mdh_make_nil()
+        }
+    }
+}
+
+/// The text of a property or method name, or the stack error when it nests too deep
+/// to format.
+unsafe fn tri_name(value: MdhValue) -> Result<String, TriRaise> {
+    mdh_value_to_string(value).map_err(|_| TriRaise::Hurl(__mdh_stack_overflow_message()))
+}
+
 unsafe fn mdh_make_native(ptr: *mut MdhNativeObject) -> MdhValue {
     MdhValue {
         tag: MDH_TAG_NATIVE,
@@ -99,16 +140,9 @@ unsafe fn mdh_make_native(ptr: *mut MdhNativeObject) -> MdhValue {
     }
 }
 
-type MdhFn0 = unsafe extern "C" fn() -> MdhValue;
-type MdhFn1 = unsafe extern "C" fn(MdhValue) -> MdhValue;
-type MdhFn2 = unsafe extern "C" fn(MdhValue, MdhValue) -> MdhValue;
-type MdhFn3 = unsafe extern "C" fn(MdhValue, MdhValue, MdhValue) -> MdhValue;
-type MdhFn4 = unsafe extern "C" fn(MdhValue, MdhValue, MdhValue, MdhValue) -> MdhValue;
-type MdhFn5 = unsafe extern "C" fn(MdhValue, MdhValue, MdhValue, MdhValue, MdhValue) -> MdhValue;
-type MdhFn6 =
-    unsafe extern "C" fn(MdhValue, MdhValue, MdhValue, MdhValue, MdhValue, MdhValue) -> MdhValue;
-
-unsafe fn mdh_call_value(func_val: MdhValue, args: &[MdhValue]) -> MdhValue {
+/// Call a compiled function value from Rust. Anything it hurls is caught on the C side
+/// and comes back as the error, for the extern entry to raise.
+unsafe fn mdh_call_value(func_val: MdhValue, args: &[MdhValue]) -> TriResult {
     let mut call_args = [__mdh_make_nil(); 6];
     let mut total_args = args.len();
     let mut fn_val = func_val;
@@ -116,29 +150,23 @@ unsafe fn mdh_call_value(func_val: MdhValue, args: &[MdhValue]) -> MdhValue {
     if func_val.tag == MDH_TAG_CLOSURE {
         let base = func_val.data as *const u8;
         if base.is_null() {
-            __mdh_hurl(mdh_make_string_from_rust("Invalid closure"));
-            return __mdh_make_nil();
+            return Err(tri_hurl("Invalid closure"));
         }
         let header = base as *const i64;
         let len = *header.add(1);
         if len <= 0 {
-            __mdh_hurl(mdh_make_string_from_rust("Invalid closure"));
-            return __mdh_make_nil();
+            return Err(tri_hurl("Invalid closure"));
         }
         let elems = base.add(16) as *const MdhValue;
         fn_val = *elems;
         let captures = len - 1;
         if captures > 3 {
-            __mdh_hurl(mdh_make_string_from_rust(
+            return Err(tri_hurl(
                 "Closure captures > 3 not supported in render loop",
             ));
-            return __mdh_make_nil();
         }
         if (captures as usize) + args.len() > 6 {
-            __mdh_hurl(mdh_make_string_from_rust(
-                "Too many arguments for render loop callback",
-            ));
-            return __mdh_make_nil();
+            return Err(tri_hurl("Too many arguments for render loop callback"));
         }
         for i in 0..captures {
             call_args[i as usize] = *elems.add(1 + i as usize);
@@ -149,50 +177,26 @@ unsafe fn mdh_call_value(func_val: MdhValue, args: &[MdhValue]) -> MdhValue {
         total_args = captures as usize + args.len();
     } else if func_val.tag == MDH_TAG_FUNCTION {
         if args.len() > 6 {
-            __mdh_hurl(mdh_make_string_from_rust(
-                "Too many arguments for render loop callback",
-            ));
-            return __mdh_make_nil();
+            return Err(tri_hurl("Too many arguments for render loop callback"));
         }
         for (i, arg) in args.iter().enumerate() {
             call_args[i] = *arg;
         }
     } else {
-        __mdh_hurl(mdh_make_string_from_rust(
-            "Renderar.loop expects a function",
-        ));
-        return __mdh_make_nil();
+        return Err(tri_hurl("Renderar.loop expects a function"));
     }
 
-    let fn_ptr = fn_val.data as usize;
-    match total_args {
-        0 => std::mem::transmute::<usize, MdhFn0>(fn_ptr)(),
-        1 => std::mem::transmute::<usize, MdhFn1>(fn_ptr)(call_args[0]),
-        2 => std::mem::transmute::<usize, MdhFn2>(fn_ptr)(call_args[0], call_args[1]),
-        3 => std::mem::transmute::<usize, MdhFn3>(fn_ptr)(call_args[0], call_args[1], call_args[2]),
-        4 => std::mem::transmute::<usize, MdhFn4>(fn_ptr)(
-            call_args[0],
-            call_args[1],
-            call_args[2],
-            call_args[3],
-        ),
-        5 => std::mem::transmute::<usize, MdhFn5>(fn_ptr)(
-            call_args[0],
-            call_args[1],
-            call_args[2],
-            call_args[3],
-            call_args[4],
-        ),
-        6 => std::mem::transmute::<usize, MdhFn6>(fn_ptr)(
-            call_args[0],
-            call_args[1],
-            call_args[2],
-            call_args[3],
-            call_args[4],
-            call_args[5],
-        ),
-        _ => __mdh_make_nil(),
+    let mut out = __mdh_make_nil();
+    if __mdh_call_fn_caught(
+        fn_val.data as isize,
+        total_args as i32,
+        call_args.as_ptr(),
+        &mut out,
+    ) == 0
+    {
+        return Err(TriRaise::Hurl(out));
     }
+    Ok(out)
 }
 
 unsafe fn native_ctor_kind(ptr: *mut MdhNativeObject) -> String {
@@ -391,7 +395,7 @@ unsafe fn apply_constructor_defaults(
     }
 }
 
-unsafe fn tri_make_object(kind: &str, args: &[MdhValue]) -> MdhValue {
+unsafe fn tri_make_object(kind: &str, args: &[MdhValue]) -> TriResult {
     let mut fields = HashMap::new();
     fields.insert("type".to_string(), mdh_make_string_from_rust(kind));
 
@@ -417,12 +421,7 @@ unsafe fn tri_make_object(kind: &str, args: &[MdhValue]) -> MdhValue {
     let renderer_handle = if kind == "Renderar" {
         match with_engine(|engine| engine.create_renderer()) {
             Ok(handle) => Some(handle),
-            Err(msg) => {
-                __mdh_hurl(mdh_make_string_from_rust(&format!(
-                    "Renderar init failed: {msg}"
-                )));
-                None
-            }
+            Err(msg) => return Err(tri_hurl(&format!("Renderar init failed: {msg}"))),
         }
     } else {
         None
@@ -450,7 +449,7 @@ unsafe fn tri_make_object(kind: &str, args: &[MdhValue]) -> MdhValue {
     tri.native_key = native_ptr as usize;
     tri_sync_fields(&tri);
     register_object(native_ptr, tri);
-    mdh_make_native(native_ptr)
+    Ok(mdh_make_native(native_ptr))
 }
 
 unsafe fn tri_make_ctor(kind: &str) -> MdhValue {
@@ -1349,14 +1348,14 @@ unsafe fn tri_dispose(ptr: *mut MdhNativeObject) -> MdhValue {
     __mdh_make_nil()
 }
 
-unsafe fn tri_object_call(obj: &mut TriObject, method: &str, args: &[MdhValue]) -> MdhValue {
+unsafe fn tri_object_call(obj: &mut TriObject, method: &str, args: &[MdhValue]) -> TriResult {
     if tri_debug_enabled()
         && obj.kind == "Renderar"
         && !TRI_DEBUG_RENDERAR_CALL_LOGGED.swap(true, Ordering::Relaxed)
     {
         eprintln!("tri: renderar method='{method}' argc={}", args.len());
     }
-    match method {
+    Ok(match method {
         "cloan" | "clone" => tri_method_clone(obj),
         "adde" | "add" => {
             tri_method_add(obj, args);
@@ -1376,7 +1375,7 @@ unsafe fn tri_object_call(obj: &mut TriObject, method: &str, args: &[MdhValue]) 
                 ) {
                     let target = tri_make_vec3("Vec3", x, y, z);
                     tri_method_set_field(obj, "lookAtTarget", target);
-                    return __mdh_make_nil();
+                    return Ok(__mdh_make_nil());
                 }
             }
             if let Some(target) = args.first() {
@@ -1438,7 +1437,7 @@ unsafe fn tri_object_call(obj: &mut TriObject, method: &str, args: &[MdhValue]) 
                 if let Err(msg) =
                     with_engine(|engine| engine.render_scene(handle, view_proj, items, wireframe))
                 {
-                    __mdh_hurl(mdh_make_string_from_rust(&format!("Render failed: {msg}")));
+                    return Err(tri_hurl(&format!("Render failed: {msg}")));
                 }
             }
             __mdh_make_nil()
@@ -1458,7 +1457,7 @@ unsafe fn tri_object_call(obj: &mut TriObject, method: &str, args: &[MdhValue]) 
                 if let Err(msg) =
                     with_engine(|engine| engine.render_scene(handle, view_proj, items, wireframe))
                 {
-                    __mdh_hurl(mdh_make_string_from_rust(&format!("Render failed: {msg}")));
+                    return Err(tri_hurl(&format!("Render failed: {msg}")));
                 }
             }
             __mdh_make_nil()
@@ -1473,11 +1472,22 @@ unsafe fn tri_object_call(obj: &mut TriObject, method: &str, args: &[MdhValue]) 
                 if let Some(cb) = callback {
                     __mdh_retain(cb);
                 }
+                // A frame that hurls stops the loop; its error is raised from here on out.
+                let failed: Rc<Cell<Option<TriRaise>>> = Rc::new(Cell::new(None));
                 let loop_cb: Option<LoopCallback> = callback.map(|cb| {
+                    let failed = Rc::clone(&failed);
                     let cb: LoopCallback = Box::new(move |dt| unsafe {
                         let dt_val = __mdh_make_float(dt);
-                        let result = mdh_call_value(cb, &[dt_val]);
-                        __mdh_release(result); // compiled code returns +1
+                        match mdh_call_value(cb, &[dt_val]) {
+                            Ok(result) => {
+                                __mdh_release(result); // compiled code returns +1
+                                true
+                            }
+                            Err(error) => {
+                                failed.set(Some(error));
+                                false
+                            }
+                        }
                     });
                     cb
                 });
@@ -1485,30 +1495,30 @@ unsafe fn tri_object_call(obj: &mut TriObject, method: &str, args: &[MdhValue]) 
                 if let Some(cb) = callback {
                     __mdh_release(cb);
                 }
+                if let Some(error) = failed.take() {
+                    return Err(error);
+                }
                 if let Err(msg) = loop_result {
-                    __mdh_hurl(mdh_make_string_from_rust(&format!(
-                        "Render loop failed: {msg}"
-                    )));
+                    return Err(tri_hurl(&format!("Render loop failed: {msg}")));
                 }
             }
             __mdh_make_nil()
         }
         _ => __mdh_make_nil(),
-    }
+    })
 }
 
-unsafe fn tri_key_not_found(name: &str) -> MdhValue {
-    __mdh_key_not_found(mdh_make_string_from_rust(name));
-    __mdh_make_nil()
+unsafe fn tri_key_not_found(name: &str) -> TriResult {
+    Err(TriRaise::KeyNotFound(mdh_make_string_from_rust(name)))
 }
 
-unsafe fn tri_module_get(prop: &str) -> MdhValue {
+unsafe fn tri_module_get(prop: &str) -> TriResult {
     match prop {
-        "DEG_TO_RAD" => __mdh_make_float(std::f64::consts::PI / 180.0),
-        "RAD_TO_DEG" => __mdh_make_float(180.0 / std::f64::consts::PI),
+        "DEG_TO_RAD" => Ok(__mdh_make_float(std::f64::consts::PI / 180.0)),
+        "RAD_TO_DEG" => Ok(__mdh_make_float(180.0 / std::f64::consts::PI)),
         _ => {
             if let Some(kind) = tri_constructor_kind(prop) {
-                tri_make_ctor(kind)
+                Ok(tri_make_ctor(kind))
             } else {
                 tri_key_not_found(prop)
             }
@@ -1516,7 +1526,7 @@ unsafe fn tri_module_get(prop: &str) -> MdhValue {
     }
 }
 
-unsafe fn tri_module_call(method: &str, args: &[MdhValue]) -> MdhValue {
+unsafe fn tri_module_call(method: &str, args: &[MdhValue]) -> TriResult {
     if let Some(kind) = tri_constructor_kind(method) {
         return tri_make_object(kind, args);
     }
@@ -1531,23 +1541,31 @@ pub unsafe extern "C" fn __mdh_tri_rs_module() -> MdhValue {
     })
 }
 
+// Each entry does its work in a function of its own, so every Rust value of the call is
+// dropped by the time `tri_finish` raises an error (MDH-BUG-FLU-00183).
+
 #[no_mangle]
 pub unsafe extern "C" fn __mdh_tri_rs_get(obj: *mut MdhNativeObject, key: MdhValue) -> MdhValue {
+    let result = tri_rs_get(obj, key);
+    tri_finish(result)
+}
+
+unsafe fn tri_rs_get(obj: *mut MdhNativeObject, key: MdhValue) -> TriResult {
     if obj.is_null() {
-        return __mdh_make_nil();
+        return Ok(__mdh_make_nil());
     }
-    let prop = mdh_value_to_string_or_raise(key);
+    let prop = tri_name(key)?;
     match (*obj).kind {
         MDH_NATIVE_TRI_MODULE => tri_module_get(&prop),
         MDH_NATIVE_TRI_OBJECT => {
             let value = with_object(obj, |_key, tri| tri.fields.get(&prop).copied());
             match value {
-                Some(Some(v)) => v,
+                Some(Some(v)) => Ok(v),
                 _ => tri_key_not_found(&prop),
             }
         }
         MDH_NATIVE_TRI_CTOR => tri_key_not_found(&prop),
-        _ => __mdh_make_nil(),
+        _ => Ok(__mdh_make_nil()),
     }
 }
 
@@ -1557,22 +1575,24 @@ pub unsafe extern "C" fn __mdh_tri_rs_set(
     key: MdhValue,
     value: MdhValue,
 ) -> MdhValue {
+    let result = tri_rs_set(obj, key, value);
+    tri_finish(result)
+}
+
+unsafe fn tri_rs_set(obj: *mut MdhNativeObject, key: MdhValue, value: MdhValue) -> TriResult {
     if obj.is_null() {
-        return __mdh_make_nil();
+        return Ok(__mdh_make_nil());
     }
-    let prop = mdh_value_to_string_or_raise(key);
+    let prop = tri_name(key)?;
     match (*obj).kind {
         MDH_NATIVE_TRI_OBJECT => {
             let _ = with_object(obj, |_key, tri| tri_method_set_field(tri, &prop, value));
-            value
+            Ok(value)
         }
         MDH_NATIVE_TRI_MODULE | MDH_NATIVE_TRI_CTOR => {
-            __mdh_hurl(mdh_make_string_from_rust(
-                "Cannae set field on tri module/ctor",
-            ));
-            __mdh_make_nil()
+            Err(tri_hurl("Cannae set field on tri module/ctor"))
         }
-        _ => __mdh_make_nil(),
+        _ => Ok(__mdh_make_nil()),
     }
 }
 
@@ -1583,10 +1603,20 @@ pub unsafe extern "C" fn __mdh_tri_rs_call(
     argc: i32,
     argv: *const MdhValue,
 ) -> MdhValue {
+    let result = tri_rs_call(obj, method, argc, argv);
+    tri_finish(result)
+}
+
+unsafe fn tri_rs_call(
+    obj: *mut MdhNativeObject,
+    method: MdhValue,
+    argc: i32,
+    argv: *const MdhValue,
+) -> TriResult {
     if obj.is_null() {
-        return __mdh_make_nil();
+        return Ok(__mdh_make_nil());
     }
-    let name = mdh_value_to_string_or_raise(method);
+    let name = tri_name(method)?;
     if tri_debug_enabled() && !TRI_DEBUG_CALL_LOGGED.swap(true, Ordering::Relaxed) {
         eprintln!(
             "tri: native call kind={} method='{}' argc={}",
@@ -1613,7 +1643,7 @@ pub unsafe extern "C" fn __mdh_tri_rs_call(
         }
         MDH_NATIVE_TRI_OBJECT => {
             if name == "dyspos" || name == "dispose" {
-                return tri_dispose(obj);
+                return Ok(tri_dispose(obj));
             }
             let mut result = None;
             let _ = with_object(obj, |_key, tri| {
@@ -1626,9 +1656,9 @@ pub unsafe extern "C" fn __mdh_tri_rs_call(
                     name
                 );
             }
-            result.unwrap_or_else(|| __mdh_make_nil())
+            result.unwrap_or_else(|| Ok(__mdh_make_nil()))
         }
-        _ => __mdh_make_nil(),
+        _ => Ok(__mdh_make_nil()),
     }
 }
 
@@ -1651,4 +1681,11 @@ extern "C" {
     fn __mdh_eq(a: MdhValue, b: MdhValue) -> bool;
     fn __mdh_retain(value: MdhValue);
     fn __mdh_release(value: MdhValue);
+    fn __mdh_stack_overflow_message() -> MdhValue;
+    fn __mdh_call_fn_caught(
+        fn_ptr: isize,
+        argc: i32,
+        argv: *const MdhValue,
+        out: *mut MdhValue,
+    ) -> i32;
 }

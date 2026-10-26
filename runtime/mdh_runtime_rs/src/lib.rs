@@ -82,7 +82,6 @@ extern "C" {
     fn __mdh_make_int(value: i64) -> MdhValue;
     fn __mdh_make_float(value: f64) -> MdhValue;
     fn __mdh_make_string(value: *const c_char) -> MdhValue;
-    fn __mdh_hurl(value: MdhValue);
     fn __mdh_make_list(capacity: i32) -> MdhValue;
     // Every value this file stores is one it has just made, so it hands its reference
     // over: push/set_owned take the caller's +1 (reference counting, mdh_runtime.c).
@@ -143,18 +142,6 @@ unsafe fn mdh_value_to_string(value: MdhValue) -> Result<String, StackLow> {
     let s = mdh_string_to_rust(s_val);
     __mdh_release(s_val);
     Ok(s)
-}
-
-/// `mdh_value_to_string` for an entry point with nothing of its own alive yet: too deep
-/// a value raises the stack error, as a runtime call does.
-unsafe fn mdh_value_to_string_or_raise(value: MdhValue) -> String {
-    match mdh_value_to_string(value) {
-        Ok(s) => s,
-        Err(StackLow) => {
-            __mdh_hurl(__mdh_stack_overflow_message());
-            String::new()
-        }
-    }
 }
 
 /// `dict[key]` or nil, borrowed (as __mdh_dict_get_default); the key made for the lookup

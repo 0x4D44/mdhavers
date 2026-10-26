@@ -4100,6 +4100,51 @@ static MdhValue __mdh_call_with_list(MdhValue func_val, MdhValue args_list) {
     }
 }
 
+#ifdef MDH_TRI_RUST
+/* For the Rust runtime: call the compiled function `fn_ptr` with `argc` (0 to 6)
+ * arguments, catching anything it hurls, which must not longjmp across Rust frames
+ * (MDH-BUG-FLU-00183). 1 with its result (+1) in *out, or 0 with the error (owned) in
+ * *out; the Rust caller raises that once its own values are dropped. */
+int32_t __mdh_call_fn_caught(intptr_t fn_ptr, int32_t argc, const MdhValue *argv, MdhValue *out) {
+    jmp_buf env;
+    __mdh_try_push(&env);
+    if (setjmp(env) != 0) {
+        __mdh_try_pop();
+        *out = __mdh_retained(__mdh_get_last_error());
+        return 0;
+    }
+    MdhValue result = __mdh_make_nil();
+    switch (argc) {
+        case 0:
+            result = ((MdhFn0)fn_ptr)();
+            break;
+        case 1:
+            result = ((MdhFn1)fn_ptr)(argv[0]);
+            break;
+        case 2:
+            result = ((MdhFn2)fn_ptr)(argv[0], argv[1]);
+            break;
+        case 3:
+            result = ((MdhFn3)fn_ptr)(argv[0], argv[1], argv[2]);
+            break;
+        case 4:
+            result = ((MdhFn4)fn_ptr)(argv[0], argv[1], argv[2], argv[3]);
+            break;
+        case 5:
+            result = ((MdhFn5)fn_ptr)(argv[0], argv[1], argv[2], argv[3], argv[4]);
+            break;
+        case 6:
+            result = ((MdhFn6)fn_ptr)(argv[0], argv[1], argv[2], argv[3], argv[4], argv[5]);
+            break;
+        default:
+            break;
+    }
+    __mdh_try_pop();
+    *out = result;
+    return 1;
+}
+#endif
+
 static void *__mdh_thread_entry(void *arg) {
     MdhThread *t = (MdhThread *)arg;
     /* The worker's line starts as the spawning statement's (MDH-BUG-FLU-00090). */

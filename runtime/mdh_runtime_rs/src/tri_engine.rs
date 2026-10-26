@@ -43,7 +43,8 @@ where
     ENGINE.with(|engine| f(&mut *engine.borrow_mut()))
 }
 
-pub type LoopCallback = Box<dyn FnMut(f64)>;
+/// A frame callback: false stops the loop (its frame failed).
+pub type LoopCallback = Box<dyn FnMut(f64) -> bool>;
 
 static TRI_DEBUG_EMPTY_SCENE_LOGGED: AtomicBool = AtomicBool::new(false);
 static TRI_DEBUG_EMPTY_BATCH_LOGGED: AtomicBool = AtomicBool::new(false);
@@ -1025,7 +1026,9 @@ impl TriEngine {
                             let dt = now.duration_since(last_frame).as_secs_f64();
                             last_frame = now;
                             if let Some(cb) = callback.as_mut() {
-                                cb(dt);
+                                if !cb(dt) {
+                                    target.exit();
+                                }
                             } else if unsafe { (*renderer_ptr).render() }.is_err() {
                                 target.exit();
                             }
