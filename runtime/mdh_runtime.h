@@ -120,8 +120,8 @@ typedef struct {
 #define MDH_REFCOUNT_IMMORTAL (INT64_MAX / 2)
 
 /* Tags whose data points at a counted object: string, list, dict, instance, creel,
- * closure (and bound method), bytes. Must match RC_HEAP_TAG_MASK in src/llvm/types.rs. */
-#define MDH_RC_TAG_MASK 0x3A70u
+ * closure (and bound method), bytes, native object (tri objects are immortal). Must match RC_HEAP_TAG_MASK in src/llvm/types.rs. */
+#define MDH_RC_TAG_MASK 0x7A70u
 #define MDH_RC_HEAP_TAG(tag) ((tag) < 16 && ((MDH_RC_TAG_MASK >> (tag)) & 1u))
 
 /* Kinds counted by default (bit 1 << MdhObjKind); see __mdh_rc_kinds in gc_stub.c. */
@@ -140,6 +140,8 @@ typedef struct {
 
 void *__mdh_obj_alloc(uint32_t kind, size_t size);
 void *__mdh_obj_realloc(void *obj, size_t size);
+/* Make an object immortal: retain/release leave it alone and it is not reported live. */
+void __mdh_obj_immortal(void *obj);
 char *__mdh_obj_strdup(const char *s);
 void *__mdh_buf_alloc(size_t size);
 void *__mdh_buf_realloc(void *buf, size_t size);
@@ -639,9 +641,9 @@ MdhValue __mdh_cannie(MdhValue val);
 MdhValue __mdh_scunner_check(MdhValue val, MdhValue expected_type);
 MdhValue __mdh_clype(MdhValue val);
 MdhValue __mdh_stoater(MdhValue list);
+MdhValue __mdh_sclaff(MdhValue list, int64_t full);
 MdhValue __mdh_dicht(MdhValue list, MdhValue index);
 MdhValue __mdh_redd_up(MdhValue list);
-MdhValue __mdh_sclaff(MdhValue list, int64_t full);
 MdhValue __mdh_split_by(MdhValue list, MdhValue pred);
 MdhValue __mdh_grup_runs(MdhValue list);
 MdhValue __mdh_range_o(MdhValue list);

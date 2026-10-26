@@ -45,6 +45,10 @@ pub(super) struct RcScope<'ctx> {
     /// The values parked in its temp slots (`rc_own_temp`), so `gie` can hand a temp's
     /// reference to the caller instead of retaining and then releasing the temp.
     pub(super) parked: Vec<(BasicValueEnum<'ctx>, PointerValue<'ctx>)>,
+    /// Early exits (`gie`, `brak`, `haud`) compiled out of this scope: the last
+    /// instruction (if any) of the block the release each emitted ended in. A temp added to the scope afterwards
+    /// (`rc_note_write`) is released at these too.
+    pub(super) exits: Vec<(BasicBlock<'ctx>, Option<InstructionValue<'ctx>>)>,
 }
 
 /// A local variable (or `masel`) read used without a reference of its own: the slot holds
@@ -853,6 +857,26 @@ impl<'ctx> CodeGen<'ctx> {
                 b.build_store(temp, r.value).unwrap();
                 b.build_call(self.libc.rc_release, &[old.into()], "")
                     .unwrap();
+                // An early exit compiled before this temp existed (a `gie` in a loop
+                // whose condition reads the variable) must release it too. The temp is
+                // nil until its statement parks something in it, so this is always safe.
+                let exits = self.rc_state.scopes[si].exits.clone();
+                for (block, after) in exits {
+                    let next = match after {
+                        Some(i) => i.get_next_instruction(),
+                        None => block.get_first_instruction(),
+                    };
+                    match next {
+                        Some(next) => b.position_before(&next),
+                        None => b.position_at_end(block),
+                    }
+                    let held = b
+                        .build_load(self.types.value_type, temp, "rc_tmp_exit")
+                        .unwrap();
+                    b.build_store(temp, self.make_nil()).unwrap();
+                    b.build_call(self.libc.rc_release, &[held.into()], "")
+                        .unwrap();
+                }
             }
         }
     }
@@ -1006,6 +1030,7 @@ impl<'ctx> CodeGen<'ctx> {
                     opened_at: None,
                     reads: Vec::new(),
                     parked: Vec::new(),
+                    exits: Vec::new(),
                 }),
             }
             return slot;
@@ -1036,6 +1061,7 @@ impl<'ctx> CodeGen<'ctx> {
             opened_at,
             reads: Vec::new(),
             parked: Vec::new(),
+            exits: Vec::new(),
         });
     }
 
@@ -1115,6 +1141,13 @@ impl<'ctx> CodeGen<'ctx> {
             .flat_map(|s| s.slots.iter().copied())
             .collect();
         self.rc_release_slots(&slots);
+        if let Some(block) = self.builder.get_insert_block() {
+            let exit = (block, block.get_last_instruction());
+            let from = depth.min(self.rc_state.scopes.len());
+            for scope in self.rc_state.scopes[from..].iter_mut() {
+                scope.exits.push(exit);
+            }
+        }
     }
 
     /// Start compiling a new function body: fresh temp scopes (one base scope that only
@@ -1132,6 +1165,7 @@ impl<'ctx> CodeGen<'ctx> {
             opened_at: None,
             reads: Vec::new(),
             parked: Vec::new(),
+            exits: Vec::new(),
         });
         std::mem::replace(&mut self.rc_state, fresh)
     }

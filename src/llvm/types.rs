@@ -52,7 +52,7 @@ mod rc_constant_tests {
 
     #[test]
     fn heap_tag_mask_matches_the_c_runtime() {
-        assert_eq!(RC_HEAP_TAG_MASK, 0x3A70);
+        assert_eq!(RC_HEAP_TAG_MASK, 0x7A70);
     }
 }
 
@@ -65,14 +65,15 @@ pub const OBJ_FLAG_IMMORTAL: u64 = 1;
 /// heap-tagged value without it.
 pub const OBJ_FLAG_MAGIC: u64 = 0x4D44_0000;
 /// Tags whose data points at a counted object (bit `1 << tag`): string, list, dict,
-/// instance, creel, closure, bytes - must match MDH_RC_TAG_MASK in runtime/mdh_runtime.h.
+/// instance, creel, closure, bytes, native object - must match MDH_RC_TAG_MASK in runtime/mdh_runtime.h.
 pub const RC_HEAP_TAG_MASK: u64 = (1 << ValueTag::String as u64)
     | (1 << ValueTag::List as u64)
     | (1 << ValueTag::Dict as u64)
     | (1 << ValueTag::Instance as u64)
     | (1 << ValueTag::Set as u64)
     | (1 << ValueTag::Closure as u64)
-    | (1 << ValueTag::Bytes as u64);
+    | (1 << ValueTag::Bytes as u64)
+    | (1 << ValueTag::NativeObject as u64);
 /// The count an immortal header carries - must match MDH_REFCOUNT_IMMORTAL.
 pub const IMMORTAL_REFCOUNT: u64 = (i64::MAX / 2) as u64;
 

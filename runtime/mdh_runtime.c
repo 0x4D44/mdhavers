@@ -1081,6 +1081,7 @@ static int __mdh_tri_has_transform(const char *kind) {
 
 static MdhNativeObject *__mdh_tri_object_new(const char *kind) {
     MdhNativeObject *obj = (MdhNativeObject *)__mdh_obj_alloc(MDH_KIND_NATIVE, sizeof(MdhNativeObject));
+    __mdh_obj_immortal(obj); /* the tri runtime keeps these by address */
     obj->kind = MDH_NATIVE_TRI_OBJECT;
     obj->type_name = kind;
     obj->ctor_kind = NULL;
@@ -1247,6 +1248,7 @@ static void __mdh_tri_remove_children(MdhNativeObject *obj, int argc, MdhValue *
 static MdhValue __mdh_tri_clone_object(MdhNativeObject *obj) {
     if (!obj) return __mdh_make_nil();
     MdhNativeObject *clone = (MdhNativeObject *)__mdh_obj_alloc(MDH_KIND_NATIVE, sizeof(MdhNativeObject));
+    __mdh_obj_immortal(clone);
     clone->kind = MDH_NATIVE_TRI_OBJECT;
     clone->type_name = obj->type_name;
     clone->ctor_kind = NULL;
@@ -1262,6 +1264,7 @@ static MdhValue __mdh_tri_make_object(const char *kind, int argc, MdhValue *args
 
 static MdhValue __mdh_tri_make_ctor(const char *kind) {
     MdhNativeObject *obj = (MdhNativeObject *)__mdh_obj_alloc(MDH_KIND_NATIVE, sizeof(MdhNativeObject));
+    __mdh_obj_immortal(obj);
     obj->kind = MDH_NATIVE_TRI_CTOR;
     obj->type_name = "native function";
     obj->ctor_kind = kind;
@@ -1552,6 +1555,7 @@ MdhValue __mdh_tri_module(void) {
     static MdhValue module;
     if (!initialized) {
         MdhNativeObject *obj = (MdhNativeObject *)__mdh_obj_alloc(MDH_KIND_NATIVE, sizeof(MdhNativeObject));
+        __mdh_obj_immortal(obj);
         obj->kind = MDH_NATIVE_TRI_MODULE;
         obj->type_name = "tri.module";
         obj->ctor_kind = NULL;
@@ -4584,6 +4588,13 @@ void __mdh_rc_children(uint32_t kind, void *payload, MdhRcVisit visit, void *ctx
             }
             return;
         }
+        case MDH_KIND_NATIVE: {
+            /* A log span owns its fields dict. Other native objects are tables keyed by
+             * address (the tri runtime), whose values are not counted here. */
+            MdhNativeObject *obj = (MdhNativeObject *)payload;
+            if (obj->kind == MDH_NATIVE_LOG_SPAN) visit(obj->fields, ctx);
+            return;
+        }
         default:
             return;
     }
@@ -5734,6 +5745,8 @@ MdhValue __mdh_log_span_enter(MdhValue span) {
         __mdh_type_error("log_span_enter", span.tag, 0);
         return __mdh_make_nil();
     }
+    /* The stack holds a reference, so a span left on it outlives its variable. */
+    __mdh_retain(span);
     __mdh_span_stack_push(obj);
     return __mdh_make_nil();
 }
@@ -5745,6 +5758,7 @@ MdhValue __mdh_log_span_exit(MdhValue span) {
         return __mdh_make_nil();
     }
     MdhNativeObject *top = __mdh_span_stack_pop();
+    if (top) __mdh_release(__mdh_make_native(top));
     if (top != obj) {
         __mdh_hurl_owned(__mdh_make_string("log_span_exit() got a mismatched span"));
     }
@@ -10786,20 +10800,6 @@ MdhValue __mdh_stoater(MdhValue list) {
     return __mdh_retained(best);
 }
 
-MdhValue __mdh_dicht(MdhValue list, MdhValue index) {
-    if (list.tag != MDH_TAG_LIST) {
-        __mdh_type_error("dicht", list.tag, 0);
-        return __mdh_make_list(0);
-    }
-    int64_t idx;
-    if (index.tag == MDH_TAG_INT) {
-        idx = index.data;
-    } else if (index.tag == MDH_TAG_FLOAT) {
-        idx = (int64_t)__mdh_get_float(index);
-    } else {
-        __mdh_type_error("dicht", index.tag, 0);
-        return __mdh_make_list(0);
-    }
 /* sclaff(list) flattens every level, flatten(list) one (`full` = 0). Iterative, with an
  * explicit stack of (list, next index) frames, so nesting depth never uses the C stack.
  * The interpreter's limits and messages: a list inside itself, and more than 512 open
@@ -10874,6 +10874,20 @@ MdhValue __mdh_sclaff(MdhValue list, int64_t full) {
     return result;
 }
 
+MdhValue __mdh_dicht(MdhValue list, MdhValue index) {
+    if (list.tag != MDH_TAG_LIST) {
+        __mdh_type_error("dicht", list.tag, 0);
+        return __mdh_make_list(0);
+    }
+    int64_t idx;
+    if (index.tag == MDH_TAG_INT) {
+        idx = index.data;
+    } else if (index.tag == MDH_TAG_FLOAT) {
+        idx = (int64_t)__mdh_get_float(index);
+    } else {
+        __mdh_type_error("dicht", index.tag, 0);
+        return __mdh_make_list(0);
+    }
 
     MdhList *src = __mdh_get_list(list);
     int64_t len = src ? src->length : 0;
@@ -10881,9 +10895,10 @@ MdhValue __mdh_sclaff(MdhValue list, int64_t full) {
         idx = len + idx;
     }
     if (idx < 0 || idx >= len) {
+        /* The interpreter reports the wrapped (unsigned) index of a negative one. */
         char msg[128];
-        snprintf(msg, sizeof(msg), "Index %lld oot o' bounds fer list o' length %lld", (long long)idx, (long long)len);
-        __mdh_hurl_owned(__mdh_make_string(msg));
+        snprintf(msg, sizeof(msg), "Index %llu oot o' bounds fer list o' length %lld", (unsigned long long)idx, (long long)len);
+        __mdh_builtin_error(msg);
         return __mdh_make_list(0);
     }
 
@@ -10895,7 +10910,6 @@ MdhValue __mdh_sclaff(MdhValue list, int64_t full) {
     return out;
 }
 
-        /* The interpreter reports the wrapped (unsigned) index of a negative one. */
 MdhValue __mdh_redd_up(MdhValue list) {
     if (list.tag != MDH_TAG_LIST) {
         __mdh_type_error("redd_up", list.tag, 0);

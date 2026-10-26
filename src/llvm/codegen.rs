@@ -23717,6 +23717,8 @@ impl<'ctx> CodeGen<'ctx> {
                     let upper = self.inline_upper(arg)?;
                     let bang = self.compile_string_literal("!");
                     let result = self.inline_slap(upper, bang);
+                    // slap made a new string; the uppercased temp is done with.
+                    self.rc_consume_fresh(upper);
                     self.builder
                         .build_unconditional_branch(merge_block)
                         .unwrap();
@@ -26232,6 +26234,10 @@ impl<'ctx> CodeGen<'ctx> {
                         .basic()
                         .compile_ok_or("pair_up returned void")
                         .unwrap();
+                    // pair_up shares the elements with its own references; drop the
+                    // key and value lists.
+                    self.rc_consume_fresh(keys);
+                    self.rc_consume_fresh(values);
                     return Ok(result);
                 }
                 "scots_wisdom" | "wisdom" => {
@@ -34105,6 +34111,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         let pred_result = self.call_function_value(func, &[elem_val]).unwrap();
         let is_truthy = self.is_truthy(pred_result);
+        self.rc_consume_fresh(pred_result);
         self.builder
             .build_conditional_branch(is_truthy, true_block, false_block)
             .unwrap();
@@ -34177,6 +34184,9 @@ impl<'ctx> CodeGen<'ctx> {
                 "",
             )
             .unwrap();
+        // The pair holds its own references now; drop the two partition lists'.
+        self.rc_release(truthy_val);
+        self.rc_release(falsy_val);
 
         Ok(pair_list)
     }
@@ -34371,10 +34381,14 @@ impl<'ctx> CodeGen<'ctx> {
             .basic()
             .compile_ok_or("dict_set returned void")
             .unwrap();
+        // dict_set stored its own reference to the new group.
+        self.rc_consume_fresh(new_list);
         self.builder.build_store(dict_alloca, new_dict).unwrap();
         self.builder.build_unconditional_branch(next_block).unwrap();
 
         self.builder.position_at_end(next_block);
+        // The key was only looked up or stored (the dict took its own reference).
+        self.rc_consume_fresh(key_val);
         let next_idx = self
             .builder
             .build_int_add(idx, one, "grup_up_next_idx")
@@ -34387,6 +34401,8 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_load(self.types.value_type, dict_alloca, "grup_up_final_dict")
             .unwrap();
+        // empty_dict's reference moves from the slot to the result.
+        self.rc_mark_owned(final_dict);
         Ok(final_dict)
     }
 
@@ -35942,6 +35958,9 @@ impl<'ctx> CodeGen<'ctx> {
                 .unwrap();
         }
 
+        // empty_dict's reference travels through the in-place dict_set calls: the
+        // result carries it, so the alias slot takes it instead of retaining.
+        self.rc_mark_owned(dict);
         dict
     }
 
@@ -37554,6 +37573,9 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         phi.add_incoming(&[(&val, list_bb), (&string_as_list, string_bb)]);
         let list_val = phi.as_basic_value();
+        // Own the list (or the characters of a string) while the names are bound, then
+        // release it: each name's slot holds its own reference.
+        self.rc_take(list_val);
 
         // Get list struct pointer
         // MdhList format: { items_ptr: *MdhValue, length: i64, capacity: i64 }
@@ -37692,6 +37714,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
         }
 
+        self.rc_release(list_val);
         Ok(())
     }
 

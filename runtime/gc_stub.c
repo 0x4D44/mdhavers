@@ -201,6 +201,15 @@ static void __mdh_rc_no_header(const char *op, const void *payload) {
     abort();
 }
 
+void __mdh_obj_immortal(void *obj) {
+    if (!obj || __mdh_rc_kinds == 0) return; /* headerless: nothing counts it */
+    MdhObjHeader *h = __mdh_obj_header(obj);
+    h->flags |= MDH_OBJ_IMMORTAL;
+    h->refcount = MDH_REFCOUNT_IMMORTAL;
+    /* Never released, so never "live" in the exit report. */
+    __mdh_counter_add(&__mdh_rc_died[MDH_HDR_KIND(h)]);
+}
+
 void *__mdh_obj_realloc(void *obj, size_t size) {
     if (!obj) return __mdh_obj_alloc(MDH_KIND_STRING, size);
     if (__mdh_rc_kinds == 0) return realloc(obj, size); /* headerless, see __mdh_obj_alloc */
