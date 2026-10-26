@@ -452,6 +452,7 @@ mak_siccar 1 == 1, "one"
 blether screen_width()
 blether sclaff([[1]])
 blether split("a,b", ",")
+blether assert_equal(1, 1)
 "#;
 
     /// Every `__mdh_*` function declared (not defined) in a compiled module, with its
