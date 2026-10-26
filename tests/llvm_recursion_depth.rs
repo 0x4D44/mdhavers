@@ -271,15 +271,20 @@ fn a_function_with_a_frame_bigger_than_the_tripwire_raises_the_error() {
 }
 
 /// Preloaded, so it runs before main: a SIGSEGV/SIGBUS action chosen by PRIOR_MODE (f: an
-/// SA_SIGINFO handler, i: SIG_IGN, d: SIG_DFL), and an exit hook that, once the runtime
-/// has put its own handler in front of it, faults (f) or raises SIGSEGV.
+/// SA_SIGINFO handler, i: SIG_IGN, d: SIG_DFL; m and n: an SA_NODEFER handler whose mask
+/// does (m) or does not (n) hold its own signals, which reports whether its signal is
+/// blocked; r: a one-shot SA_RESETHAND handler that returns, so the fault is taken again),
+/// and an exit hook that, once the runtime has put its own handler in front of it, faults
+/// (f, m, n), faults on four threads at once (r) or raises SIGSEGV.
 #[cfg(unix)]
 const PRIOR_HANDLER_C: &str = r#"
+#include <pthread.h>
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 static char mode = 'f';
 static volatile int calls = 0;
@@ -291,9 +296,53 @@ static void prior(int sig, siginfo_t *info, void *ctx) {
     write(2, msg, sizeof msg - 1);
     _exit(info->si_code > 0 ? 42 : 43);
 }
+static void prior_masked(int sig, siginfo_t *info, void *ctx) {
+    (void)info; (void)ctx;
+    sigset_t now;
+    pthread_sigmask(SIG_BLOCK, NULL, &now);
+    if (sigismember(&now, sig)) {
+        write(2, "blocked\n", 8);
+    } else {
+        write(2, "unblocked\n", 10);
+    }
+    _exit(42);
+}
+static int one_shot_calls = 0;
+static void prior_one_shot(int sig, siginfo_t *info, void *ctx) {
+    (void)sig; (void)info; (void)ctx;
+    int n = __atomic_add_fetch(&one_shot_calls, 1, __ATOMIC_SEQ_CST);
+    write(2, "one-shot\n", 9);
+    if (n >= 4) {
+        _exit(44);
+    }
+    /* Long enough for every other thread to fault meanwhile; then the fault repeats. */
+    struct timespec ts = {0, 200 * 1000 * 1000};
+    nanosleep(&ts, NULL);
+}
+/* macOS has no pthread barriers. */
+static int ready = 0;
+static void *fault_thread(void *arg) {
+    (void)arg;
+    __atomic_add_fetch(&ready, 1, __ATOMIC_SEQ_CST);
+    while (__atomic_load_n(&ready, __ATOMIC_SEQ_CST) < 4) {
+    }
+    *(volatile int *)(uintptr_t)8 = 1;
+    return NULL;
+}
 static void fault_at_exit(void) {
     fflush(stdout);
-    if (mode == 'f') {
+    if (mode == 'r') {
+        pthread_t t[4];
+        for (int i = 0; i < 4; i++) {
+            pthread_create(&t[i], NULL, fault_thread, NULL);
+        }
+        for (int i = 0; i < 4; i++) {
+            pthread_join(t[i], NULL);
+        }
+        write(2, "survived\n", 9);
+        _exit(7);
+    }
+    if (mode == 'f' || mode == 'm' || mode == 'n') {
         *(volatile int *)(uintptr_t)8 = 1;
     }
     raise(SIGSEGV);
@@ -310,6 +359,16 @@ __attribute__((constructor)) static void setup(void) {
         sa.sa_handler = SIG_IGN;
     } else if (mode == 'd') {
         sa.sa_handler = SIG_DFL;
+    } else if (mode == 'm' || mode == 'n') {
+        sa.sa_sigaction = prior_masked;
+        sa.sa_flags = SA_SIGINFO | SA_NODEFER;
+        if (mode == 'm') {
+            sigaddset(&sa.sa_mask, SIGSEGV);
+            sigaddset(&sa.sa_mask, SIGBUS);
+        }
+    } else if (mode == 'r') {
+        sa.sa_sigaction = prior_one_shot;
+        sa.sa_flags = SA_SIGINFO | SA_RESETHAND;
     } else {
         sa.sa_sigaction = prior;
         sa.sa_flags = SA_SIGINFO;
@@ -330,7 +389,7 @@ fn signals_that_are_not_a_stack_overflow_get_the_prior_action() {
     let lib_path = dir.path().join("libprior.so");
     std::fs::write(&c_path, PRIOR_HANDLER_C).expect("write C");
     let cc = Command::new("cc")
-        .args(["-shared", "-fPIC", "-o"])
+        .args(["-shared", "-fPIC", "-pthread", "-o"])
         .arg(&lib_path)
         .arg(&c_path)
         .status()
@@ -363,10 +422,11 @@ fn signals_that_are_not_a_stack_overflow_get_the_prior_action() {
     assert_eq!(status.code(), Some(42), "{stderr}");
     assert_eq!(stderr, "prior 1\n");
 
-    // A SIGSEGV sent under a prior SIG_IGN stays ignored. macOS gives a sent
-    // SIGSEGV a fault's siginfo, so there it takes the default action instead.
+    // A SIGSEGV sent under a prior SIG_IGN stays ignored. macOS gives a sent SIGSEGV a
+    // fault's siginfo; on arm64 the runtime tells them apart by the thread's exception
+    // syndrome (a system call, here raise). Intel Macs cannot: the default action.
     let (status, stderr) = run("i");
-    if cfg!(target_os = "macos") {
+    if cfg!(all(target_os = "macos", not(target_arch = "aarch64"))) {
         assert_eq!(status.signal(), Some(11), "{status:?} {stderr}");
         assert_eq!(stderr, "");
     } else {
@@ -378,4 +438,30 @@ fn signals_that_are_not_a_stack_overflow_get_the_prior_action() {
     let (status, stderr) = run("d");
     assert_eq!(status.signal(), Some(11), "{status:?} {stderr}");
     assert_eq!(stderr, "");
+
+    // A prior SA_NODEFER handler runs with its signal unblocked, unless its own mask
+    // blocks it: the mask wins, as when the kernel runs the handler (MDH-BUG-FLU-00186).
+    let (status, stderr) = run("m");
+    assert_eq!(status.code(), Some(42), "{status:?} {stderr}");
+    assert_eq!(stderr, "blocked\n");
+    let (status, stderr) = run("n");
+    assert_eq!(status.code(), Some(42), "{status:?} {stderr}");
+    assert_eq!(stderr, "unblocked\n");
+
+    // A one-shot (SA_RESETHAND) prior handler, with four threads faulting at once: one
+    // delivery claims it and every other takes the default action, so the handler runs
+    // once and the process dies of SIGSEGV. Whether two claims could race is not
+    // observable from here; the claim is an atomic exchange, checked lock-free at
+    // compile time. macOS never reports SA_RESETHAND back (a permanent limit, see
+    // __mdh_stack_chain), so there the handler runs on every delivery: here until its
+    // fourth call exits 44.
+    let (status, stderr) = run("r");
+    if cfg!(target_os = "macos") {
+        assert_eq!(status.code(), Some(44), "{status:?} {stderr}");
+        assert_eq!(stderr, "one-shot\n".repeat(4));
+    } else {
+        // The default action may kill the process before the claiming thread writes.
+        assert_eq!(status.signal(), Some(11), "{status:?} {stderr}");
+        assert!(stderr == "one-shot\n" || stderr.is_empty(), "{stderr}");
+    }
 }

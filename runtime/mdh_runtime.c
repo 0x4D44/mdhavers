@@ -11506,6 +11506,9 @@ int32_t __mdh_stack_low(void) {
 #if !defined(_WIN32) && !defined(MDH_STACK_GUARD_SANITIZED)
 #include <signal.h>
 #include <sys/mman.h>
+#if defined(__APPLE__)
+#include <sys/ucontext.h>
+#endif
 
 static __thread uintptr_t __mdh_trip_lo = 0;
 static __thread uintptr_t __mdh_trip_hi = 0;
@@ -11517,16 +11520,34 @@ static struct sigaction __mdh_prev_segv;
 static struct sigaction __mdh_prev_bus;
 
 /* Set by the one delivery a one-shot (SA_RESETHAND) previous handler gets; the saved
- * actions themselves never change once installed. (macOS does not report SA_RESETHAND
- * in the action sigaction hands back, so there a one-shot handler is called each time.) */
+ * actions themselves never change once installed. The claim is an atomic exchange made
+ * inside a signal handler, which is only async-signal-safe when it is lock-free.
+ *
+ * macOS cannot honour a one-shot handler (MDH-BUG-FLU-00186, a permanent limit): its
+ * sigaction never reports SA_RESETHAND in the action it hands back (checked on Darwin
+ * 25: set with SA_RESETHAND | SA_NODEFER, it reads back SA_NODEFER only), and nothing
+ * else reports a process's signal actions. So there such a handler is called on every
+ * delivery instead of only the first. */
 static int __mdh_prev_segv_used = 0;
 static int __mdh_prev_bus_used = 0;
+#if defined(__GNUC__) || defined(__clang__)
+_Static_assert(__atomic_always_lock_free(sizeof(__mdh_prev_segv_used), 0),
+               "the one-shot claim must be lock-free to be made in a signal handler");
+#endif
 
-/* 1 when `info` describes a signal someone sent (kill, raise, sigqueue), not a fault.
- * macOS gives a sent SIGSEGV the same siginfo as a fault (si_code 2, no pid), so there
- * a sent one reads as a fault: under a previous SIG_IGN it then takes the default
- * action instead of being ignored. */
-static int __mdh_signal_was_sent(const siginfo_t *info) {
+/* 1 when the signal was sent (kill, raise, sigqueue), not raised by a fault.
+ *
+ * macOS gives a sent SIGSEGV/SIGBUS the same siginfo as a fault (si_code 2, no pid, no
+ * uid), so there only the thread state can tell. On arm64 the exception syndrome in the
+ * signal context is that of the thread's last exception from user code: a fault's is
+ * the abort itself, never a system call. A syndrome of a system call (EC 0x15, SVC64)
+ * therefore means the signal is not a fault: the thread sent it to itself (raise) or
+ * was in a system call when it arrived. A signal sent to a thread that last trapped
+ * for something else (a page fault the kernel resolved, say) still reads as a fault and
+ * under a previous SIG_IGN takes the default action instead of being ignored; that is
+ * a permanent limit, as no field records who sent it. Intel Macs keep that behaviour
+ * for every sent signal (their saved trap number is not reset by a system call). */
+static int __mdh_signal_was_sent(const siginfo_t *info, void *ctx) {
     if (info->si_code <= 0 || info->si_code == SI_USER || info->si_code == SI_QUEUE) {
         return 1;
     }
@@ -11534,6 +11555,15 @@ static int __mdh_signal_was_sent(const siginfo_t *info) {
     if (info->si_code == SI_TKILL) {
         return 1;
     }
+#endif
+#if defined(__APPLE__) && defined(__aarch64__)
+    const ucontext_t *uc = (const ucontext_t *)ctx;
+    if (uc != NULL && uc->uc_mcontext != NULL &&
+        ((uc->uc_mcontext->__es.__esr >> 26) & 0x3Fu) == 0x15u) {
+        return 1;
+    }
+#else
+    (void)ctx;
 #endif
     return 0;
 }
@@ -11543,7 +11573,7 @@ static int __mdh_signal_was_sent(const siginfo_t *info) {
 static void __mdh_stack_chain(int sig, siginfo_t *info, void *ctx) {
     const struct sigaction *prev = sig == SIGSEGV ? &__mdh_prev_segv : &__mdh_prev_bus;
     int *used = sig == SIGSEGV ? &__mdh_prev_segv_used : &__mdh_prev_bus_used;
-    int sent = __mdh_signal_was_sent(info);
+    int sent = __mdh_signal_was_sent(info, ctx);
     int dfl = prev->sa_handler == SIG_DFL;
     if (prev->sa_handler == SIG_IGN) {
         if (sent) {
@@ -11588,7 +11618,7 @@ static void __mdh_stack_chain(int sig, siginfo_t *info, void *ctx) {
 static void __mdh_stack_fault(int sig, siginfo_t *info, void *ctx) {
     uintptr_t addr = (uintptr_t)info->si_addr;
     if (__mdh_trip_hi == 0 || addr < __mdh_trip_lo || addr >= __mdh_trip_hi ||
-        __mdh_signal_was_sent(info)) {
+        __mdh_signal_was_sent(info, ctx)) {
         __mdh_stack_chain(sig, info, ctx);
         return;
     }
