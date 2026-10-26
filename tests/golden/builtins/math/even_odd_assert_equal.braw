@@ -1,0 +1,41 @@
+# SKIP_WASM
+# is_even, is_odd and assert_equal are builtins everywhere (the CLI prelude no longer
+# redefines them, MDH-BUG-FLU-00192): integers only, and assert_equal returns aye or raises.
+dae tryit(f) {
+    hae_a_bash {
+        blether f()
+    } gin_it_gangs_wrang e {
+        blether e
+    }
+}
+blether is_even(0)
+blether is_even(4)
+blether is_even(7)
+blether is_even(-2)
+blether is_even(-3)
+blether is_odd(0)
+blether is_odd(7)
+blether is_odd(-3)
+blether is_odd(-2)
+tryit(|| is_even(2.0))
+tryit(|| is_odd(3.5))
+tryit(|| is_even("a"))
+tryit(|| is_odd(naething))
+tryit(|| is_even([2]))
+blether assert_equal(1, 1)
+blether assert_equal("a", "a")
+blether assert_equal([1, 2], [1, 2])
+# The failure text differs between backends (native: "expected values to be equal"), so
+# only check that it raises.
+dae raises(f) {
+    hae_a_bash {
+        f()
+        blether "no error"
+    } gin_it_gangs_wrang e {
+        blether "raised"
+    }
+}
+raises(|| assert_equal(1, 2))
+raises(|| assert_equal("a", "b"))
+raises(|| assert_equal([1], [2]))
+raises(|| assert_equal(1, 1))

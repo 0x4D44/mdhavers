@@ -44,15 +44,7 @@ dae muckle(a, b) {
     gie b
 }
 
-# Check if a number is even
-dae is_even(n) {
-    gie n % 2 == 0
-}
-
-# Check if a number is odd
-dae is_odd(n) {
-    gie n % 2 != 0
-}
+# is_even and is_odd are interpreter builtins (integers only, as native).
 
 # Check if a number is between min and max (inclusive)
 dae atween(val, wee_end, muckle_end) {
@@ -594,12 +586,7 @@ dae assert_that(condition, message) {
     }
 }
 
-# Assert two values are equal
-dae assert_equal(expected, actual) {
-    gin expected != actual {
-        mak_siccar nae, f"Expected {expected}, but got {actual}"
-    }
-}
+# assert_equal is an interpreter builtin (returns aye, or raises "Assertion failed: ...").
 
 # ===============================================================
 # Scottish Units and Measures (just fer fun!)
