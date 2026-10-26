@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00184 — Native runtime: string buffer ignores allocation failure and crashes on out-of-memory
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** native
 - **Raised:** 2026-10-26T08:44:39Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261026T103609Z-be992a44
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00184-run-fix-20261026T103609Z-be992a44
-- **Owner base:** 2261723f61042e6ac35bd07e8fe56195cb0755bf
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-26T10:36:09Z
-- **Owner until:** 2026-10-26T14:36:09Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-26T08:44:39Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-26T08:44:39Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T12:20:03Z, deltic:auto role=fix run=fix-20261026T103609Z-be992a44 branch=task/bug-MDH-BUG-FLU-00184-run-fix-20261026T103609Z-be992a44 code=26cd19d gate=manual)
 
 ## Observation
 
