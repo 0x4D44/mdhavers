@@ -9,9 +9,10 @@ use std::{env, fmt};
 
 use crate::tri_engine::{with_engine, LoopCallback, MeshData, RenderItem};
 use crate::{
-    mdh_dict_get_named, mdh_float_value, mdh_make_string_from_rust, mdh_value_to_string, MdhList,
-    MdhValue, MDH_TAG_BOOL, MDH_TAG_CLOSURE, MDH_TAG_DICT, MDH_TAG_FLOAT, MDH_TAG_FUNCTION,
-    MDH_TAG_INT, MDH_TAG_LIST, MDH_TAG_NATIVE, MDH_TAG_NIL, MDH_TAG_STRING,
+    mdh_dict_get_named, mdh_float_value, mdh_make_string_from_rust, mdh_value_to_string, Abandon,
+    MdhList, MdhValue, MDH_TAG_BOOL, MDH_TAG_CLOSURE, MDH_TAG_DICT, MDH_TAG_FLOAT,
+    MDH_TAG_FUNCTION, MDH_TAG_INT, MDH_TAG_LIST, MDH_TAG_NATIVE, MDH_TAG_NIL, MDH_TAG_STRING,
+    STRING_TOO_BIG_MSG,
 };
 use glam::{EulerRot, Mat4, Quat, Vec3};
 
@@ -128,9 +129,12 @@ unsafe fn tri_finish(result: TriResult) -> MdhValue {
 }
 
 /// The text of a property or method name, or the stack error when it nests too deep
-/// to format.
+/// to format (the too-big error when memory runs out).
 unsafe fn tri_name(value: MdhValue) -> Result<String, TriRaise> {
-    mdh_value_to_string(value).map_err(|_| TriRaise::Hurl(__mdh_stack_overflow_message()))
+    mdh_value_to_string(value).map_err(|why| match why {
+        Abandon::StackLow => TriRaise::Hurl(__mdh_stack_overflow_message()),
+        Abandon::NoMemory => tri_hurl(STRING_TOO_BIG_MSG),
+    })
 }
 
 unsafe fn mdh_make_native(ptr: *mut MdhNativeObject) -> MdhValue {

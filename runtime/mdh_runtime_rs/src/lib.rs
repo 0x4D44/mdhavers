@@ -91,7 +91,7 @@ extern "C" {
     fn __mdh_dict_set_owned(dict: MdhValue, key: MdhValue, value: MdhValue) -> MdhValue;
     fn __mdh_dict_get_default(dict: MdhValue, key: MdhValue, default_val: MdhValue) -> MdhValue;
     fn __mdh_to_string_checked(value: MdhValue, out: *mut MdhValue) -> i32;
-    fn __mdh_kv_densify(value: MdhValue);
+    fn __mdh_kv_densify(value: MdhValue) -> i32;
     fn __mdh_release(value: MdhValue);
 }
 
@@ -131,13 +131,15 @@ pub(crate) unsafe fn mdh_make_string_from_rust(s: &str) -> MdhValue {
     __mdh_make_string(cstr.as_ptr())
 }
 
-/// The runtime's text for `value`, or `StackLow` when it nests too deep to format: the
-/// C formatter reports that rather than raising, which would longjmp across our frames
-/// (MDH-BUG-FLU-00164).
-unsafe fn mdh_value_to_string(value: MdhValue) -> Result<String, StackLow> {
+/// The runtime's text for `value`, or why it could not be made (too deep to format, or
+/// out of memory): the C formatter reports those rather than raising, which would
+/// longjmp across our frames (MDH-BUG-FLU-00164, MDH-BUG-FLU-00184).
+unsafe fn mdh_value_to_string(value: MdhValue) -> Result<String, Abandon> {
     let mut s_val = __mdh_make_nil();
-    if __mdh_to_string_checked(value, &mut s_val) == 0 {
-        return Err(StackLow);
+    match __mdh_to_string_checked(value, &mut s_val) {
+        1 => {}
+        0 => return Err(Abandon::StackLow),
+        _ => return Err(Abandon::NoMemory),
     }
     let s = mdh_string_to_rust(s_val);
     __mdh_release(s_val);
@@ -732,25 +734,36 @@ fn json_escape_string(s: &str) -> String {
     result
 }
 
-unsafe fn json_fallback_string(value: MdhValue) -> Result<String, StackLow> {
+unsafe fn json_fallback_string(value: MdhValue) -> Result<String, Abandon> {
     let s = mdh_value_to_string(value)?;
     let escaped = s.replace('"', "\\\"");
     Ok(format!("\"{}\"", escaped))
 }
 
-/// `mdh_value_to_json` ran too deep (nested values recurse there, so it stops while there
-/// is room to raise the runtime's stack error), or the C formatter did
-/// (MDH-BUG-FLU-00164).
-struct StackLow;
+/// Why JSON output was given up, reported as the runtime's error.
+enum Abandon {
+    /// `mdh_value_to_json` ran too deep (nested values recurse there, so it stops while
+    /// there is room to raise the runtime's stack error), or the C formatter did
+    /// (MDH-BUG-FLU-00164).
+    StackLow,
+    /// The C runtime ran out of memory formatting a value or compacting a dict
+    /// (MDH-BUG-FLU-00184).
+    NoMemory,
+}
 
-unsafe fn json_result(result: Result<String, StackLow>) -> MdhRsResult {
+/// The C runtime's text for running out of memory building a string
+/// (MDH_STRING_TOO_BIG_MSG in runtime/mdh_runtime.c).
+const STRING_TOO_BIG_MSG: &str = "Och! That string would be ower muckle tae fit in memory";
+
+unsafe fn json_result(result: Result<String, Abandon>) -> MdhRsResult {
     match result {
         Ok(s) => mdh_ok(mdh_make_string_from_rust(&s)),
-        Err(StackLow) => MdhRsResult {
+        Err(Abandon::StackLow) => MdhRsResult {
             ok: 0,
             value: __mdh_make_nil(),
             error: __mdh_stack_overflow_message(),
         },
+        Err(Abandon::NoMemory) => mdh_err(STRING_TOO_BIG_MSG),
     }
 }
 
@@ -758,9 +771,9 @@ unsafe fn mdh_value_to_json(
     value: MdhValue,
     pretty: bool,
     indent: usize,
-) -> Result<String, StackLow> {
+) -> Result<String, Abandon> {
     if __mdh_stack_low() != 0 {
-        return Err(StackLow);
+        return Err(Abandon::StackLow);
     }
     mdh_value_to_json_level(value, pretty, indent)
 }
@@ -769,7 +782,7 @@ unsafe fn mdh_value_to_json_level(
     value: MdhValue,
     pretty: bool,
     indent: usize,
-) -> Result<String, StackLow> {
+) -> Result<String, Abandon> {
     let ws = "  ".repeat(indent);
     let ws_inner = "  ".repeat(indent + 1);
 
@@ -823,13 +836,13 @@ unsafe fn mdh_value_to_json_level(
                             mdh_value_to_json(*v, true, indent + 1)?
                         ))
                     })
-                    .collect::<Result<Vec<String>, StackLow>>()?;
+                    .collect::<Result<Vec<String>, Abandon>>()?;
                 format!("[\n{}\n{}]", parts.join(",\n"), ws)
             } else {
                 let parts = items
                     .iter()
                     .map(|v| mdh_value_to_json(*v, false, indent))
-                    .collect::<Result<Vec<String>, StackLow>>()?;
+                    .collect::<Result<Vec<String>, Abandon>>()?;
                 format!("[{}]", parts.join(", "))
             }
         }
@@ -848,7 +861,9 @@ unsafe fn mdh_value_to_json_level(
             }
             // Drop any removed (tombstoned) entries first, so the payload holds exactly
             // `count` live entries (MDH-BUG-FLU-00091).
-            __mdh_kv_densify(value);
+            if __mdh_kv_densify(value) == 0 {
+                return Err(Abandon::NoMemory);
+            }
             let payload_ptr = *handle_ptr as *const i64;
             if payload_ptr.is_null() {
                 return Ok("{}".to_string());

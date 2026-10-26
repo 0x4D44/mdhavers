@@ -1,6 +1,7 @@
 #![cfg(feature = "llvm")]
 //! Native backend: runtime errors raised from the Rust runtime leave it in a usable state
-//! (MDH-BUG-FLU-00183).
+//! (MDH-BUG-FLU-00183), and running out of memory while building a string raises the
+//! "ower muckle" error instead of crashing (MDH-BUG-FLU-00184).
 
 use std::process::{Command, Stdio};
 
@@ -14,6 +15,10 @@ struct Run {
 }
 
 fn run_native(source: &str, refcounting: bool) -> Run {
+    run_native_with_env(source, refcounting, &[])
+}
+
+fn run_native_with_env(source: &str, refcounting: bool, env: &[(&str, &str)]) -> Run {
     let program = parse(source).expect("parse");
     let dir = tempdir().expect("temp dir");
     let exe_path = dir.path().join("raise_safety_exe");
@@ -22,6 +27,7 @@ fn run_native(source: &str, refcounting: bool) -> Run {
         .compile_to_native(&program, &exe_path, 2)
         .expect("compile to native");
     let output = Command::new(&exe_path)
+        .envs(env.iter().copied())
         .stdin(Stdio::null())
         .output()
         .expect("run executable");
@@ -57,6 +63,45 @@ blether "efter"
         assert!(
             lines[..3].iter().all(|l| *l == lines[0]),
             "rc={refcounting}: {lines:?}"
+        );
+    }
+}
+
+const TOO_BIG: &str = "Och! That string would be ower muckle tae fit in memory";
+
+/// With the test-only knob of debug builds (runtime/gc_stub.c), every string allocation
+/// of 1 MiB or more fails. Formatting a big list (C formatter, raising) and the JSON of a
+/// big creel (formatted for the Rust runtime in quiet mode, reported as a status) both
+/// used to write through the NULL and crash.
+#[cfg(debug_assertions)]
+#[test]
+fn running_out_of_memory_formatting_raises_the_too_big_error() {
+    let src = r#"ken big = []
+fer i in 0..200000 {
+    shove(big, i)
+}
+fer k in 0..2 {
+    hae_a_bash {
+        blether len(tae_string(big))
+    } gin_it_gangs_wrang e {
+        blether e
+    }
+    hae_a_bash {
+        blether len(json_stringify([creel(big)]))
+    } gin_it_gangs_wrang e {
+        blether e
+    }
+}
+blether tae_string([1, 2, 3])
+"#;
+    for refcounting in [false, true] {
+        let run = run_native_with_env(src, refcounting, &[("MDH_TEST_ALLOC_FAIL_OVER", "1048576")]);
+        assert_eq!(run.code, Some(0), "rc={refcounting}: {}", run.stderr);
+        let lines: Vec<&str> = run.stdout.lines().collect();
+        assert_eq!(
+            lines,
+            vec![TOO_BIG, TOO_BIG, TOO_BIG, TOO_BIG, "[1, 2, 3]"],
+            "rc={refcounting}"
         );
     }
 }

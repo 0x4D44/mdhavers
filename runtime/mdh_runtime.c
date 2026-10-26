@@ -194,22 +194,83 @@ static const char *__mdh_tri_constructor_kind(const char *name);
 static int __mdh_tri_has_transform(const char *kind);
 static MdhValue __mdh_native_call_internal(MdhValue obj, MdhValue method, int argc, MdhValue *args);
 
+/* Keep the text in step with STRING_TOO_BIG_MSG in src/llvm/codegen.rs. */
+#define MDH_STRING_TOO_BIG_MSG "Och! That string would be ower muckle tae fit in memory"
+
+/* Set while __mdh_to_string_checked formats for the Rust runtime, which must not be
+ * longjmp'd through: running out of stack (__mdh_stack_ran_low) or of memory
+ * (__mdh_quiet_oom) is then recorded instead of raised, and the formatting abandoned
+ * (MDH-BUG-FLU-00164, MDH-BUG-FLU-00184). */
+static __thread int __mdh_stack_quiet = 0;
+static __thread int __mdh_stack_ran_low = 0;
+static __thread int __mdh_quiet_oom = 0;
+
+/* The string buffer could not get memory: raise the too-big error, or in quiet mode
+ * record it. The buffer is left with none (buf NULL), which every append skips. */
+static void __mdh_sb_fail(MdhStrBuf *sb) {
+    char *buf = sb->buf;
+    sb->buf = NULL;
+    sb->len = 0;
+    sb->cap = 0;
+    if (buf) {
+        MdhValue text = {.tag = MDH_TAG_STRING, .data = (int64_t)(intptr_t)buf};
+        __mdh_release(text);
+    }
+    if (__mdh_stack_quiet) {
+        __mdh_quiet_oom = 1;
+        return;
+    }
+    __mdh_hurl_owned(__mdh_make_string(MDH_STRING_TOO_BIG_MSG));
+}
+
 static void __mdh_sb_init(MdhStrBuf *sb) {
     sb->cap = 128;
     sb->len = 0;
     sb->buf = (char *)__mdh_obj_alloc(MDH_KIND_STRING, sb->cap);
+    if (!sb->buf) {
+        __mdh_sb_fail(sb);
+        return;
+    }
     sb->buf[0] = '\0';
 }
 
-static void __mdh_sb_reserve(MdhStrBuf *sb, size_t extra) {
-    while (sb->len + extra + 1 > sb->cap) {
-        sb->cap *= 2;
-        sb->buf = (char *)__mdh_obj_realloc(sb->buf, sb->cap);
+/* 1 when the buffer has room for `extra` more bytes (and the NUL), 0 when it has no
+ * memory (see __mdh_sb_fail). */
+static int __mdh_sb_reserve(MdhStrBuf *sb, size_t extra) {
+    if (!sb->buf) {
+        return 0;
     }
+    size_t need = 0;
+    if (__builtin_add_overflow(sb->len, extra, &need) || need == SIZE_MAX) {
+        __mdh_sb_fail(sb);
+        return 0;
+    }
+    need += 1;
+    if (need <= sb->cap) {
+        return 1;
+    }
+    size_t cap = sb->cap;
+    while (cap < need) {
+        if (cap > SIZE_MAX / 2) {
+            __mdh_sb_fail(sb);
+            return 0;
+        }
+        cap *= 2;
+    }
+    char *grown = (char *)__mdh_obj_realloc(sb->buf, cap);
+    if (!grown) {
+        __mdh_sb_fail(sb);
+        return 0;
+    }
+    sb->buf = grown;
+    sb->cap = cap;
+    return 1;
 }
 
 static void __mdh_sb_append_n(MdhStrBuf *sb, const char *s, size_t n) {
-    __mdh_sb_reserve(sb, n);
+    if (!__mdh_sb_reserve(sb, n)) {
+        return;
+    }
     memcpy(sb->buf + sb->len, s, n);
     sb->len += n;
     sb->buf[sb->len] = '\0';
@@ -220,7 +281,9 @@ static void __mdh_sb_append(MdhStrBuf *sb, const char *s) {
 }
 
 static void __mdh_sb_append_char(MdhStrBuf *sb, char c) {
-    __mdh_sb_reserve(sb, 1);
+    if (!__mdh_sb_reserve(sb, 1)) {
+        return;
+    }
     sb->buf[sb->len++] = c;
     sb->buf[sb->len] = '\0';
 }
@@ -395,8 +458,6 @@ static MdhValue __mdh_int_overflow(void) {
     return __mdh_make_nil();
 }
 
-/* Keep the text in step with STRING_TOO_BIG_MSG in src/llvm/codegen.rs. */
-#define MDH_STRING_TOO_BIG_MSG "Och! That string would be ower muckle tae fit in memory"
 
 /* Allocate an out_len + 1 byte text buffer. Hurls (so never returns NULL) when the
  * caller's size computation overflowed or the allocation fails. */
@@ -1917,11 +1978,13 @@ MdhValue __mdh_str_concat(MdhValue a, MdhValue b) {
     size_t len_a = strlen(sa);
     size_t len_b = strlen(sb);
 
-    char *result = (char *)__mdh_buf_alloc(len_a + len_b + 1);
-    strcpy(result, sa);
-    strcat(result, sb);
+    size_t total = 0;
+    int overflowed = __builtin_add_overflow(len_a, len_b, &total);
+    char *result = __mdh_alloc_text(overflowed, total);
+    memcpy(result, sa, len_a);
+    memcpy(result + len_a, sb, len_b + 1);
 
-    return __mdh_make_string(result);
+    return __mdh_string_from_buf(result);
 }
 
 int64_t __mdh_str_len(MdhValue s) {
@@ -2107,9 +2170,26 @@ static void __mdh_value_to_string_sb(MdhStrBuf *out, MdhValue v) {
                 const char **items = (const char **)__mdh_buf_alloc(sizeof(char *) * (size_t)count);
                 /* The key texts, owned until they have been written out. */
                 MdhValue *texts = (MdhValue *)__mdh_buf_alloc(sizeof(MdhValue) * (size_t)count);
-                for (int64_t i = 0; i < count; i++) {
-                    texts[i] = __mdh_to_string(entries[i * 2]);
-                    items[i] = __mdh_get_string(texts[i]);
+                if (!items || !texts) {
+                    __mdh_buf_free(items);
+                    __mdh_buf_free(texts);
+                    __mdh_sb_fail(out);
+                    return;
+                }
+                int64_t made = 0;
+                while (made < count && !__mdh_stack_ran_low && !__mdh_quiet_oom) {
+                    texts[made] = __mdh_to_string(entries[made * 2]);
+                    items[made] = __mdh_get_string(texts[made]);
+                    made++;
+                }
+                if (__mdh_stack_ran_low || __mdh_quiet_oom) {
+                    /* Quiet mode gave up on a key: so does this creel. */
+                    for (int64_t i = 0; i < made; i++) {
+                        __mdh_release(texts[i]);
+                    }
+                    __mdh_buf_free(items);
+                    __mdh_buf_free(texts);
+                    return;
                 }
                 qsort(items, (size_t)count, sizeof(char *), __mdh_cmp_cstr);
                 for (int64_t i = 0; i < count; i++) {
@@ -2123,6 +2203,8 @@ static void __mdh_value_to_string_sb(MdhStrBuf *out, MdhValue v) {
                 for (int64_t i = 0; i < count; i++) {
                     __mdh_release(texts[i]);
                 }
+                __mdh_buf_free(items);
+                __mdh_buf_free(texts);
             }
             __mdh_sb_append_char(out, '}');
             return;
@@ -4548,12 +4630,17 @@ static void __mdh_kv_compact(MdhValue v) {
     int64_t live = old ? old[0] : 0;
     int64_t used = live + (int64_t)handle[3];
     int64_t cap = live < 4 ? 4 : live;
-    if (cap > (INT64_MAX - 8) / 32) {
-        __mdh_hurl_owned(__mdh_make_string(MDH_DICT_TOO_BIG_MSG));
-        return;
+    int64_t *payload = NULL;
+    if (cap <= (INT64_MAX - 8) / 32) {
+        payload = (int64_t *)__mdh_buf_alloc((size_t)(8 + cap * 32));
     }
-    int64_t *payload = (int64_t *)__mdh_buf_alloc((size_t)(8 + cap * 32));
     if (!payload) {
+        /* Quiet mode (formatting for the Rust runtime) records it instead: the payload
+         * stays as it was, tombstones and all (MDH-BUG-FLU-00184). */
+        if (__mdh_stack_quiet) {
+            __mdh_quiet_oom = 1;
+            return;
+        }
         __mdh_hurl_owned(__mdh_make_string(MDH_DICT_TOO_BIG_MSG));
         return;
     }
@@ -4578,21 +4665,30 @@ static void __mdh_kv_compact(MdhValue v) {
 }
 
 /* The payload for walking its entries: compacted first, so it holds exactly `count` live
-   entries. */
+   entries. NULL when that ran out of memory in quiet mode. */
 static int64_t *__mdh_kv_payload_ptr(MdhValue v) {
     intptr_t *handle = (intptr_t *)(intptr_t)v.data;
     if (!handle) return NULL;
     if (handle[3] != 0) {
         __mdh_kv_compact(v);
+        if (handle[3] != 0) return NULL;
     }
     return (int64_t *)(intptr_t)handle[0];
 }
 
-/* For the Rust runtime, which walks dict payloads itself (JSON). */
-void __mdh_kv_densify(MdhValue v) {
+/* For the Rust runtime, which walks dict payloads itself (JSON): 1 when the payload is
+ * dense, 0 when compacting it ran out of memory. Never raises (MDH-BUG-FLU-00184). */
+int32_t __mdh_kv_densify(MdhValue v) {
+    int32_t ok = 1;
     if ((v.tag == MDH_TAG_DICT || v.tag == MDH_TAG_SET) && v.data != 0) {
+        int quiet = __mdh_stack_quiet;
+        __mdh_stack_quiet = 1;
         (void)__mdh_kv_payload_ptr(v);
+        ok = !__mdh_quiet_oom;
+        __mdh_stack_quiet = quiet;
+        __mdh_quiet_oom = 0;
     }
+    return ok;
 }
 
 /* ========== Reference counting hooks (see gc_stub.c) ========== */
@@ -6002,7 +6098,7 @@ MdhValue __mdh_och(MdhValue msg) {
     const char *prefix = "Och! ";
     size_t plen = strlen(prefix);
     size_t mlen = strlen(m);
-    char *out = (char *)__mdh_obj_alloc(MDH_KIND_STRING, plen + mlen + 1);
+    char *out = __mdh_alloc_text(0, plen + mlen);
     memcpy(out, prefix, plen);
     memcpy(out + plen, m, mlen);
     out[plen + mlen] = '\0';
@@ -6016,7 +6112,7 @@ MdhValue __mdh_help_ma_boab(MdhValue msg) {
     const char *prefix = "Help ma boab! ";
     size_t plen = strlen(prefix);
     size_t mlen = strlen(m);
-    char *out = (char *)__mdh_obj_alloc(MDH_KIND_STRING, plen + mlen + 1);
+    char *out = __mdh_alloc_text(0, plen + mlen);
     memcpy(out, prefix, plen);
     memcpy(out + plen, m, mlen);
     out[plen + mlen] = '\0';
@@ -6366,7 +6462,7 @@ MdhValue __mdh_title_case(MdhValue str) {
     if (!s || *s == '\0') return __mdh_retained(str);
 
     int64_t len = strlen(s);
-    char *buf = (char *)__mdh_obj_alloc(MDH_KIND_STRING, len + 1);
+    char *buf = __mdh_alloc_text(0, len);
 
     bool new_word = true;
     for (int64_t i = 0; i < len; i++) {
@@ -6589,7 +6685,7 @@ static MdhValue __mdh_utf8_string_from_codepoint(uint32_t code) {
         len = 4;
     }
 
-    char *out = (char *)__mdh_obj_alloc(MDH_KIND_STRING, len + 1);
+    char *out = __mdh_alloc_text(0, len);
     memcpy(out, tmp, len);
     out[len] = '\0';
     return __mdh_string_from_buf(out);
@@ -6774,7 +6870,7 @@ MdhValue __mdh_substring(MdhValue str, MdhValue start_val, MdhValue end_val) {
     end_ptr = p;
 
     size_t out_len = (size_t)(end_ptr - start_ptr);
-    char *out = (char *)__mdh_obj_alloc(MDH_KIND_STRING, out_len + 1);
+    char *out = __mdh_alloc_text(0, out_len);
     memcpy(out, start_ptr, out_len);
     out[out_len] = '\0';
     return __mdh_string_from_buf(out);
@@ -7110,7 +7206,7 @@ MdhValue __mdh_replace_first(MdhValue str, MdhValue old_sub, MdhValue new_sub) {
     /* Rust's String::replacen inserts at the start for empty patterns (count=1). */
     if (old_len == 0) {
         size_t result_len = s_len + new_len;
-        char *buf = (char *)__mdh_obj_alloc(MDH_KIND_STRING, result_len + 1);
+        char *buf = __mdh_alloc_text(0, result_len);
         memcpy(buf, new_s, new_len);
         memcpy(buf + new_len, s, s_len);
         buf[result_len] = '\0';
@@ -7124,7 +7220,7 @@ MdhValue __mdh_replace_first(MdhValue str, MdhValue old_sub, MdhValue new_sub) {
 
     size_t idx = (size_t)(pos - s);
     size_t result_len = s_len - old_len + new_len;
-    char *buf = (char *)__mdh_obj_alloc(MDH_KIND_STRING, result_len + 1);
+    char *buf = __mdh_alloc_text(0, result_len);
 
     memcpy(buf, s, idx);
     memcpy(buf + idx, new_s, new_len);
@@ -7927,7 +8023,7 @@ MdhValue __mdh_wheesht_aw(MdhValue str) {
     }
     const char *s = __mdh_get_string(str);
     size_t len = strlen(s);
-    char *result = (char *)__mdh_obj_alloc(MDH_KIND_STRING, len + 1);
+    char *result = __mdh_alloc_text(0, len);
     size_t out_len = 0;
 
     bool in_space = true; /* treat leading whitespace as "in space" */
@@ -7954,7 +8050,7 @@ MdhValue __mdh_bonnie(MdhValue val) {
     size_t plen = strlen(prefix);
     size_t mlen = strlen(m);
     size_t slen = strlen(suffix);
-    char *out = (char *)__mdh_obj_alloc(MDH_KIND_STRING, plen + mlen + slen + 1);
+    char *out = __mdh_alloc_text(0, plen + mlen + slen);
     memcpy(out, prefix, plen);
     memcpy(out + plen, m, mlen);
     memcpy(out + plen + mlen, suffix, slen);
@@ -8163,7 +8259,7 @@ MdhValue __mdh_env_all(void) {
             continue;
         }
         size_t klen = (size_t)(eq - entry);
-        char *kbuf = (char *)__mdh_obj_alloc(MDH_KIND_STRING, klen + 1);
+        char *kbuf = __mdh_alloc_text(0, klen);
         memcpy(kbuf, entry, klen);
         kbuf[klen] = '\0';
 
@@ -8196,7 +8292,7 @@ MdhValue __mdh_path_join(MdhValue a, MdhValue b) {
     }
 
     int need_slash = pa[la - 1] != '/';
-    char *out = (char *)__mdh_obj_alloc(MDH_KIND_STRING, la + (size_t)need_slash + lb + 1);
+    char *out = __mdh_alloc_text(0, la + (size_t)need_slash + lb);
 
     memcpy(out, pa, la);
     size_t pos = la;
@@ -8516,11 +8612,16 @@ MdhValue __mdh_date_format(MdhValue timestamp_secs, MdhValue format) {
 
     const char *fmt = __mdh_get_string(format);
     size_t cap = 128;
-    char *buf = (char *)__mdh_obj_alloc(MDH_KIND_STRING, cap);
+    char *buf = __mdh_alloc_text(0, cap - 1);
     size_t out = strftime(buf, cap, fmt, &tm_val);
     while (out == 0 && cap < 8192) {
         cap *= 2;
-        buf = (char *)__mdh_obj_realloc(buf, cap);
+        char *grown = (char *)__mdh_obj_realloc(buf, cap);
+        if (!grown) {
+            __mdh_hurl_owned(__mdh_make_string(MDH_STRING_TOO_BIG_MSG));
+            return __mdh_make_nil();
+        }
+        buf = grown;
         out = strftime(buf, cap, fmt, &tm_val);
     }
     if (out == 0) {
@@ -8720,7 +8821,7 @@ static MdhValue __mdh_regex_match_dict(const char *text, int64_t start, int64_t 
     MdhValue dict = __mdh_empty_dict();
 
     size_t len = (size_t)(end - start);
-    char *m = (char *)__mdh_obj_alloc(MDH_KIND_STRING, len + 1);
+    char *m = __mdh_alloc_text(0, len);
     memcpy(m, text + start, len);
     m[len] = '\0';
 
@@ -8901,7 +9002,7 @@ MdhValue __mdh_regex_split(MdhValue text, MdhValue pattern) {
         size_t match_end = offset + (size_t)m.rm_eo;
 
         size_t seg_len = match_start - offset;
-        char *seg = (char *)__mdh_obj_alloc(MDH_KIND_STRING, seg_len + 1);
+        char *seg = __mdh_alloc_text(0, seg_len);
         memcpy(seg, s + offset, seg_len);
         seg[seg_len] = '\0';
         __mdh_list_push_owned(result, __mdh_string_from_buf(seg));
@@ -8916,7 +9017,7 @@ MdhValue __mdh_regex_split(MdhValue text, MdhValue pattern) {
     /* trailing segment */
     if (offset <= slen) {
         size_t seg_len = slen - offset;
-        char *seg = (char *)__mdh_obj_alloc(MDH_KIND_STRING, seg_len + 1);
+        char *seg = __mdh_alloc_text(0, seg_len);
         memcpy(seg, s + offset, seg_len);
         seg[seg_len] = '\0';
         __mdh_list_push_owned(result, __mdh_string_from_buf(seg));
@@ -9720,7 +9821,7 @@ MdhValue __mdh_window(MdhValue str, MdhValue size) {
     int64_t out_len = len - n + 1;
     MdhValue out = __mdh_make_list((int32_t)out_len);
     for (int64_t i = 0; i <= len - n; i++) {
-        char *buf = (char *)__mdh_obj_alloc(MDH_KIND_STRING, (size_t)n + 1);
+        char *buf = __mdh_alloc_text(0, (size_t)n);
         memcpy(buf, s + i, (size_t)n);
         buf[n] = '\0';
         __mdh_list_push_owned(out, __mdh_string_from_buf(buf));
@@ -9816,7 +9917,7 @@ MdhValue __mdh_skelp(MdhValue str, MdhValue size) {
         p += consumed;
 
         if (seg_chars == n) {
-            char *buf = (char *)__mdh_obj_alloc(MDH_KIND_STRING, seg_bytes_len + 1);
+            char *buf = __mdh_alloc_text(0, seg_bytes_len);
             memcpy(buf, seg_start, seg_bytes_len);
             buf[seg_bytes_len] = '\0';
             __mdh_list_push_owned(out, __mdh_string_from_buf(buf));
@@ -9826,7 +9927,7 @@ MdhValue __mdh_skelp(MdhValue str, MdhValue size) {
         }
     }
     if (seg_bytes_len > 0) {
-        char *buf = (char *)__mdh_obj_alloc(MDH_KIND_STRING, seg_bytes_len + 1);
+        char *buf = __mdh_alloc_text(0, seg_bytes_len);
         memcpy(buf, seg_start, seg_bytes_len);
         buf[seg_bytes_len] = '\0';
         __mdh_list_push_owned(out, __mdh_string_from_buf(buf));
@@ -9894,7 +9995,7 @@ MdhValue __mdh_strip_left(MdhValue str, MdhValue chars) {
     }
 
     size_t out_len = strlen((const char *)p);
-    char *buf = (char *)__mdh_obj_alloc(MDH_KIND_STRING, out_len + 1);
+    char *buf = __mdh_alloc_text(0, out_len);
     memcpy(buf, p, out_len + 1);
     return __mdh_string_from_buf(buf);
 }
@@ -9980,7 +10081,7 @@ MdhValue __mdh_strip_right(MdhValue str, MdhValue chars) {
 
     const unsigned char *end_ptr = (end_idx == 0) ? sb : starts[end_idx];
     size_t out_len = (size_t)(end_ptr - sb);
-    char *buf = (char *)__mdh_obj_alloc(MDH_KIND_STRING, out_len + 1);
+    char *buf = __mdh_alloc_text(0, out_len);
     memcpy(buf, sb, out_len);
     buf[out_len] = '\0';
     return __mdh_string_from_buf(buf);
@@ -9994,7 +10095,7 @@ MdhValue __mdh_swapcase(MdhValue str) {
 
     const char *s = __mdh_get_string(str);
     size_t len = strlen(s);
-    char *out = (char *)__mdh_obj_alloc(MDH_KIND_STRING, len + 1);
+    char *out = __mdh_alloc_text(0, len);
     for (size_t i = 0; i < len; i++) {
         unsigned char c = (unsigned char)s[i];
         if (c >= 'A' && c <= 'Z') {
@@ -10115,7 +10216,7 @@ MdhValue __mdh_mutter(MdhValue str) {
     }
     const char *s = __mdh_get_string(str);
     size_t len = strlen(s);
-    char *out = (char *)__mdh_obj_alloc(MDH_KIND_STRING, len + 7);
+    char *out = __mdh_alloc_text(0, len + 6);
     memcpy(out, "...", 3);
     for (size_t i = 0; i < len; i++) {
         unsigned char c = (unsigned char)s[i];
@@ -10180,7 +10281,7 @@ MdhValue __mdh_blooter(MdhValue str) {
     }
 
     size_t byte_len = (size_t)(p - sb);
-    char *out = (char *)__mdh_obj_alloc(MDH_KIND_STRING, byte_len + 1);
+    char *out = __mdh_alloc_text(0, byte_len);
     size_t pos = 0;
     for (int64_t i = 0; i < char_len; i++) {
         memcpy(out + pos, starts[i], lens[i]);
@@ -10261,7 +10362,7 @@ MdhValue __mdh_geggie(MdhValue str) {
         p += consumed;
     }
 
-    char *out = (char *)__mdh_obj_alloc(MDH_KIND_STRING, first_len + last_len + 1);
+    char *out = __mdh_alloc_text(0, first_len + last_len);
     memcpy(out, s, first_len);
     memcpy(out + first_len, last_ptr, last_len);
     out[first_len + last_len] = '\0';
@@ -10274,7 +10375,7 @@ MdhValue __mdh_jings(MdhValue msg) {
     const char *prefix = "Jings! ";
     size_t plen = strlen(prefix);
     size_t mlen = strlen(m);
-    char *out = (char *)__mdh_obj_alloc(MDH_KIND_STRING, plen + mlen + 1);
+    char *out = __mdh_alloc_text(0, plen + mlen);
     memcpy(out, prefix, plen);
     memcpy(out + plen, m, mlen);
     out[plen + mlen] = '\0';
@@ -10288,7 +10389,7 @@ MdhValue __mdh_crivvens(MdhValue msg) {
     const char *prefix = "Crivvens! ";
     size_t plen = strlen(prefix);
     size_t mlen = strlen(m);
-    char *out = (char *)__mdh_obj_alloc(MDH_KIND_STRING, plen + mlen + 1);
+    char *out = __mdh_alloc_text(0, plen + mlen);
     memcpy(out, prefix, plen);
     memcpy(out + plen, m, mlen);
     out[plen + mlen] = '\0';
@@ -10548,7 +10649,7 @@ MdhValue __mdh_banter(MdhValue a, MdhValue b) {
 
     size_t n1 = strlen((const char *)s1);
     size_t n2 = strlen((const char *)s2);
-    char *out = (char *)__mdh_obj_alloc(MDH_KIND_STRING, n1 + n2 + 1);
+    char *out = __mdh_alloc_text(0, n1 + n2);
     size_t pos = 0;
 
     const unsigned char *p1 = s1;
@@ -10593,7 +10694,7 @@ MdhValue __mdh_capitalize(MdhValue str) {
     if (len == 0) {
         return __mdh_make_string("");
     }
-    char *out = (char *)__mdh_obj_alloc(MDH_KIND_STRING, len + 1);
+    char *out = __mdh_alloc_text(0, len);
     memcpy(out, s, len + 1);
     unsigned char c = (unsigned char)out[0];
     if (c >= 'a' && c <= 'z') {
@@ -10729,7 +10830,7 @@ MdhValue __mdh_scunner_check(MdhValue val, MdhValue expected_type) {
     size_t elen = strlen(expected);
     size_t mlen = strlen(mid);
     size_t alen = strlen(actual);
-    char *out = (char *)__mdh_obj_alloc(MDH_KIND_STRING, plen + elen + mlen + alen + 1);
+    char *out = __mdh_alloc_text(0, plen + elen + mlen + alen);
     memcpy(out, prefix, plen);
     memcpy(out + plen, expected, elen);
     memcpy(out + plen + elen, mid, mlen);
@@ -10816,7 +10917,7 @@ MdhValue __mdh_clype(MdhValue val) {
 
     size_t tlen = strlen(t);
     size_t ilen = strlen(info);
-    char *out = (char *)__mdh_obj_alloc(MDH_KIND_STRING, tlen + ilen + 5);
+    char *out = __mdh_alloc_text(0, tlen + ilen + 4);
     out[0] = '[';
     memcpy(out + 1, t, tlen);
     out[1 + tlen] = ']';
@@ -11180,7 +11281,7 @@ MdhValue __mdh_blether_format(MdhValue template, MdhValue dict) {
         MdhValue key_s = __mdh_to_string(key);
         const char *k = __mdh_get_string(key_s);
         size_t klen = strlen(k);
-        char *ph = (char *)__mdh_obj_alloc(MDH_KIND_STRING, klen + 3);
+        char *ph = __mdh_alloc_text(0, klen + 2);
         ph[0] = '{';
         memcpy(ph + 1, k, klen);
         ph[1 + klen] = '}';
@@ -11346,17 +11447,11 @@ static void __mdh_stack_overflow_raise(void) {
     __mdh_hurl_owned(__mdh_stack_overflow_message());
 }
 
-/* Set while __mdh_to_string_checked formats for the Rust runtime: running out of stack
- * then marks __mdh_stack_ran_low instead of raising, since a raise would longjmp across
- * Rust frames and skip their destructors. */
-static __thread int __mdh_stack_quiet = 0;
-static __thread int __mdh_stack_ran_low = 0;
-
 /* Called at each level of a recursive runtime traversal: raise the stack error from
  * here, in normal code, while there is still room to do so. In quiet mode it reports
- * instead: 1 means stop, the traversal is abandoned. */
+ * instead: 1 means stop, the traversal is abandoned (also once memory has run out). */
 static int __mdh_stack_check(void) {
-    if (__mdh_stack_ran_low) {
+    if (__mdh_stack_ran_low || __mdh_quiet_oom) {
         return 1;
     }
 #if defined(__GNUC__) || defined(__clang__)
@@ -11373,22 +11468,25 @@ static int __mdh_stack_check(void) {
 }
 
 /* __mdh_to_string for the Rust runtime, which must not be longjmp'd through: 1 with the
- * text (owned) in *out, or 0 with nil when the value nests too deep for the stack left
- * (the caller then reports __mdh_stack_overflow_message as its error). */
+ * text (owned) in *out. Otherwise nil in *out, and 0 when the value nests too deep for
+ * the stack left (the caller reports __mdh_stack_overflow_message as its error) or -1
+ * when memory ran out (the caller reports MDH_STRING_TOO_BIG_MSG's text). Nothing the
+ * formatter does raises in quiet mode, so the restore below always runs. */
 int32_t __mdh_to_string_checked(MdhValue value, MdhValue *out) {
     int quiet = __mdh_stack_quiet;
     __mdh_stack_quiet = 1;
-    /* Nothing here may longjmp out of __mdh_to_string: that would skip the restore
-     * below. The only such exit today is the crash on an unchecked NULL from the string
-     * buffer's allocation, logged as a separate bug. */
     MdhValue text = __mdh_to_string(value);
     int low = __mdh_stack_ran_low;
+    int oom = __mdh_quiet_oom;
     __mdh_stack_quiet = quiet;
     __mdh_stack_ran_low = 0;
-    if (low) {
-        __mdh_release(text);
+    __mdh_quiet_oom = 0;
+    if (low || oom) {
+        if (text.data != 0) {
+            __mdh_release(text);
+        }
         *out = __mdh_make_nil();
-        return 0;
+        return low ? 0 : -1;
     }
     *out = text;
     return 1;

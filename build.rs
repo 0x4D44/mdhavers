@@ -76,12 +76,17 @@ fn main() {
 
     build.compile("mdh_runtime");
 
-    // Compile the GC stub
-    cc::Build::new()
+    // Compile the GC stub. Debug builds get the test-only allocation-failure knob
+    // (MDH_TEST_ALLOC_FAIL_OVER, see runtime/gc_stub.c); release builds never do.
+    let mut gc_build = cc::Build::new();
+    gc_build
         .file("runtime/gc_stub.c")
         .opt_level(2)
-        .warnings(false)
-        .compile("gc_stub");
+        .warnings(false);
+    if env::var("PROFILE").as_deref() == Ok("debug") {
+        gc_build.define("MDH_ALLOC_FAULTS", None);
+    }
+    gc_build.compile("gc_stub");
 
     // cc names its object files `<hash>-<stem>.o`, so embed the archives it
     // produces instead. The runtime archive also carries the platform layer.

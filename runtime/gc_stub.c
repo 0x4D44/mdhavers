@@ -65,6 +65,25 @@ int64_t __mdh_rc_live(uint32_t kind) {
 
 /* ========== Allocation ========== */
 
+#ifdef MDH_ALLOC_FAULTS
+/* Test-only, compiled into debug builds of mdhavers (build.rs) and never into release:
+ * MDH_TEST_ALLOC_FAIL_OVER=N at run time makes every object allocation or reallocation
+ * of N bytes or more fail, to exercise the out-of-memory paths (MDH-BUG-FLU-00184). */
+static size_t __mdh_alloc_fail_over(void) {
+    static int read = 0;
+    static size_t limit = 0;
+    if (!read) {
+        const char *s = getenv("MDH_TEST_ALLOC_FAIL_OVER");
+        limit = s ? (size_t)strtoull(s, NULL, 10) : 0;
+        read = 1;
+    }
+    return limit;
+}
+#define MDH_ALLOC_FAULT(size) (__mdh_alloc_fail_over() != 0 && (size) >= __mdh_alloc_fail_over())
+#else
+#define MDH_ALLOC_FAULT(size) 0
+#endif
+
 static MdhObjHeader *__mdh_obj_header(const void *payload) {
     return (MdhObjHeader *)((char *)payload - sizeof(MdhObjHeader));
 }
@@ -135,6 +154,7 @@ static inline void __mdh_obj_block_free(MdhObjHeader *h) {
 }
 
 void *__mdh_obj_alloc(uint32_t kind, size_t size) {
+    if (MDH_ALLOC_FAULT(size)) return NULL;
     /* Counting off (__mdh_rc_kinds is fixed before main allocates anything): nothing reads
      * a heap object's header, so it gets none, as before reference counting existed. */
     if (__mdh_rc_kinds == 0) {
@@ -212,6 +232,7 @@ void __mdh_obj_immortal(void *obj) {
 
 void *__mdh_obj_realloc(void *obj, size_t size) {
     if (!obj) return __mdh_obj_alloc(MDH_KIND_STRING, size);
+    if (MDH_ALLOC_FAULT(size)) return NULL;
     if (__mdh_rc_kinds == 0) return realloc(obj, size); /* headerless, see __mdh_obj_alloc */
     if (size > SIZE_MAX - sizeof(MdhObjHeader)) return NULL;
     MdhObjHeader *h = __mdh_obj_header(obj);
