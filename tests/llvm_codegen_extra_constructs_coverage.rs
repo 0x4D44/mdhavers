@@ -617,44 +617,42 @@ fn llvm_codegen_inclusive_range_for_loop_ast_path_for_coverage() {
     assert!(!ir.is_empty());
 }
 
-#[test]
-fn llvm_codegen_covers_haud_yer_wheesht_builtin_via_ast_for_coverage() {
+// MDH-BUG-FLU-00177: `haud_yer_wheesht` is the `continue` keyword alias, not a builtin, so a
+// hand-built call to it takes the ordinary unknown-function path.
+fn haud_yer_wheesht_call(arguments: Vec<Expr>) -> Program {
     let span = Span::new(1, 1);
     let call = Expr::Call {
         callee: Box::new(Expr::Variable {
             name: "haud_yer_wheesht".to_string(),
             span,
         }),
-        arguments: vec![],
+        arguments,
         span,
     };
-    let program = Program::new(vec![Stmt::Print { value: call, span }]);
-    let ir = LLVMCompiler::new()
-        .compile_to_ir(&program)
-        .expect("compile");
-    assert!(!ir.is_empty());
+    Program::new(vec![Stmt::Print { value: call, span }])
 }
 
 #[test]
-fn llvm_codegen_rejects_haud_yer_wheesht_with_args_via_ast_for_coverage() {
+fn llvm_codegen_haud_yer_wheesht_is_no_longer_a_builtin_via_ast_for_coverage() {
+    let err = LLVMCompiler::new()
+        .compile_to_ir(&haud_yer_wheesht_call(vec![]))
+        .expect_err("haud_yer_wheesht is not a builtin");
+    let s = format!("{err:?}");
+    assert!(s.contains("haud_yer_wheesht"), "{s}");
+}
+
+#[test]
+fn llvm_codegen_haud_yer_wheesht_with_args_is_no_longer_a_builtin_via_ast_for_coverage() {
     let span = Span::new(1, 1);
-    let call = Expr::Call {
-        callee: Box::new(Expr::Variable {
-            name: "haud_yer_wheesht".to_string(),
-            span,
-        }),
-        arguments: vec![Expr::Literal {
+    let err = LLVMCompiler::new()
+        .compile_to_ir(&haud_yer_wheesht_call(vec![Expr::Literal {
             value: Literal::Integer(1),
             span,
-        }],
-        span,
-    };
-    let program = Program::new(vec![Stmt::Expression { expr: call, span }]);
-    let err = LLVMCompiler::new()
-        .compile_to_ir(&program)
-        .expect_err("expected compile error");
+        }]))
+        .expect_err("haud_yer_wheesht is not a builtin");
     let s = format!("{err:?}");
-    assert!(!s.is_empty());
+    assert!(s.contains("haud_yer_wheesht"), "{s}");
+    assert!(!s.contains("expects 0 arguments"), "{s}");
 }
 
 #[test]

@@ -19383,14 +19383,6 @@ impl<'ctx> CodeGen<'ctx> {
                         "crivvens returned void",
                     );
                 }
-                "haud_yer_wheesht" => {
-                    if !args.is_empty() {
-                        return Err(HaversError::CompileError(
-                            "haud_yer_wheesht expects 0 arguments".to_string(),
-                        ));
-                    }
-                    return Ok(self.compile_string_literal(""));
-                }
                 "set_crash_handling" => {
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
