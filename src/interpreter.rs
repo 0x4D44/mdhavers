@@ -11036,10 +11036,15 @@ impl Interpreter {
                     if self.pattern_matches(&arm.pattern, &val)? {
                         self.trace_with(|| format!("[line {}] matched arm {}", span.line, i + 1));
                         // Bind pattern variables if needed
+                        // The name belongs to the arm alone (MDH-BUG-FLU-00178): it must
+                        // not overwrite a variable of the same name outside the match.
                         if let Pattern::Identifier(name) = &arm.pattern {
-                            self.environment
-                                .borrow_mut()
-                                .define(name.clone(), val.clone());
+                            let arm_env = Rc::new(RefCell::new(Environment::with_enclosing(
+                                self.environment.clone(),
+                            )));
+                            arm_env.borrow_mut().define(name.clone(), val.clone());
+                            let _env_guard = EnvSwapGuard::new(self, arm_env);
+                            return self.execute_stmt_with_control(&arm.body);
                         }
                         return self.execute_stmt_with_control(&arm.body);
                     }

@@ -37404,14 +37404,39 @@ impl<'ctx> CodeGen<'ctx> {
             self.builder.position_at_end(body_block);
 
             // Bind pattern variables if needed
+            // The name belongs to this arm only (MDH-BUG-FLU-00178): keep what it meant
+            // before so the arm's end can put it back.
+            let mut arm_saved = None;
             if let Pattern::Identifier(name) = &arm.pattern {
+                arm_saved = Some((
+                    name.clone(),
+                    self.save_name_state(name),
+                    self.globals.get(name).copied(),
+                ));
+                // Nothing the outer binding's slot knew applies to the new one.
+                self.int_shadows.remove(name);
+                self.list_ptr_shadows.remove(name);
+                self.string_len_shadows.remove(name);
+                self.string_cap_shadows.remove(name);
+                self.variable_class_types.remove(name);
+                self.var_types.insert(name.clone(), VarType::Unknown);
+                self.boxed_vars.remove(name);
+                self.unstable_vars.remove(name);
+                self.globals.remove(name);
                 let alloca = self.create_entry_block_alloca(name);
                 self.store_slot(alloca, match_val);
                 self.variables.insert(name.clone(), alloca);
             }
 
             // Compile body
-            self.compile_stmt(&arm.body)?;
+            let body_result = self.compile_stmt(&arm.body);
+            if let Some((name, saved, global)) = arm_saved {
+                self.restore_name_state(&name, saved);
+                if let Some(g) = global {
+                    self.globals.insert(name, g);
+                }
+            }
+            body_result?;
 
             // Jump to end if block doesn't have a terminator
             if self
