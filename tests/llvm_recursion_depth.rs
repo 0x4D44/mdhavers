@@ -269,3 +269,113 @@ fn a_function_with_a_frame_bigger_than_the_tripwire_raises_the_error() {
         vec!["big caught", "after"]
     );
 }
+
+/// Preloaded, so it runs before main: a SIGSEGV/SIGBUS action chosen by PRIOR_MODE (f: an
+/// SA_SIGINFO handler, i: SIG_IGN, d: SIG_DFL), and an exit hook that, once the runtime
+/// has put its own handler in front of it, faults (f) or raises SIGSEGV.
+#[cfg(unix)]
+const PRIOR_HANDLER_C: &str = r#"
+#include <signal.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+static char mode = 'f';
+static volatile int calls = 0;
+static void prior(int sig, siginfo_t *info, void *ctx) {
+    (void)sig; (void)ctx;
+    calls++;
+    char msg[] = "prior N\n";
+    msg[6] = (char)('0' + calls % 10);
+    write(2, msg, sizeof msg - 1);
+    _exit(info->si_code > 0 ? 42 : 43);
+}
+static void fault_at_exit(void) {
+    fflush(stdout);
+    if (mode == 'f') {
+        *(volatile int *)(uintptr_t)8 = 1;
+    }
+    raise(SIGSEGV);
+    write(2, "survived\n", 9);
+    _exit(7);
+}
+__attribute__((constructor)) static void setup(void) {
+    const char *m = getenv("PRIOR_MODE");
+    if (m) mode = m[0];
+    struct sigaction sa;
+    memset(&sa, 0, sizeof sa);
+    sigemptyset(&sa.sa_mask);
+    if (mode == 'i') {
+        sa.sa_handler = SIG_IGN;
+    } else if (mode == 'd') {
+        sa.sa_handler = SIG_DFL;
+    } else {
+        sa.sa_sigaction = prior;
+        sa.sa_flags = SA_SIGINFO;
+    }
+    sigaction(SIGSEGV, &sa, NULL);
+    sigaction(SIGBUS, &sa, NULL);
+    atexit(fault_at_exit);
+}
+"#;
+
+#[cfg(unix)]
+#[test]
+fn signals_that_are_not_a_stack_overflow_get_the_prior_action() {
+    use std::os::unix::process::ExitStatusExt;
+
+    let dir = tempdir().expect("temp dir");
+    let c_path = dir.path().join("prior.c");
+    let lib_path = dir.path().join("libprior.so");
+    std::fs::write(&c_path, PRIOR_HANDLER_C).expect("write C");
+    let cc = Command::new("cc")
+        .args(["-shared", "-fPIC", "-o"])
+        .arg(&lib_path)
+        .arg(&c_path)
+        .status()
+        .expect("run cc");
+    assert!(cc.success());
+    let program = parse("blether \"main done\"\n").expect("parse");
+    let exe_path = dir.path().join("prior_exe");
+    LLVMCompiler::new()
+        .compile_to_native(&program, &exe_path, 2)
+        .expect("compile to native");
+    let preload = if cfg!(target_os = "macos") {
+        "DYLD_INSERT_LIBRARIES"
+    } else {
+        "LD_PRELOAD"
+    };
+    let run = |mode: &str| {
+        let out = Command::new(&exe_path)
+            .env(preload, &lib_path)
+            .env("PRIOR_MODE", mode)
+            .stdin(Stdio::null())
+            .output()
+            .expect("run executable");
+        let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+        assert_eq!(String::from_utf8_lossy(&out.stdout), "main done\n");
+        (out.status, stderr)
+    };
+
+    // A real fault goes to a prior SA_SIGINFO handler, with its siginfo.
+    let (status, stderr) = run("f");
+    assert_eq!(status.code(), Some(42), "{stderr}");
+    assert_eq!(stderr, "prior 1\n");
+
+    // A SIGSEGV sent under a prior SIG_IGN stays ignored. macOS gives a sent
+    // SIGSEGV a fault's siginfo, so there it takes the default action instead.
+    let (status, stderr) = run("i");
+    if cfg!(target_os = "macos") {
+        assert_eq!(status.signal(), Some(11), "{status:?} {stderr}");
+        assert_eq!(stderr, "");
+    } else {
+        assert_eq!(status.code(), Some(7), "{status:?} {stderr}");
+        assert_eq!(stderr, "survived\n");
+    }
+
+    // Sent under a prior SIG_DFL, it takes the default action rather than vanishing.
+    let (status, stderr) = run("d");
+    assert_eq!(status.signal(), Some(11), "{status:?} {stderr}");
+    assert_eq!(stderr, "");
+}

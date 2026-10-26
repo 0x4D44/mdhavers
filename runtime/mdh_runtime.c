@@ -11332,6 +11332,9 @@ static int __mdh_stack_check(void) {
 int32_t __mdh_to_string_checked(MdhValue value, MdhValue *out) {
     int quiet = __mdh_stack_quiet;
     __mdh_stack_quiet = 1;
+    /* Nothing here may longjmp out of __mdh_to_string: that would skip the restore
+     * below. The only such exit today is the crash on an unchecked NULL from the string
+     * buffer's allocation, logged as a separate bug. */
     MdhValue text = __mdh_to_string(value);
     int low = __mdh_stack_ran_low;
     __mdh_stack_quiet = quiet;
@@ -11369,42 +11372,79 @@ static __thread stack_t __mdh_prev_alt_stack;
 static struct sigaction __mdh_prev_segv;
 static struct sigaction __mdh_prev_bus;
 
-/* A fault that is not a stack overflow of ours: hand it to the previous handler, or let
- * it fault again under the default action. */
+/* Set by the one delivery a one-shot (SA_RESETHAND) previous handler gets; the saved
+ * actions themselves never change once installed. (macOS does not report SA_RESETHAND
+ * in the action sigaction hands back, so there a one-shot handler is called each time.) */
+static int __mdh_prev_segv_used = 0;
+static int __mdh_prev_bus_used = 0;
+
+/* 1 when `info` describes a signal someone sent (kill, raise, sigqueue), not a fault.
+ * macOS gives a sent SIGSEGV the same siginfo as a fault (si_code 2, no pid), so there
+ * a sent one reads as a fault: under a previous SIG_IGN it then takes the default
+ * action instead of being ignored. */
+static int __mdh_signal_was_sent(const siginfo_t *info) {
+    if (info->si_code <= 0 || info->si_code == SI_USER || info->si_code == SI_QUEUE) {
+        return 1;
+    }
+#ifdef SI_TKILL
+    if (info->si_code == SI_TKILL) {
+        return 1;
+    }
+#endif
+    return 0;
+}
+
+/* A signal that is not a stack overflow of ours: hand it to the previous handler, or
+ * give it the action the previous disposition would have. */
 static void __mdh_stack_chain(int sig, siginfo_t *info, void *ctx) {
-    struct sigaction *saved = sig == SIGSEGV ? &__mdh_prev_segv : &__mdh_prev_bus;
-    struct sigaction prev = *saved;
-    if (prev.sa_handler == SIG_DFL || prev.sa_handler == SIG_IGN) {
-        /* Default (or ignored, which would only spin on the same fault): put the default
-         * action back; returning re-runs the faulting instruction under it. */
-        signal(sig, SIG_DFL);
+    const struct sigaction *prev = sig == SIGSEGV ? &__mdh_prev_segv : &__mdh_prev_bus;
+    int *used = sig == SIGSEGV ? &__mdh_prev_segv_used : &__mdh_prev_bus_used;
+    int sent = __mdh_signal_was_sent(info);
+    int dfl = prev->sa_handler == SIG_DFL;
+    if (prev->sa_handler == SIG_IGN) {
+        if (sent) {
+            return;
+        }
+        dfl = 1; /* ignoring a real fault would only spin on it */
+    } else if (!dfl && (prev->sa_flags & SA_RESETHAND)) {
+        /* One-shot: the first delivery claims it, any other gets the default action. */
+        int expected = 0;
+        dfl = !__atomic_compare_exchange_n(used, &expected, 1, 0, __ATOMIC_SEQ_CST,
+                                           __ATOMIC_SEQ_CST);
+    }
+    if (dfl) {
+        /* Put the default action back and send the signal again: it stays pending until
+         * we return, then takes that action, so a sent signal is not lost either. */
+        struct sigaction sa;
+        memset(&sa, 0, sizeof(sa));
+        sa.sa_handler = SIG_DFL;
+        sigemptyset(&sa.sa_mask);
+        sigaction(sig, &sa, NULL);
+        raise(sig);
         return;
     }
-    /* Deliver as the kernel would have: a one-shot handler is reset first, and the
-     * handler runs with its own mask added (and its signal unblocked if it asked). */
-    if (prev.sa_flags & SA_RESETHAND) {
-        memset(saved, 0, sizeof(*saved));
-        saved->sa_handler = SIG_DFL;
-    }
+    /* Run the handler as the kernel would have: with its own mask added, and its signal
+     * unblocked if it asked for that and does not block it itself. */
     sigset_t old;
-    pthread_sigmask(SIG_BLOCK, &prev.sa_mask, &old);
-    if (prev.sa_flags & SA_NODEFER) {
+    pthread_sigmask(SIG_BLOCK, &prev->sa_mask, &old);
+    if ((prev->sa_flags & SA_NODEFER) && !sigismember(&prev->sa_mask, sig)) {
         sigset_t self;
         sigemptyset(&self);
         sigaddset(&self, sig);
         pthread_sigmask(SIG_UNBLOCK, &self, NULL);
     }
-    if (prev.sa_flags & SA_SIGINFO) {
-        prev.sa_sigaction(sig, info, ctx);
+    if (prev->sa_flags & SA_SIGINFO) {
+        prev->sa_sigaction(sig, info, ctx);
     } else {
-        prev.sa_handler(sig);
+        prev->sa_handler(sig);
     }
     pthread_sigmask(SIG_SETMASK, &old, NULL);
 }
 
 static void __mdh_stack_fault(int sig, siginfo_t *info, void *ctx) {
     uintptr_t addr = (uintptr_t)info->si_addr;
-    if (__mdh_trip_hi == 0 || addr < __mdh_trip_lo || addr >= __mdh_trip_hi) {
+    if (__mdh_trip_hi == 0 || addr < __mdh_trip_lo || addr >= __mdh_trip_hi ||
+        __mdh_signal_was_sent(info)) {
         __mdh_stack_chain(sig, info, ctx);
         return;
     }
@@ -11505,9 +11545,11 @@ static void __mdh_stack_guard_fini(void) {
     }
     __mdh_stack_limit = 0;
     if (__mdh_alt_stack != NULL) {
-        /* Back to the thread's own alternate stack, or to none. */
-        sigaltstack(&__mdh_prev_alt_stack, NULL);
-        munmap(__mdh_alt_stack, MDH_ALT_STACK_SIZE);
+        /* Back to the thread's own alternate stack, or to none. Should that fail, ours
+         * stays registered, so it is leaked rather than unmapped under it. */
+        if (sigaltstack(&__mdh_prev_alt_stack, NULL) == 0) {
+            munmap(__mdh_alt_stack, MDH_ALT_STACK_SIZE);
+        }
         __mdh_alt_stack = NULL;
     }
 }
