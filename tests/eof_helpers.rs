@@ -100,6 +100,15 @@ fn assert_ends_cleanly(label: &str, run: (Option<i32>, String, String)) {
         1,
         "{label}: should say cheerio exactly once\n{out}"
     );
+    // The program goes on past the helper (its own closing lines), rather than exiting at it.
+    // examples/games/adventure.braw has nothing to say once its loop ends.
+    if !label.ends_with("games/adventure.braw") {
+        let after = out.split(ENDED).nth(1).unwrap_or("");
+        assert!(
+            !after.trim().is_empty(),
+            "{label}: nothing printed after the input ended\n{out}"
+        );
+    }
 }
 
 #[test]
