@@ -2,6 +2,8 @@
 //! interpreter (MDH-BUG-FLU-00170). The WASM host runs the interpreter's native builtins, which
 //! want a list, so the host converts the string first.
 
+#![cfg(feature = "wasm_runner")]
+
 use mdhavers::wasm_compiler::compile_to_wat;
 use mdhavers::wasm_runner::run_wat_captured;
 
