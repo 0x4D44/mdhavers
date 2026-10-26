@@ -144,7 +144,7 @@ MdhValue __mdh_dict_set_owned(MdhValue dict, MdhValue key, MdhValue value);
 static void __mdh_hurl_owned(MdhValue msg);
 static void __mdh_stack_guard_init(void);
 static void __mdh_stack_guard_fini(void);
-static void __mdh_stack_check(void);
+static int __mdh_stack_check(void);
 
 /* `v` retained: a borrowed value handed to an `_owned` helper. */
 static MdhValue __mdh_retained(MdhValue v) {
@@ -2054,7 +2054,9 @@ static void __mdh_value_to_string_sb(MdhStrBuf *out, MdhValue v) {
     char tmp[MDH_FLOAT_TEXT_MAX];
     /* Nested containers recurse here: stop with the stack error, from normal code,
      * before the stack runs out (MDH-BUG-FLU-00164). */
-    __mdh_stack_check();
+    if (__mdh_stack_check()) {
+        return;
+    }
 
     switch (v.tag) {
         case MDH_TAG_NIL:
@@ -11267,6 +11269,11 @@ static void __mdh_hurl_owned(MdhValue msg) {
 /* Headroom a recursive runtime function keeps above the tripwire at each level. */
 #define MDH_STACK_RUNTIME_MARGIN ((uintptr_t)64 * 1024)
 #define MDH_ALT_STACK_SIZE ((size_t)256 * 1024)
+/* The least alternate stack the fault handler may run on: raising the error formats it
+ * and either unwinds to a hae_a_bash or prints it and exits. Measured at about 4 KiB
+ * (macOS arm64, both ways), so this leaves ample room. A smaller one already in place
+ * is replaced by ours for as long as the thread is armed. */
+#define MDH_ALT_STACK_NEED ((size_t)64 * 1024)
 
 #if defined(__has_feature)
 #if __has_feature(address_sanitizer) || __has_feature(thread_sanitizer)
@@ -11293,15 +11300,49 @@ static void __mdh_stack_overflow_raise(void) {
     __mdh_hurl_owned(__mdh_stack_overflow_message());
 }
 
+/* Set while __mdh_to_string_checked formats for the Rust runtime: running out of stack
+ * then marks __mdh_stack_ran_low instead of raising, since a raise would longjmp across
+ * Rust frames and skip their destructors. */
+static __thread int __mdh_stack_quiet = 0;
+static __thread int __mdh_stack_ran_low = 0;
+
 /* Called at each level of a recursive runtime traversal: raise the stack error from
- * here, in normal code, while there is still room to do so. */
-static void __mdh_stack_check(void) {
+ * here, in normal code, while there is still room to do so. In quiet mode it reports
+ * instead: 1 means stop, the traversal is abandoned. */
+static int __mdh_stack_check(void) {
+    if (__mdh_stack_ran_low) {
+        return 1;
+    }
 #if defined(__GNUC__) || defined(__clang__)
     uintptr_t limit = __mdh_stack_limit;
     if (limit != 0 && (uintptr_t)__builtin_frame_address(0) < limit) {
+        if (__mdh_stack_quiet) {
+            __mdh_stack_ran_low = 1;
+            return 1;
+        }
         __mdh_stack_overflow_raise();
     }
 #endif
+    return 0;
+}
+
+/* __mdh_to_string for the Rust runtime, which must not be longjmp'd through: 1 with the
+ * text (owned) in *out, or 0 with nil when the value nests too deep for the stack left
+ * (the caller then reports __mdh_stack_overflow_message as its error). */
+int32_t __mdh_to_string_checked(MdhValue value, MdhValue *out) {
+    int quiet = __mdh_stack_quiet;
+    __mdh_stack_quiet = 1;
+    MdhValue text = __mdh_to_string(value);
+    int low = __mdh_stack_ran_low;
+    __mdh_stack_quiet = quiet;
+    __mdh_stack_ran_low = 0;
+    if (low) {
+        __mdh_release(text);
+        *out = __mdh_make_nil();
+        return 0;
+    }
+    *out = text;
+    return 1;
 }
 
 /* For the Rust runtime's recursive traversals: 1 when the calling thread is too deep to
@@ -11321,8 +11362,9 @@ int32_t __mdh_stack_low(void) {
 
 static __thread uintptr_t __mdh_trip_lo = 0;
 static __thread uintptr_t __mdh_trip_hi = 0;
-/* Our alternate signal stack, when the thread had none of its own. */
+/* Our alternate signal stack, when the thread had none big enough, and what it had. */
 static __thread void *__mdh_alt_stack = NULL;
+static __thread stack_t __mdh_prev_alt_stack;
 /* The handlers installed before ours: faults that are not ours go to them. */
 static struct sigaction __mdh_prev_segv;
 static struct sigaction __mdh_prev_bus;
@@ -11330,19 +11372,34 @@ static struct sigaction __mdh_prev_bus;
 /* A fault that is not a stack overflow of ours: hand it to the previous handler, or let
  * it fault again under the default action. */
 static void __mdh_stack_chain(int sig, siginfo_t *info, void *ctx) {
-    struct sigaction *prev = sig == SIGSEGV ? &__mdh_prev_segv : &__mdh_prev_bus;
-    if (prev->sa_flags & SA_SIGINFO) {
-        if (prev->sa_sigaction != NULL) {
-            prev->sa_sigaction(sig, info, ctx);
-            return;
-        }
-    } else if (prev->sa_handler != SIG_DFL && prev->sa_handler != SIG_IGN) {
-        prev->sa_handler(sig);
+    struct sigaction *saved = sig == SIGSEGV ? &__mdh_prev_segv : &__mdh_prev_bus;
+    struct sigaction prev = *saved;
+    if (prev.sa_handler == SIG_DFL || prev.sa_handler == SIG_IGN) {
+        /* Default (or ignored, which would only spin on the same fault): put the default
+         * action back; returning re-runs the faulting instruction under it. */
+        signal(sig, SIG_DFL);
         return;
     }
-    /* Default (or ignored, which would only spin on the same fault): put the default
-     * action back; returning re-runs the faulting instruction under it. */
-    signal(sig, SIG_DFL);
+    /* Deliver as the kernel would have: a one-shot handler is reset first, and the
+     * handler runs with its own mask added (and its signal unblocked if it asked). */
+    if (prev.sa_flags & SA_RESETHAND) {
+        memset(saved, 0, sizeof(*saved));
+        saved->sa_handler = SIG_DFL;
+    }
+    sigset_t old;
+    pthread_sigmask(SIG_BLOCK, &prev.sa_mask, &old);
+    if (prev.sa_flags & SA_NODEFER) {
+        sigset_t self;
+        sigemptyset(&self);
+        sigaddset(&self, sig);
+        pthread_sigmask(SIG_UNBLOCK, &self, NULL);
+    }
+    if (prev.sa_flags & SA_SIGINFO) {
+        prev.sa_sigaction(sig, info, ctx);
+    } else {
+        prev.sa_handler(sig);
+    }
+    pthread_sigmask(SIG_SETMASK, &old, NULL);
 }
 
 static void __mdh_stack_fault(int sig, siginfo_t *info, void *ctx) {
@@ -11405,13 +11462,14 @@ static void __mdh_stack_guard_init(void) {
     }
     /* Runtime recursion stops with room to raise the error, tripwire or not. */
     __mdh_stack_limit = trip_hi + MDH_STACK_RUNTIME_MARGIN;
-    /* Keep an alternate stack the thread already has; otherwise give it one. */
+    /* Keep an alternate stack the thread already has if the handler fits on it;
+     * otherwise give it ours. */
     stack_t old;
     memset(&old, 0, sizeof(old));
-    if (sigaltstack(NULL, &old) != 0) {
+    if (sigaltstack(NULL, &old) != 0 || (old.ss_flags & SS_ONSTACK)) {
         return;
     }
-    if (old.ss_flags & SS_DISABLE) {
+    if ((old.ss_flags & SS_DISABLE) || old.ss_size < MDH_ALT_STACK_NEED) {
         void *alt = mmap(NULL, MDH_ALT_STACK_SIZE, PROT_READ | PROT_WRITE,
                          MAP_PRIVATE | MAP_ANON, -1, 0);
         if (alt == MAP_FAILED) {
@@ -11426,6 +11484,7 @@ static void __mdh_stack_guard_init(void) {
             return;
         }
         __mdh_alt_stack = alt;
+        __mdh_prev_alt_stack = old;
     }
     /* The tripwire must really be protected: an unmapped bottom (Linux's main thread
      * grows its stack on demand) gives no fault we could recognise. */
@@ -11446,10 +11505,8 @@ static void __mdh_stack_guard_fini(void) {
     }
     __mdh_stack_limit = 0;
     if (__mdh_alt_stack != NULL) {
-        stack_t ss;
-        memset(&ss, 0, sizeof(ss));
-        ss.ss_flags = SS_DISABLE;
-        sigaltstack(&ss, NULL);
+        /* Back to the thread's own alternate stack, or to none. */
+        sigaltstack(&__mdh_prev_alt_stack, NULL);
         munmap(__mdh_alt_stack, MDH_ALT_STACK_SIZE);
         __mdh_alt_stack = NULL;
     }

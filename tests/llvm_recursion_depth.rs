@@ -164,6 +164,60 @@ blether l
 }
 
 #[test]
+fn json_of_a_too_deeply_nested_key_or_fallback_value_raises_the_error() {
+    // json_stringify (Rust) formats a non-string dict key, or a value JSON has no form
+    // for, with the C formatter: running too deep there comes back to Rust as an error,
+    // not a raise across its frames.
+    let src = r#"ken l = []
+fer i in 0..300000 {
+    l = [l]
+}
+ken d = {}
+d["a"] = "x"
+d[l] = 1
+ken s = empty_creel()
+toss_in(s, l)
+ken small = {}
+small[[1, [2]]] = [empty_creel()]
+blether json_stringify(small)
+fer i in 0..3 {
+    hae_a_bash {
+        blether json_stringify(d)
+    } gin_it_gangs_wrang e {
+        blether "key caught: " + e
+    }
+    hae_a_bash {
+        blether json_stringify({"s": s})
+    } gin_it_gangs_wrang e {
+        blether "value caught: " + e
+    }
+}
+blether json_stringify(small)
+"#;
+    let puggled = |line: usize| {
+        format!(
+            "Stack's fair puggled! Too many nested calls at line {line} - yer recursion's gone radge!"
+        )
+    };
+    let small = r#"{"[1, [2]]": ["creel{}"]}"#.to_string();
+    let mut expected = vec![small.clone()];
+    for _ in 0..3 {
+        expected.push(format!("key caught: {}", puggled(15)));
+        expected.push(format!("value caught: {}", puggled(20)));
+    }
+    expected.push(small);
+    for refcounting in [false, true] {
+        let run = run_native(src, refcounting);
+        assert_eq!(run.code, Some(0), "rc={refcounting}: {}", run.stderr);
+        assert_eq!(
+            run.stdout.lines().collect::<Vec<_>>(),
+            expected,
+            "rc={refcounting}"
+        );
+    }
+}
+
+#[test]
 fn recursion_that_calls_the_runtime_only_now_and_then_raises_the_error() {
     // Most levels call nothing out of compiled code; every k-th calls a runtime
     // function from wherever the stack has got to.

@@ -7,9 +7,10 @@ use std::{env, fmt};
 
 use crate::tri_engine::{with_engine, LoopCallback, MeshData, RenderItem};
 use crate::{
-    mdh_dict_get_named, mdh_float_value, mdh_make_string_from_rust, mdh_value_to_string, MdhList,
-    MdhValue, MDH_TAG_BOOL, MDH_TAG_CLOSURE, MDH_TAG_DICT, MDH_TAG_FLOAT, MDH_TAG_FUNCTION,
-    MDH_TAG_INT, MDH_TAG_LIST, MDH_TAG_NATIVE, MDH_TAG_NIL, MDH_TAG_STRING,
+    mdh_dict_get_named, mdh_float_value, mdh_make_string_from_rust, mdh_value_to_string,
+    mdh_value_to_string_or_raise, MdhList, MdhValue, MDH_TAG_BOOL, MDH_TAG_CLOSURE, MDH_TAG_DICT,
+    MDH_TAG_FLOAT, MDH_TAG_FUNCTION, MDH_TAG_INT, MDH_TAG_LIST, MDH_TAG_NATIVE, MDH_TAG_NIL,
+    MDH_TAG_STRING,
 };
 use glam::{EulerRot, Mat4, Quat, Vec3};
 
@@ -839,7 +840,7 @@ unsafe fn tri_mesh_from_geometry(value: MdhValue) -> Option<(MeshData, Option<us
 unsafe fn tri_parse_color(value: MdhValue) -> Option<[f32; 4]> {
     match value.tag {
         MDH_TAG_STRING => {
-            let s = mdh_value_to_string(value);
+            let s = mdh_value_to_string(value).ok()?;
             parse_hex_color(&s)
         }
         MDH_TAG_INT => {
@@ -1535,7 +1536,7 @@ pub unsafe extern "C" fn __mdh_tri_rs_get(obj: *mut MdhNativeObject, key: MdhVal
     if obj.is_null() {
         return __mdh_make_nil();
     }
-    let prop = mdh_value_to_string(key);
+    let prop = mdh_value_to_string_or_raise(key);
     match (*obj).kind {
         MDH_NATIVE_TRI_MODULE => tri_module_get(&prop),
         MDH_NATIVE_TRI_OBJECT => {
@@ -1559,7 +1560,7 @@ pub unsafe extern "C" fn __mdh_tri_rs_set(
     if obj.is_null() {
         return __mdh_make_nil();
     }
-    let prop = mdh_value_to_string(key);
+    let prop = mdh_value_to_string_or_raise(key);
     match (*obj).kind {
         MDH_NATIVE_TRI_OBJECT => {
             let _ = with_object(obj, |_key, tri| tri_method_set_field(tri, &prop, value));
@@ -1585,7 +1586,7 @@ pub unsafe extern "C" fn __mdh_tri_rs_call(
     if obj.is_null() {
         return __mdh_make_nil();
     }
-    let name = mdh_value_to_string(method);
+    let name = mdh_value_to_string_or_raise(method);
     if tri_debug_enabled() && !TRI_DEBUG_CALL_LOGGED.swap(true, Ordering::Relaxed) {
         eprintln!(
             "tri: native call kind={} method='{}' argc={}",

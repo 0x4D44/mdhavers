@@ -91,7 +91,7 @@ extern "C" {
     fn __mdh_empty_dict() -> MdhValue;
     fn __mdh_dict_set_owned(dict: MdhValue, key: MdhValue, value: MdhValue) -> MdhValue;
     fn __mdh_dict_get_default(dict: MdhValue, key: MdhValue, default_val: MdhValue) -> MdhValue;
-    fn __mdh_to_string(value: MdhValue) -> MdhValue;
+    fn __mdh_to_string_checked(value: MdhValue, out: *mut MdhValue) -> i32;
     fn __mdh_kv_densify(value: MdhValue);
     fn __mdh_release(value: MdhValue);
 }
@@ -132,11 +132,29 @@ pub(crate) unsafe fn mdh_make_string_from_rust(s: &str) -> MdhValue {
     __mdh_make_string(cstr.as_ptr())
 }
 
-unsafe fn mdh_value_to_string(value: MdhValue) -> String {
-    let s_val = __mdh_to_string(value);
+/// The runtime's text for `value`, or `StackLow` when it nests too deep to format: the
+/// C formatter reports that rather than raising, which would longjmp across our frames
+/// (MDH-BUG-FLU-00164).
+unsafe fn mdh_value_to_string(value: MdhValue) -> Result<String, StackLow> {
+    let mut s_val = __mdh_make_nil();
+    if __mdh_to_string_checked(value, &mut s_val) == 0 {
+        return Err(StackLow);
+    }
     let s = mdh_string_to_rust(s_val);
     __mdh_release(s_val);
-    s
+    Ok(s)
+}
+
+/// `mdh_value_to_string` for an entry point with nothing of its own alive yet: too deep
+/// a value raises the stack error, as a runtime call does.
+unsafe fn mdh_value_to_string_or_raise(value: MdhValue) -> String {
+    match mdh_value_to_string(value) {
+        Ok(s) => s,
+        Err(StackLow) => {
+            __mdh_hurl(__mdh_stack_overflow_message());
+            String::new()
+        }
+    }
 }
 
 /// `dict[key]` or nil, borrowed (as __mdh_dict_get_default); the key made for the lookup
@@ -727,14 +745,15 @@ fn json_escape_string(s: &str) -> String {
     result
 }
 
-unsafe fn json_fallback_string(value: MdhValue) -> String {
-    let s = mdh_value_to_string(value);
+unsafe fn json_fallback_string(value: MdhValue) -> Result<String, StackLow> {
+    let s = mdh_value_to_string(value)?;
     let escaped = s.replace('"', "\\\"");
-    format!("\"{}\"", escaped)
+    Ok(format!("\"{}\"", escaped))
 }
 
-/// `mdh_value_to_json` ran too deep: nested values recurse here, so it stops with the
-/// runtime's stack error while there is room to raise it (MDH-BUG-FLU-00164).
+/// `mdh_value_to_json` ran too deep (nested values recurse there, so it stops while there
+/// is room to raise the runtime's stack error), or the C formatter did
+/// (MDH-BUG-FLU-00164).
 struct StackLow;
 
 unsafe fn json_result(result: Result<String, StackLow>) -> MdhRsResult {
@@ -828,7 +847,7 @@ unsafe fn mdh_value_to_json_level(
             }
         }
         MDH_TAG_SET | MDH_TAG_FUNCTION | MDH_TAG_CLOSURE | MDH_TAG_BYTES => {
-            json_fallback_string(value)
+            json_fallback_string(value)?
         }
         MDH_TAG_DICT => {
             if value.data == 0 {
@@ -860,7 +879,7 @@ unsafe fn mdh_value_to_json_level(
                 let key_str = if key_val.tag == MDH_TAG_STRING {
                     mdh_string_to_rust(key_val)
                 } else {
-                    mdh_value_to_string(key_val)
+                    mdh_value_to_string(key_val)?
                 };
                 let key_json = json_escape_string(&key_str);
                 let val_json = if pretty {
@@ -880,7 +899,7 @@ unsafe fn mdh_value_to_json_level(
                 format!("{{{}}}", parts.join(", "))
             }
         }
-        _ => json_fallback_string(value),
+        _ => json_fallback_string(value)?,
     })
 }
 
