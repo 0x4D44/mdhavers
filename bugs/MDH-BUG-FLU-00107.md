@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00107 — Native: fer loop variable leaks past the loop and hides the outer binding
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** High
 - **Area:** native
 - **Raised:** 2026-10-24T02:38:48Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T164142Z-e287d985
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00107-run-verify-20261026T164142Z-e287d985
-- **Owner base:** b5d5a9fa852316d9d5ef58b28e50e2449fbe0bad
-- **Owner fingerprint:** sha256:5839fe70c58f8b62f8c01b5d7e449dceb65ea12954ff87df0810ce0eb6f3d99f
-- **Owner since:** 2026-10-26T16:41:42Z
-- **Owner until:** 2026-10-26T20:41:42Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-24T02:38:48Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T03:04:07Z, deltic:auto role=fix run=fix-20261024T030402Z-267f96e5 branch=task/bug-MDH-BUG-FLU-00107-run-fix-20261024T030402Z-267f96e5 code=efb4bb2 gate=manual)
+- **State history:** Open (2026-10-24T02:38:48Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T03:04:07Z, deltic:auto role=fix run=fix-20261024T030402Z-267f96e5 branch=task/bug-MDH-BUG-FLU-00107-run-fix-20261024T030402Z-267f96e5 code=efb4bb2 gate=manual) -> Closed (2026-10-26T17:16:10Z, deltic:manual role=verify run=verify-20261026T164142Z-e287d985 verified_fix_run=fix-20261024T030402Z-267f96e5 verdict=close)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:native-fer-loop-variable-leaks-past-the-loop-an
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T17:16:10Z, deltic:manual run=verify-20261026T164142Z-e287d985 verified_fix_run=fix-20261024T030402Z-267f96e5 verdict=close)
+
+Verifier note: Manual verify: [verifier gpt-6.1-sol (Codex), recorded by lead] efb4bb2 contains fix 528b015: fer_loop_variable_does_not_outlive_its_loop passed; CLI/interpreter preserve 10 and 99; nested capture/shadow tests passed. Removing list-loop name-state restore failed run_ok assertion None vs Some(0). Restored; diff empty.
 
 ## Notes

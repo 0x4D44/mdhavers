@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00137 — Native binaries segfault on examples/scottish/scots_fun.braw and scots_words.braw
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** High
 - **Area:** native
 - **Raised:** 2026-10-25T06:33:34Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T164142Z-4cd9129e
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00137-run-verify-20261026T164142Z-4cd9129e
-- **Owner base:** b5d5a9fa852316d9d5ef58b28e50e2449fbe0bad
-- **Owner fingerprint:** sha256:af1eaed775a96713a575ea93c05a26764e05a778874c4c48b6728f769d33729b
-- **Owner since:** 2026-10-26T16:41:42Z
-- **Owner until:** 2026-10-26T20:41:42Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-25T06:33:34Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-25T06:54:54Z, deltic:auto role=fix run=fix-20261025T063408Z-d07563ed branch=task/bug-MDH-BUG-FLU-00137-run-fix-20261025T063408Z-d07563ed code=a262039 gate=manual)
+- **State history:** Open (2026-10-25T06:33:34Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-25T06:54:54Z, deltic:auto role=fix run=fix-20261025T063408Z-d07563ed branch=task/bug-MDH-BUG-FLU-00137-run-fix-20261025T063408Z-d07563ed code=a262039 gate=manual) -> Closed (2026-10-26T17:16:10Z, deltic:manual role=verify run=verify-20261026T164142Z-4cd9129e verified_fix_run=fix-20261025T063408Z-d07563ed verdict=close)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:native-binaries-segfault-on-examples-scottish-s
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T17:16:10Z, deltic:manual run=verify-20261026T164142Z-4cd9129e verified_fix_run=fix-20261025T063408Z-d07563ed verdict=close)
+
+Verifier note: Manual verify: [verifier gpt-6.1-sol (Codex), recorded by lead] a262039: cannie_checks_validity_like_the_interpreter passed. Original scots_fun/scots_words native runs exit 0 with 79/48 lines, matching interpreter completion. Restoring cannie-to-inline-trim dispatch failed run_ok assertion None vs Some(0). Restored; diff empty.
 
 ## Notes
