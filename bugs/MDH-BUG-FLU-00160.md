@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00160 — Interpreter dict delete is O(n) per key, so remove-heavy loops are quadratic
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** interpreter
 - **Raised:** 2026-10-26T02:17:31Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T225713Z-1a702f2b
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00160-run-verify-20261026T225713Z-1a702f2b
-- **Owner base:** 6cca1b9724e089b14af0018739faf304b5548a5a
-- **Owner fingerprint:** sha256:8378f135ff02f87b4f41bc0d0133b2458ba02984d5578b231991fd98dec51bd9
-- **Owner since:** 2026-10-26T22:57:13Z
-- **Owner until:** 2026-10-27T02:57:13Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-26T02:17:31Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T03:56:35Z, deltic:auto role=fix run=fix-20261026T024153Z-87f9ce1f branch=task/bug-MDH-BUG-FLU-00160-run-fix-20261026T024153Z-87f9ce1f code=72144ea gate=manual)
+- **State history:** Open (2026-10-26T02:17:31Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T03:56:35Z, deltic:auto role=fix run=fix-20261026T024153Z-87f9ce1f branch=task/bug-MDH-BUG-FLU-00160-run-fix-20261026T024153Z-87f9ce1f code=72144ea gate=manual) -> Closed (2026-10-26T23:39:42Z, deltic:manual role=verify run=verify-20261026T225713Z-1a702f2b verified_fix_run=fix-20261026T024153Z-87f9ce1f verdict=close)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:interpreter-dict-delete-is-o-n-per-key-so-remov
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T23:39:42Z, deltic:manual run=verify-20261026T225713Z-1a702f2b verified_fix_run=fix-20261026T024153Z-87f9ce1f verdict=close)
+
+Verifier note: Manual verify: [lb luna] 72144ea; dict_delete_100k_keys_is_not_quadratic passed 0.68s; heave_oot_100k_keys_finishes_quickly passed (output 0, 3.04s); mutant compaction every 1000 deletes failed timing assertion: 7.61s > 5s.
 
 ## Notes

@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00113 — JS runtime lacks ilk, grup_up, pairt_by and dict_get/has/remove/invert/fae_pairs builtins
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** js
 - **Raised:** 2026-10-24T02:53:39Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T225713Z-92af3b74
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00113-run-verify-20261026T225713Z-92af3b74
-- **Owner base:** 6cca1b9724e089b14af0018739faf304b5548a5a
-- **Owner fingerprint:** sha256:cbeffbe6926a3a45075b55c5b81745a9981b42c12dc5e24148703fd98b70fe05
-- **Owner since:** 2026-10-26T22:57:13Z
-- **Owner until:** 2026-10-27T02:57:13Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-24T02:53:39Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T03:01:35Z, deltic:auto role=fix run=fix-20261024T030129Z-8660f402 branch=task/bug-MDH-BUG-FLU-00113-run-fix-20261024T030129Z-8660f402 code=b420187 gate=manual)
+- **State history:** Open (2026-10-24T02:53:39Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T03:01:35Z, deltic:auto role=fix run=fix-20261024T030129Z-8660f402 branch=task/bug-MDH-BUG-FLU-00113-run-fix-20261024T030129Z-8660f402 code=b420187 gate=manual) -> Closed (2026-10-26T23:39:42Z, deltic:manual role=verify run=verify-20261026T225713Z-92af3b74 verified_fix_run=fix-20261024T030129Z-8660f402 verdict=close)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:js-runtime-lacks-ilk-grup-up-pairt-by-and-dict-
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T23:39:42Z, deltic:manual run=verify-20261026T225713Z-92af3b74 verified_fix_run=fix-20261024T030129Z-8660f402 verdict=close)
+
+Verifier note: Manual verify: [lb luna] b420187 (implementation d3ee062); parity_js_missing_builtins_mdh_bug_flu_00113 passed all builtin/type-error cases; removing dict_get failed parity with `TypeError: dict_get is not a function` and the wrong caught error.
 
 ## Notes

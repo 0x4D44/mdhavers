@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00169 — JS: destructuring with a rest element in the middle emits invalid JavaScript
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** js
 - **Raised:** 2026-10-26T05:03:45Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T225713Z-cca26030
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00169-run-verify-20261026T225713Z-cca26030
-- **Owner base:** 6cca1b9724e089b14af0018739faf304b5548a5a
-- **Owner fingerprint:** sha256:7a023f7c189e38e276ff085cab3251535ae4c67d646e8a8fcf194d1c6ceffed2
-- **Owner since:** 2026-10-26T22:57:13Z
-- **Owner until:** 2026-10-27T02:57:13Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-26T05:03:45Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T05:56:34Z, deltic:auto role=fix run=fix-20261026T050440Z-414c5191 branch=task/bug-MDH-BUG-FLU-00169-run-fix-20261026T050440Z-414c5191 code=b1616f5 gate=manual)
+- **State history:** Open (2026-10-26T05:03:45Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T05:56:34Z, deltic:auto role=fix run=fix-20261026T050440Z-414c5191 branch=task/bug-MDH-BUG-FLU-00169-run-fix-20261026T050440Z-414c5191 code=b1616f5 gate=manual) -> Closed (2026-10-26T23:39:42Z, deltic:manual role=verify run=verify-20261026T225713Z-cca26030 verified_fix_run=fix-20261026T050440Z-414c5191 verdict=close)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:js-destructuring-with-a-rest-element-in-the-mid
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T23:39:42Z, deltic:manual run=verify-20261026T225713Z-cca26030 verified_fix_run=fix-20261026T050440Z-414c5191 verdict=close)
+
+Verifier note: Manual verify: [lb luna] b1616f5; js_golden_parity passed 1/1 and middle-rest repro matched interpreter/JS (10, [20, 30, 40], 50); mutant disabling lowering failed the fixture with Node SyntaxError: Rest element must be last.
 
 ## Notes

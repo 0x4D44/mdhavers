@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00126 — JS: inst == literal compiles to === and skips the instance's equality overload
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** js
 - **Raised:** 2026-10-24T05:44:33Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T225713Z-e9e85b59
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00126-run-verify-20261026T225713Z-e9e85b59
-- **Owner base:** 6cca1b9724e089b14af0018739faf304b5548a5a
-- **Owner fingerprint:** sha256:a2ec460bf06df2d3cdedf730c0b5f8929a09d06d69683071e0563905cfe9bdce
-- **Owner since:** 2026-10-26T22:57:13Z
-- **Owner until:** 2026-10-27T02:57:13Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-24T05:44:33Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T06:25:22Z, deltic:auto role=fix run=fix-20261024T062516Z-7c117884 branch=task/bug-MDH-BUG-FLU-00126-run-fix-20261024T062516Z-7c117884 code=ad9b34c gate=manual)
+- **State history:** Open (2026-10-24T05:44:33Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T06:25:22Z, deltic:auto role=fix run=fix-20261024T062516Z-7c117884 branch=task/bug-MDH-BUG-FLU-00126-run-fix-20261024T062516Z-7c117884 code=ad9b34c gate=manual) -> Closed (2026-10-26T23:39:42Z, deltic:manual role=verify run=verify-20261026T225713Z-e9e85b59 verified_fix_run=fix-20261024T062516Z-7c117884 verdict=close)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:js-inst-literal-compiles-to-and-skips-the-insta
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T23:39:42Z, deltic:manual run=verify-20261026T225713Z-e9e85b59 verified_fix_run=fix-20261024T062516Z-7c117884 verdict=close)
+
+Verifier note: Manual verify: [lb luna] ad9b34c (implementation aa6444f); compiler::test_literal_equality_routes_through_overload_helpers and js_instance_equality_overload_runs_against_literals passed; old OR fast path failed both, JS returned `nae` instead of `same-called`.
 
 ## Notes

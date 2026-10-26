@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00116 — JS upper, heid, tail, bum, reverse and split("") differ from the interpreter on Unicode
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** js
 - **Raised:** 2026-10-24T03:17:19Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T225713Z-e115a604
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00116-run-verify-20261026T225713Z-e115a604
-- **Owner base:** 6cca1b9724e089b14af0018739faf304b5548a5a
-- **Owner fingerprint:** sha256:452a638b40ab7226f5b9ce3c7e05d9d988e54476207bd0216ec282e01a3ecc36
-- **Owner since:** 2026-10-26T22:57:13Z
-- **Owner until:** 2026-10-27T02:57:13Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-24T03:17:19Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T03:21:58Z, deltic:auto role=fix run=fix-20261024T032152Z-3f2b6187 branch=task/bug-MDH-BUG-FLU-00116-run-fix-20261024T032152Z-3f2b6187 code=ec8acdf gate=manual)
+- **State history:** Open (2026-10-24T03:17:19Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T03:21:58Z, deltic:auto role=fix run=fix-20261024T032152Z-3f2b6187 branch=task/bug-MDH-BUG-FLU-00116-run-fix-20261024T032152Z-3f2b6187 code=ec8acdf gate=manual) -> Closed (2026-10-26T23:39:42Z, deltic:manual role=verify run=verify-20261026T225713Z-e115a604 verified_fix_run=fix-20261024T032152Z-3f2b6187 verdict=close)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:js-upper-heid-tail-bum-reverse-and-split-differ
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T23:39:42Z, deltic:manual run=verify-20261026T225713Z-e115a604 verified_fix_run=fix-20261024T032152Z-3f2b6187 verdict=close)
+
+Verifier note: Manual verify: [lb luna] ec8acdf (implementation 4197b9e); parity_js_unicode_string_builtins_mdh_bug_flu_00116 passed; restoring JS full Unicode uppercase failed parity: expected `STRAßE CAFé ÿ ABC`, got `STRASSE CAFÉ Ÿ ABC`.
 
 ## Notes

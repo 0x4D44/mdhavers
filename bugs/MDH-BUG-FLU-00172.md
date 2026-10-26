@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00172 — JS: log, tan and similar float builtins differ from the interpreter in the last digit
 
-- **State:** Fixed
+- **State:** Open
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** js
 - **Raised:** 2026-10-26T05:03:59Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T225713Z-05513f9c
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00172-run-verify-20261026T225713Z-05513f9c
-- **Owner base:** 6cca1b9724e089b14af0018739faf304b5548a5a
-- **Owner fingerprint:** sha256:16a0abf2f6772718195a0b81765fbf7e1ddd39b5f4fd2777870c242f205e08c6
-- **Owner since:** 2026-10-26T22:57:13Z
-- **Owner until:** 2026-10-27T02:57:13Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
-- **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-26T05:03:59Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T05:56:53Z, deltic:auto role=fix run=fix-20261026T050440Z-8e62b090 branch=task/bug-MDH-BUG-FLU-00172-run-fix-20261026T050440Z-8e62b090 code=ec9e931 gate=manual)
+- **Attempts:** fix=0, doubt=1, indeterminate=0
+- **State history:** Open (2026-10-26T05:03:59Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T05:56:53Z, deltic:auto role=fix run=fix-20261026T050440Z-8e62b090 branch=task/bug-MDH-BUG-FLU-00172-run-fix-20261026T050440Z-8e62b090 code=ec9e931 gate=manual) -> Open (2026-10-26T23:39:42Z, deltic:manual role=verify run=verify-20261026T225713Z-05513f9c verified_fix_run=fix-20261026T050440Z-8e62b090 verdict=doubt reason=reopen-regression-covers-the-documented-tolerance-behavior-so-test-does-not-cove)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:js-log-tan-and-similar-float-builtins-differ-fr
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T23:39:42Z, deltic:manual run=verify-20261026T225713Z-05513f9c verified_fix_run=fix-20261026T050440Z-8e62b090 verdict=doubt)
+
+Verifier note: Manual verify: [lb luna] ec9e931 documents the accepted divergence; repro confirms interpreter log(3)/tan(2.5) differ from JS in the last digit. parity_js_maths_builtins_mdh_bug_flu_00100 passed 1/1 but only tests log(1)/tan(0); no regression covers the documented tolerance behavior, so test does not cover the fix.
 
 ## Notes

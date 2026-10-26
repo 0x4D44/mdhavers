@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00171 — Interpreter: drap with a negative count returns wrong data, and tak(7, 0) returns []
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** interpreter
 - **Raised:** 2026-10-26T05:03:54Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T225713Z-632469da
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00171-run-verify-20261026T225713Z-632469da
-- **Owner base:** 6cca1b9724e089b14af0018739faf304b5548a5a
-- **Owner fingerprint:** sha256:ca272bd4447c3d96dcc22fa58e4c73889571612b79f5da3fe6ff1dbcbc79eaa6
-- **Owner since:** 2026-10-26T22:57:13Z
-- **Owner until:** 2026-10-27T02:57:13Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-26T05:03:54Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T06:25:06Z, deltic:auto role=fix run=fix-20261026T050440Z-50f6bb31 branch=task/bug-MDH-BUG-FLU-00171-run-fix-20261026T050440Z-50f6bb31 code=e8c4a76 gate=manual)
+- **State history:** Open (2026-10-26T05:03:54Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T06:25:06Z, deltic:auto role=fix run=fix-20261026T050440Z-50f6bb31 branch=task/bug-MDH-BUG-FLU-00171-run-fix-20261026T050440Z-50f6bb31 code=e8c4a76 gate=manual) -> Closed (2026-10-26T23:39:42Z, deltic:manual role=verify run=verify-20261026T225713Z-632469da verified_fix_run=fix-20261026T050440Z-50f6bb31 verdict=close)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:interpreter-drap-with-a-negative-count-returns-
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T23:39:42Z, deltic:manual run=verify-20261026T225713Z-632469da verified_fix_run=fix-20261026T050440Z-50f6bb31 verdict=close)
+
+Verifier note: Manual verify: [lb luna] e8c4a76; interpreter_tak_drap selected 3 tests, all passed; unclamp/accept-nonlist mutant failed all 3 assertions: drap(-1) became [], tak(-1) returned the full list, and tak(7,0) was accepted.
 
 ## Notes

@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00114 — JS runtime lacks most interpreter builtins (about 240 names by a regex scan)
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** js
 - **Raised:** 2026-10-24T03:01:40Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T225713Z-390c33cb
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00114-run-verify-20261026T225713Z-390c33cb
-- **Owner base:** 6cca1b9724e089b14af0018739faf304b5548a5a
-- **Owner fingerprint:** sha256:b24f0e8e23127fd2560cbcec8f728961e1fc27ad05d786da58be375b74aceb3c
-- **Owner since:** 2026-10-26T22:57:13Z
-- **Owner until:** 2026-10-27T02:57:13Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-24T03:01:40Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T22:08:28Z, deltic:auto role=fix run=fix-20261024T213341Z-379570d4 branch=task/bug-MDH-BUG-FLU-00114-run-fix-20261024T213341Z-379570d4 code=380bacf gate=manual)
+- **State history:** Open (2026-10-24T03:01:40Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T22:08:28Z, deltic:auto role=fix run=fix-20261024T213341Z-379570d4 branch=task/bug-MDH-BUG-FLU-00114-run-fix-20261024T213341Z-379570d4 code=380bacf gate=manual) -> Closed (2026-10-26T23:39:42Z, deltic:manual role=verify run=verify-20261026T225713Z-390c33cb verified_fix_run=fix-20261024T213341Z-379570d4 verdict=close)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:js-runtime-lacks-most-interpreter-builtins-abou
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-26T23:39:42Z, deltic:manual run=verify-20261026T225713Z-390c33cb verified_fix_run=fix-20261024T213341Z-379570d4 verdict=close)
+
+Verifier note: Manual verify: [lb luna] 380bacf; js_host_builtins passed 3/3 and js_golden_parity passed; disabling `bytes` made bytes_oob_and_slice_bounds_parity and js_host/bytes_builtins fail with the injected runtime error.
 
 ## Notes
