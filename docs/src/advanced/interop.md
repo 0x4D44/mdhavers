@@ -142,6 +142,20 @@ Many mdhavers built-ins map to JavaScript equivalents:
 | `floor(n)` | `Math.floor(n)` |
 | `ceil(n)` | `Math.ceil(n)` |
 
+### Backend differences
+
+- **Floating-point results of transcendental functions** (`log`, `tan`, `sin`, `cos`, `exp`
+  and the like) come from the JavaScript engine's `Math.*`, so they
+  may differ from the interpreter and native backends (which use Rust's libm) in the last
+  place. For example `log(3)` prints `1.0986122886681098` in the interpreter and
+  `1.0986122886681096` in JavaScript. Compare such results wi' a tolerance, or round them,
+  rather than expecting identical text.
+- `stacktrace()` has nae frames in JavaScript: it returns `(no stack trace)`.
+- Errors raised by JavaScript itself (rather than by an mdhavers builtin) reach a
+  `gin_it_gangs_wrang` handler wi' JavaScript's own wording, not the interpreter's.
+- Sockets, TLS, threads, channels and the shell are interpreter/native-only: in JavaScript each
+  raises a clear "isnae available in JS" error.
+
 ## Web Integration
 
 ### DOM Manipulation
