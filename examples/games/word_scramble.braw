@@ -161,6 +161,7 @@ fer word_data in game_words {
     whiles attempts > 0 an nae solved {
         ken raw_guess = speir_or_awa("> ")
         gin raw_guess == naething {
+            blether f"Final score: {score} oot o' {rounds}"
             quit_requested = aye
             brak
         }
