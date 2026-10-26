@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00178 — Native: a keek match-arm binding leaks out of the arm and overwrites the outer variable
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** native
 - **Raised:** 2026-10-26T06:19:59Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261026T065014Z-3a295bf0
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00178-run-fix-20261026T065014Z-3a295bf0
-- **Owner base:** 957427be0d52761c690f1cc4bc7e56246c7d42d5
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-26T06:50:14Z
-- **Owner until:** 2026-10-26T10:50:14Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-26T06:19:59Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-26T06:19:59Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T09:13:50Z, deltic:auto role=fix run=fix-20261026T065014Z-3a295bf0 branch=task/bug-MDH-BUG-FLU-00178-run-fix-20261026T065014Z-3a295bf0 code=85e470f gate=manual)
 
 ## Observation
 
