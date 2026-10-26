@@ -7399,17 +7399,19 @@ impl Interpreter {
         globals.borrow_mut().define(
             "drap".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("drap", 2, |args| {
-                if let Value::List(list) = &args[0] {
-                    let n = args[1]
-                        .as_integer()
-                        .ok_or("drap() needs a list and an integer".to_string())?;
-                    let n = n.max(0) as usize;
-                    let items = list.borrow();
-                    let result: Vec<Value> = items.iter().skip(n).cloned().collect();
-                    Ok(Value::List(Rc::new(RefCell::new(result))))
-                } else {
-                    Err("drap() needs a list and an integer".to_string())
-                }
+                let msg = "drap() needs a list and an integer";
+                let n = args[1].as_integer().ok_or(msg.to_string())?;
+                let n = n.max(0) as usize;
+                let result: Vec<Value> = match &args[0] {
+                    Value::List(list) => list.borrow().iter().skip(n).cloned().collect(),
+                    Value::String(s) => s
+                        .chars()
+                        .skip(n)
+                        .map(|c| Value::String(c.to_string()))
+                        .collect(),
+                    _ => return Err(msg.to_string()),
+                };
+                Ok(Value::List(Rc::new(RefCell::new(result))))
             }))),
         );
 
@@ -7417,17 +7419,19 @@ impl Interpreter {
         globals.borrow_mut().define(
             "tak".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("tak", 2, |args| {
-                if let Value::List(list) = &args[0] {
-                    let n = args[1]
-                        .as_integer()
-                        .ok_or("tak() needs a list and an integer".to_string())?;
-                    let n = n.max(0) as usize;
-                    let items = list.borrow();
-                    let result: Vec<Value> = items.iter().take(n).cloned().collect();
-                    Ok(Value::List(Rc::new(RefCell::new(result))))
-                } else {
-                    Err("tak() needs a list and an integer".to_string())
-                }
+                let msg = "tak() needs a list and an integer";
+                let n = args[1].as_integer().ok_or(msg.to_string())?;
+                let n = n.max(0) as usize;
+                let result: Vec<Value> = match &args[0] {
+                    Value::List(list) => list.borrow().iter().take(n).cloned().collect(),
+                    Value::String(s) => s
+                        .chars()
+                        .take(n)
+                        .map(|c| Value::String(c.to_string()))
+                        .collect(),
+                    _ => return Err(msg.to_string()),
+                };
+                Ok(Value::List(Rc::new(RefCell::new(result))))
             }))),
         );
 

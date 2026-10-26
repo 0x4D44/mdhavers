@@ -79,27 +79,7 @@ dae is_toom(list) {
     gie len(list) == 0
 }
 
-# Get the first n elements
-dae tak(list, n) {
-    ken result = []
-    ken i = 0
-    whiles i < n an i < len(list) {
-        shove(result, list[i])
-        i = i + 1
-    }
-    gie result
-}
-
-# Skip the first n elements
-dae drap(list, n) {
-    ken result = []
-    ken i = n
-    whiles i < len(list) {
-        shove(result, list[i])
-        i = i + 1
-    }
-    gie result
-}
+# tak (first n elements) and drap (skip n elements) are interpreter builtins.
 
 # Get elements while predicate is true
 dae tak_while(list, pred) {
