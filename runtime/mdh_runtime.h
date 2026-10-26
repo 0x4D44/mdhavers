@@ -177,6 +177,8 @@ void __mdh_rc_init(void);
 /* Free the small-object cache (gc_stub.c); __mdh_thread_spawn calls it before the
  * first thread exists, after which nothing is cached. */
 void __mdh_obj_cache_drain(void);
+/* Free a dying list's item buffer of `capacity` values, or keep it for reuse (gc_stub.c). */
+void __mdh_list_items_free(void *items, int64_t capacity);
 extern uint32_t __mdh_rc_kinds;
 extern uint32_t __mdh_rc_free_kinds;
 /* 1 while compiled code may update counts inline, without calling retain/release (its

@@ -4993,7 +4993,7 @@ typedef struct {
 void __mdh_rc_free_buffers(uint32_t kind, void *payload) {
     switch (kind) {
         case MDH_KIND_LIST:
-            __mdh_buf_free(((MdhList *)payload)->items);
+            __mdh_list_items_free(((MdhList *)payload)->items, ((MdhList *)payload)->capacity);
             return;
         case MDH_KIND_KV: {
             intptr_t *handle = (intptr_t *)payload;

@@ -830,3 +830,44 @@ blether total([1, 2, 3])
     assert_eq!(run.code, Some(0), "{}", run.stderr);
     assert_eq!(run.stdout, "12\n");
 }
+
+/// R5 list-buffer cache: item buffers of dead lists are reused for new lists of the same
+/// capacity; lists that grow, shrink and nest keep their contents and counts exact.
+#[test]
+fn reused_list_buffers_keep_contents_and_counts_exact() {
+    let src = r#"
+dae churn(n) {
+    ken total = 0
+    ken i = 0
+    whiles i < n {
+        ken a = [i]
+        ken b = [i, i + 1, tae_string(i)]
+        ken c = []
+        ken j = 0
+        whiles j < i % 40 {
+            shove(c, [j, tae_string(j)])
+            j = j + 1
+        }
+        ken f = |x| x + i
+        total = total + len(a) + len(b) + len(c) + f(0) + b[1] - i
+        gin len(c) > 3 {
+            total = total + c[3][0] + len(c[len(c) - 1][1])
+        }
+        i = i + 1
+    }
+    gie total
+}
+blether churn(3000)
+"#;
+    for envs in [
+        &[("MDH_RC_REPORT", "1")][..],
+        &[("MDH_RC_REPORT", "1"), ("MDH_RC_NOFREE", "1")][..],
+    ] {
+        let run = run_native(src, envs);
+        assert_eq!(run.code, Some(0), "{}", run.stderr);
+        assert_eq!(run.stdout, "4584975\n", "{}", run.stderr);
+        for kind in ["string", "list", "closure"] {
+            assert_eq!(reported_live(&run.stderr, kind), 0, "{}", run.stderr);
+        }
+    }
+}

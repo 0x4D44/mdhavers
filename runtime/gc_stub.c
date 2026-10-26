@@ -139,8 +139,61 @@ static inline int __mdh_obj_cache_usable(void) {
     return MDH_OBJ_CACHE_ON && !__mdh_line_threaded;
 }
 
+/* ========== List-buffer cache (R5) ==========
+ *
+ * A dying list's item buffer whose capacity is a power of two up to 128 values is kept on
+ * a free list per size and handed out again by __mdh_buf_alloc for exactly that many
+ * bytes (a new list's default 8 items, a closure cell's 1). The buffer is a malloc block
+ * at least that big (a list's capacity never exceeds its buffer), so a later realloc or
+ * free of it is unchanged. Same conditions as the object cache: counting on, single
+ * threaded (drained at the first spawn), off under AddressSanitizer. */
+#define MDH_BUF_CACHE_CLASSES 8
+#define MDH_BUF_CACHE_DEPTH 128
+
+static void *__mdh_buf_cache[MDH_BUF_CACHE_CLASSES];
+static uint32_t __mdh_buf_cache_len[MDH_BUF_CACHE_CLASSES];
+
+/* The next cached buffer is kept in its first word. */
+#define MDH_BUF_NEXT(b) (*(void **)(b))
+
+/* The cache class of an item buffer of `bytes` (16 << class), or -1. */
+static inline int __mdh_buf_class(size_t bytes) {
+    if (bytes < 16 || bytes > ((size_t)16 << (MDH_BUF_CACHE_CLASSES - 1)) || (bytes & (bytes - 1))) {
+        return -1;
+    }
+    return __builtin_ctzll((unsigned long long)bytes) - 4;
+}
+
+static void __mdh_buf_cache_drain(void) {
+    for (int c = 0; c < MDH_BUF_CACHE_CLASSES; c++) {
+        void *b = __mdh_buf_cache[c];
+        while (b) {
+            void *next = MDH_BUF_NEXT(b);
+            free(b);
+            b = next;
+        }
+        __mdh_buf_cache[c] = NULL;
+        __mdh_buf_cache_len[c] = 0;
+    }
+}
+
+void __mdh_list_items_free(void *items, int64_t capacity) {
+    if (items && capacity > 0 && __mdh_rc_kinds != 0 && __mdh_obj_cache_usable() &&
+        (uint64_t)capacity <= SIZE_MAX / sizeof(MdhValue)) {
+        int c = __mdh_buf_class((size_t)capacity * sizeof(MdhValue));
+        if (c >= 0 && __mdh_buf_cache_len[c] < MDH_BUF_CACHE_DEPTH) {
+            MDH_BUF_NEXT(items) = __mdh_buf_cache[c];
+            __mdh_buf_cache[c] = items;
+            __mdh_buf_cache_len[c]++;
+            return;
+        }
+    }
+    free(items);
+}
+
 /* Called by __mdh_thread_spawn before the first thread exists. */
 void __mdh_obj_cache_drain(void) {
+    __mdh_buf_cache_drain();
     for (uint32_t c = 1; c <= MDH_OBJ_CACHE_CLASSES; c++) {
         MdhObjHeader *h = __mdh_obj_cache[c];
         while (h) {
@@ -292,6 +345,15 @@ void *__mdh_buf_alloc(size_t size) {
 #ifdef MDH_ALLOC_STATS
     __mdh_alloc_note(MDH_KIND_BUFFER);
 #endif
+    if (__mdh_rc_kinds != 0 && __mdh_obj_cache_usable()) {
+        int c = __mdh_buf_class(size);
+        if (c >= 0 && __mdh_buf_cache[c]) {
+            void *b = __mdh_buf_cache[c];
+            __mdh_buf_cache[c] = MDH_BUF_NEXT(b);
+            __mdh_buf_cache_len[c]--;
+            return b;
+        }
+    }
     return malloc(size);
 }
 
@@ -454,11 +516,23 @@ static inline void __mdh_rc_work_push(MdhRcWork *w, MdhObjHeader *h) {
     w->items[w->len++] = h;
 }
 
+/* A string that reached zero and is freed (strings hold no children and no buffers):
+ * finish it at once instead of going through the work list. 1 when done. */
+static inline int __mdh_rc_kill_leaf(MdhObjHeader *h) {
+    if (MDH_HDR_KIND(h) != MDH_KIND_STRING || !(__mdh_rc_free_kinds & (1u << MDH_KIND_STRING))) {
+        return 0;
+    }
+    h->flags |= MDH_OBJ_DEAD;
+    __mdh_counter_add(&__mdh_rc_died[MDH_KIND_STRING]);
+    __mdh_obj_block_free(h);
+    return 1;
+}
+
 /* Drop one reference to a child; queue it when that was the last one. */
 static void __mdh_rc_drop_child(MdhValue child, void *ctx) {
     if (!MDH_RC_HEAP_TAG(child.tag)) return;
     MdhObjHeader *h = __mdh_rc_counted("release", child.data);
-    if (h && __mdh_rc_dec(h)) __mdh_rc_work_push((MdhRcWork *)ctx, h);
+    if (h && __mdh_rc_dec(h) && !__mdh_rc_kill_leaf(h)) __mdh_rc_work_push((MdhRcWork *)ctx, h);
 }
 
 /* `h` reached zero: release what it holds, then free it (and anything that reaches zero
@@ -494,7 +568,7 @@ static void __mdh_rc_kill(MdhObjHeader *h) {
 
 void __mdh_rc_release_obj(int64_t data) {
     MdhObjHeader *h = __mdh_rc_counted("release", data);
-    if (h && __mdh_rc_dec(h)) __mdh_rc_kill(h);
+    if (h && __mdh_rc_dec(h) && !__mdh_rc_kill_leaf(h)) __mdh_rc_kill(h);
 }
 
 void __mdh_retain(MdhValue v) {
