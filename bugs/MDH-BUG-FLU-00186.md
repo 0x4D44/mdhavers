@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00186 — Native stack guard: prior-handler chaining gaps on macOS and untested paths
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** native
 - **Raised:** 2026-10-26T09:23:41Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261026T122015Z-8ae40c1a
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00186-run-fix-20261026T122015Z-8ae40c1a
-- **Owner base:** 18d4631d79b84c4c82c5241f8661935d53c62389
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-26T12:20:15Z
-- **Owner until:** 2026-10-26T16:20:15Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-26T09:23:41Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-26T09:23:41Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T14:03:03Z, deltic:auto role=fix run=fix-20261026T122015Z-8ae40c1a branch=task/bug-MDH-BUG-FLU-00186-run-fix-20261026T122015Z-8ae40c1a code=c71068a gate=manual)
 
 ## Observation
 
