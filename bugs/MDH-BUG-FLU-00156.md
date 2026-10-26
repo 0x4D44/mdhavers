@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00156 — Interactive examples crash with a type error at end of input instead of ending cleanly
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** examples
 - **Raised:** 2026-10-25T23:04:51Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261025T230506Z-6ac0a8b4
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00156-run-fix-20261025T230506Z-6ac0a8b4
-- **Owner base:** ce8941947a4674f55a88360030d631b9820621fc
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-25T23:05:06Z
-- **Owner until:** 2026-10-26T03:05:06Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-25T23:04:51Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-25T23:04:51Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T01:31:41Z, deltic:auto role=fix run=fix-20261025T230506Z-6ac0a8b4 branch=task/bug-MDH-BUG-FLU-00156-run-fix-20261025T230506Z-6ac0a8b4 code=7d8a875 gate=manual)
 
 ## Observation
 
