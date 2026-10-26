@@ -206,7 +206,9 @@ impl<'ctx> CodeGen<'ctx> {
                         let alloc = Self::rc_callee(inst).is_some_and(|f| {
                             matches!(
                                 f.get_name().to_bytes(),
-                                b"__mdh_obj_alloc" | b"__mdh_obj_strdup"
+                                b"__mdh_obj_alloc"
+                                    | b"__mdh_obj_strdup"
+                                    | b"__mdh_obj_strdup_checked"
                             )
                         });
                         if alloc {
