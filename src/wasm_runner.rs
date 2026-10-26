@@ -1008,6 +1008,14 @@ fn call_builtin_inner(
     for arg in args {
         values.push(bridge.to_value(store, *arg)?);
     }
+    // `tak`/`drap` take a string as a list o' its characters, as the CLI interpreter does
+    // through its prelude (MDH-BUG-FLU-00170).
+    if matches!(name, "tak" | "drap") {
+        if let Some(Value::String(text)) = values.first() {
+            let chars = text.chars().map(|c| Value::String(c.to_string())).collect();
+            values[0] = Value::List(Rc::new(RefCell::new(chars)));
+        }
+    }
     let result = (native.func)(values).map_err(|m| HaversError::InternalError(m).to_string())?;
     // Scalar arguments and read-only natives cannae change a host container.
     if !args.iter().all(|a| is_inline_scalar(*a)) && !READ_ONLY_NATIVES.contains(&name) {
