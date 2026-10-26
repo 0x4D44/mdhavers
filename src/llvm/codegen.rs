@@ -16228,6 +16228,14 @@ impl<'ctx> CodeGen<'ctx> {
                                 Some(m) => m.get(property),
                                 None => None,
                             };
+                            let params = func.count_params() as usize;
+                            Self::check_call_arity(
+                                property,
+                                params,
+                                defaults,
+                                args,
+                                callee.span().line,
+                            )?;
                             if let Some(defaults) = defaults {
                                 let key = format!("__import_alias_{}_{}", name, property);
                                 self.function_defaults.insert(key.clone(), defaults.clone());
@@ -16263,6 +16271,7 @@ impl<'ctx> CodeGen<'ctx> {
 
             // Check for class instantiation: ClassName()
             if self.classes.contains_key(name) && !self.hidden_imported_classes.contains(name) {
+                self.check_init_arity(name, args, callee.span().line)?;
                 return self.compile_class_instantiation(name, args);
             }
 
@@ -16272,6 +16281,13 @@ impl<'ctx> CodeGen<'ctx> {
                 None => name.clone(),
             };
             if let Some(&func) = self.functions.get(&resolved_name) {
+                let captures = self
+                    .function_captures
+                    .get(&resolved_name)
+                    .map_or(0, Vec::len);
+                let params = (func.count_params() as usize).saturating_sub(captures);
+                let defaults = self.function_defaults.get(&resolved_name);
+                Self::check_call_arity(name, params, defaults, args, callee.span().line)?;
                 return self.compile_user_function_call(&resolved_name, func, args);
             }
 
@@ -37280,6 +37296,77 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(call_site.try_as_basic_value().basic().unwrap())
     }
 
+    /// A call to user function `name` with `args`, where `name` takes `params` user
+    /// parameters with `defaults`: wrong counts are the interpreter's arity error, raised
+    /// at compile time as for builtins (decision 148; MDH-BUG-FLU-00166). A spread
+    /// argument's count is only known at run time.
+    fn check_call_arity(
+        name: &str,
+        params: usize,
+        defaults: Option<&Vec<Option<Expr>>>,
+        args: &[Expr],
+        line: usize,
+    ) -> Result<(), HaversError> {
+        if args.iter().any(|a| matches!(a, Expr::Spread { .. })) {
+            return Ok(());
+        }
+        Self::check_arity_count(name, params, defaults, args.len(), line)
+    }
+
+    /// `check_call_arity` for `ClassName(args)`: the arguments go to the nearest `init`
+    /// up the class chain; a class without one ignores them, as in the interpreter.
+    fn check_init_arity(
+        &self,
+        class_name: &str,
+        args: &[Expr],
+        line: usize,
+    ) -> Result<(), HaversError> {
+        let mut cursor = Some(class_name.to_string());
+        let mut visited = HashSet::new();
+        while let Some(current) = cursor {
+            if !visited.insert(current.clone()) {
+                break;
+            }
+            let init_name = format!("{current}_init");
+            if let Some(&init) = self.functions.get(&init_name) {
+                let params = (init.count_params() as usize).saturating_sub(1);
+                let defaults = self.function_defaults.get(&init_name);
+                return Self::check_call_arity("init", params, defaults, args, line);
+            }
+            cursor = self.class_superclasses.get(&current).cloned();
+        }
+        Ok(())
+    }
+
+    /// `check_call_arity` for a call with `got` plain arguments.
+    fn check_arity_count(
+        name: &str,
+        params: usize,
+        defaults: Option<&Vec<Option<Expr>>>,
+        got: usize,
+        line: usize,
+    ) -> Result<(), HaversError> {
+        let optional = defaults.map_or(0, |d| d.iter().take(params).flatten().count());
+        let required = params - optional;
+        if got >= required && got <= params {
+            return Ok(());
+        }
+        if required == params {
+            return Err(HaversError::WrongArity {
+                name: name.to_string(),
+                expected: params,
+                got,
+                line,
+            });
+        }
+        Err(HaversError::TypeError {
+            message: format!(
+                "Function '{name}' expects {required} tae {params} arguments but ye gave it {got}"
+            ),
+            line,
+        })
+    }
+
     /// Compile assert statement: mak_siccar condition, "message"
     fn compile_assert(
         &mut self,
@@ -40345,6 +40432,13 @@ impl<'ctx> CodeGen<'ctx> {
         }
 
         let (method_func, func_name) = found_method.expect("Method lookup should be resolved");
+        Self::check_arity_count(
+            method_name,
+            (method_func.count_params() as usize).saturating_sub(1),
+            self.function_defaults.get(&func_name),
+            arg_vals.len(),
+            object.span().line,
+        )?;
 
         // Build call arguments: instance first, then regular args
         let mut call_args: Vec<BasicMetadataValueEnum> = vec![instance.into()];
