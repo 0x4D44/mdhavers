@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00165 — Interpreter recursion overflows at about 700-900 calls deep in a default-features macOS build
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** High
 - **Area:** interpreter
 - **Raised:** 2026-10-26T05:03:26Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261026T050440Z-c0058d8e
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00165-run-fix-20261026T050440Z-c0058d8e
-- **Owner base:** 0ce2a5bc5cf9ba91c13f5b84148dcd8cfea0ba99
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-26T05:04:40Z
-- **Owner until:** 2026-10-26T09:04:40Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-26T05:03:26Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-26T05:03:26Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T06:25:12Z, deltic:auto role=fix run=fix-20261026T050440Z-c0058d8e branch=task/bug-MDH-BUG-FLU-00165-run-fix-20261026T050440Z-c0058d8e code=eaf1af8 gate=manual)
 
 ## Observation
 
