@@ -736,3 +736,97 @@ blether churn(1000)
         }
     }
 }
+
+/// R5 borrowing (`wrk_docs/2026.10.26 - DES - RC borrowing.md`): a value read from a
+/// holder keeps its reference whenever something could drop the holder's reference before
+/// the value's last use: compiled code that reassigns a global or empties a list, an
+/// element overwritten in the same expression, a variable reassigned in the same
+/// statement. The functions allocate right after letting go, so a string freed too early
+/// is reused and the output changes; with MDH_RC_NOFREE=1 a retain or release of a dead
+/// object aborts.
+#[test]
+fn borrowed_values_keep_a_reference_while_their_holder_can_let_go() {
+    let src = r#"
+ken g = ["a" + "b", "c"]
+dae clobber() {
+    g = ["z"]
+    ken j = "x" + "y"
+    gie len(j) - 1
+}
+dae f(x, n) {
+    gie x + tae_string(n)
+}
+blether f(g[0], clobber())
+ken h = "p" + "q"
+dae reset() {
+    h = "r" + "s"
+    ken j = "x" + "y"
+    gie len(j) - 2
+}
+blether h + tae_string(reset())
+ken ys = ["d" + "e"]
+blether ys[0] + (ys[0] = "f" + "g")
+dae local(p) {
+    ken x = p + "!"
+    ken y = x + (x = "w" + p)
+    gie y + x
+}
+blether local("v")
+ken zs = ["m" + "n"]
+blether zs[0] + tae_string(len(clear(zs)))
+"#;
+    for envs in [
+        &[("MDH_RC_REPORT", "1")][..],
+        &[("MDH_RC_REPORT", "1"), ("MDH_RC_NOFREE", "1")][..],
+    ] {
+        let run = run_native(src, envs);
+        assert_eq!(run.code, Some(0), "{}", run.stderr);
+        assert_eq!(
+            run.stdout, "ab1\npq0\ndefg\nv!wvwv\nmn0\n",
+            "{}",
+            run.stderr
+        );
+        for kind in ["string", "list"] {
+            assert_eq!(reported_live(&run.stderr, kind), 0, "{}", run.stderr);
+        }
+    }
+}
+
+/// R5 borrowing: in a loop that only reads, the element, the left operand and the
+/// variable read for its own update take no reference of their own.
+#[test]
+fn reads_used_up_before_anything_can_drop_them_take_no_reference() {
+    let src = r#"
+dae total(xs) {
+    ken t = 0
+    ken i = 0
+    whiles i < len(xs) {
+        t = t + xs[i] * 2
+        i = i + 1
+    }
+    gie t
+}
+blether total([1, 2, 3])
+"#;
+    let ir = LLVMCompiler::new()
+        .with_refcounting(true)
+        .compile_to_ir(&parse(src).expect("parse"))
+        .expect("compile to IR");
+    let body = ir
+        .split("\ndefine ")
+        .find(|f| {
+            f.lines()
+                .next()
+                .is_some_and(|l| l.contains("@__mdh_fn_total("))
+        })
+        .expect("total's body");
+    let retains = body.matches("call void @__mdh_retain_fast(").count()
+        + body.matches("call void @__mdh_rc_retain_obj_fast(").count();
+    assert!(!body.contains("__mdh_rc_borrow_retain"), "{body}");
+    // Only the copies `+` makes when it joins two lists, and the returned value's own
+    // reference, remain (trunk: 11).
+    assert_eq!(retains, 3, "{body}");
+    let run = run_native(src, &[("MDH_RC_REPORT", "1"), ("MDH_RC_NOFREE", "1")]);
+    assert_eq!(run.code, Some(0), "{}", run.stderr);
+    assert_eq!(run.stdout, "12\n");
+}

@@ -819,6 +819,12 @@ pub struct CodeGen<'ctx> {
     /// Values codegen built that carry a +1 for their user (an element moved out of its
     /// container), by LLVM value address (see `rc_mark_owned`).
     rc_owned_values: HashSet<usize>,
+    /// Retains of borrowed values that may be elided at the end (see `rc_elide_borrows`).
+    rc_borrows: Vec<rc::RcBorrow<'ctx>>,
+    /// While `rc_own_temp` makes a phi owned edge by edge: the borrow markers emitted, and
+    /// whether a fresh incoming was taken.
+    rc_edge_markers: Option<Vec<inkwell::values::InstructionValue<'ctx>>>,
+    rc_edge_fresh: bool,
 }
 
 #[derive(Debug)]
@@ -956,6 +962,9 @@ impl<'ctx> CodeGen<'ctx> {
             rc_owned_return_fns: HashSet::new(),
             rc_temp_pins: HashMap::new(),
             rc_owned_values: HashSet::new(),
+            rc_borrows: Vec::new(),
+            rc_edge_markers: None,
+            rc_edge_fresh: false,
         }
     }
 
@@ -5220,6 +5229,7 @@ impl<'ctx> CodeGen<'ctx> {
         // releases its slots (and, in main, the user globals).
         let globals = self.rc_user_globals();
         self.rc_emit_epilogues(&globals);
+        self.rc_elide_borrows();
 
         // Last: every function body is complete, so its blocks can be split.
         self.emit_thread_line_notes();
@@ -30716,8 +30726,9 @@ impl<'ctx> CodeGen<'ctx> {
                 .unwrap()
         };
 
-        // Store the new value at that location
-        self.store_slot(elem_ptr, new_val);
+        // Store the new value at that location (the element takes the value's temp
+        // reference when it has one).
+        self.store_slot_move(elem_ptr, new_val);
 
         self.builder
             .build_unconditional_branch(merge_block)
@@ -30930,8 +30941,9 @@ impl<'ctx> CodeGen<'ctx> {
                 .unwrap()
         };
 
-        // Store the new value at that location
-        self.store_slot(elem_ptr, new_val);
+        // Store the new value at that location (the element takes the value's temp
+        // reference when it has one).
+        self.store_slot_move(elem_ptr, new_val);
 
         // Return the value that was set
         Ok(new_val)
@@ -39440,7 +39452,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .unwrap()
         };
         let value_typed_ptr = value_ptr;
-        self.store_slot(value_typed_ptr, value);
+        self.store_slot_move(value_typed_ptr, value);
         self.builder
             .build_store(found_flag, self.types.bool_type.const_int(1, false))
             .unwrap();
