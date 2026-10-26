@@ -348,6 +348,11 @@ void __mdh_div_by_zero(void) {
     __mdh_hurl_text_at_line(MDH_DIV_BY_ZERO_MSG);
 }
 
+/* Screen and keyboard builtins need a window, which native code never opens. */
+void __mdh_no_window(void) {
+    __mdh_hurl_text_at_line("Nae windae! Screen an' keyboard functions cannae be used in native code");
+}
+
 /* Index out of range: the interpreter's IndexOutOfBounds text, with the index as written. */
 void __mdh_index_oob(int64_t index, int64_t size) {
     char buf[160];
@@ -11109,6 +11114,26 @@ static void __mdh_hurl_owned(MdhValue msg) {
 /* `msg` is borrowed: the last error takes a reference of its own. */
 void __mdh_hurl(MdhValue msg) {
     __mdh_hurl_owned(__mdh_retained(msg));
+}
+
+/* A failed `mak_siccar`: the interpreter's AssertionFailed text,
+ * "Mak siccar failed at line N! <msg>" (MDH-BUG-FLU-00155, via assert_that). */
+void __mdh_assert_fail(MdhValue msg, int64_t line) {
+    const char *text = __mdh_get_string(__mdh_to_string(msg));
+    if (!text) {
+        text = "";
+    }
+    char prefix[64];
+    int prefix_len =
+        snprintf(prefix, sizeof(prefix), "Mak siccar failed at line %lld! ", (long long)line);
+    size_t text_len = strlen(text);
+    size_t total = 0;
+    int overflowed =
+        prefix_len < 0 || __builtin_add_overflow((size_t)prefix_len, text_len, &total);
+    char *buf = __mdh_alloc_text(overflowed, total);
+    memcpy(buf, prefix, (size_t)prefix_len);
+    memcpy(buf + prefix_len, text, text_len + 1);
+    __mdh_hurl_owned(__mdh_string_from_buf(buf));
 }
 
 /* A user `hurl msg`: the interpreter's UserError text is "Hurled at line N: <msg>",

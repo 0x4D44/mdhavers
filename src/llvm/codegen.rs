@@ -14144,8 +14144,10 @@ impl<'ctx> CodeGen<'ctx> {
             }
 
             Stmt::Assert {
-                condition, message, ..
-            } => self.compile_assert(condition, message.as_ref()),
+                condition,
+                message,
+                span,
+            } => self.compile_assert(condition, message.as_ref(), span.line),
 
             Stmt::Match { value, arms, .. } => self.compile_match(value, arms),
 
@@ -24887,15 +24889,29 @@ impl<'ctx> CodeGen<'ctx> {
                     phi.add_incoming(&[(&ok_val, ok_end), (&err_val, err_end)]);
                     return Ok(phi.as_basic_value());
                 }
-                "screen_width" | "screen_height" => {
-                    // Graphics screen dimensions (placeholder: return 800/600)
-                    let val = if name.contains("width") {
-                        800u64
-                    } else {
-                        600u64
-                    };
-                    let int_val = self.types.i64_type.const_int(val, false);
-                    return Ok(self.make_int(int_val));
+                "screen_end" => {
+                    // The interpreter's screen_end is a no-op returning naething (raylib
+                    // swaps buffers itself), even with no window open.
+                    return Ok(self.make_nil());
+                }
+                "screen_width" | "screen_height" | "key_down" | "key_pressed" => {
+                    // Needs a raylib window, which native code never opens: hurl rather
+                    // than return a made-up value (MDH-BUG-FLU-00155).
+                    let want = if name.starts_with("key_") { 1 } else { 0 };
+                    if args.len() != want {
+                        return Err(HaversError::CompileError(format!(
+                            "{} expects {} argument{}",
+                            name,
+                            want,
+                            if want == 1 { "" } else { "s" }
+                        )));
+                    }
+                    for arg in args {
+                        self.compile_expr(arg)?;
+                    }
+                    let f = self.runtime_error_fn("__mdh_no_window", 0);
+                    self.builder.build_call(f, &[], "").unwrap();
+                    return Ok(self.make_nil());
                 }
                 "gcd" => {
                     // gcd(a, b) - greatest common divisor using Euclidean algorithm
@@ -25181,11 +25197,6 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap();
                     return Ok(result);
                 }
-                "key_down" | "key_pressed" => {
-                    // Keyboard input (placeholder: return false)
-                    let zero = self.types.i64_type.const_int(0, false);
-                    return Ok(self.make_bool(zero));
-                }
                 "tattie_scone" | "potato" => {
                     if args.len() != 2 {
                         return Err(HaversError::CompileError(
@@ -25267,10 +25278,6 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     let arg = self.compile_expr(&args[0])?;
                     return Ok(self.inline_bum(arg));
-                }
-                "screen_end" => {
-                    // Graphics cleanup placeholder
-                    return Ok(self.make_nil());
                 }
                 "haggis_hunt" | "search_game" => {
                     if args.len() != 2 {
@@ -36925,6 +36932,7 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         condition: &Expr,
         message: Option<&Expr>,
+        line: usize,
     ) -> Result<(), HaversError> {
         let cond_val = self.compile_expr(condition)?;
 
@@ -36949,9 +36957,21 @@ impl<'ctx> CodeGen<'ctx> {
             self.compile_string_literal("Assertion failed")
         };
 
-        let _ = self
-            .builder
-            .build_call(self.libc.hurl, &[msg.into()], "assert_hurl")
+        // The interpreter's AssertionFailed text: "Mak siccar failed at line N! <msg>".
+        let line_val = self.types.i64_type.const_int(line as u64, false);
+        let fail_fn = match self.module.get_function("__mdh_assert_fail") {
+            Some(f) => f,
+            None => self.module.add_function(
+                "__mdh_assert_fail",
+                self.types.void_type.fn_type(
+                    &[self.types.value_type.into(), self.types.i64_type.into()],
+                    false,
+                ),
+                Some(Linkage::External),
+            ),
+        };
+        self.builder
+            .build_call(fail_fn, &[msg.into(), line_val.into()], "assert_hurl")
             .unwrap();
         self.builder.build_unreachable().unwrap();
 

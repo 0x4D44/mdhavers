@@ -42,6 +42,7 @@ pub enum Ret {
 pub const RUNTIME_OWNERSHIP: &[(&str, &str, Ret)] = &[
     ("__mdh_args", "", Ret::Fresh),
     ("__mdh_assert", "bs", Ret::None), // msg stored as last error (if string) via hurl
+    ("__mdh_assert_fail", "b-", Ret::None), // hurls a fresh "Mak siccar failed at line N!" string
     ("__mdh_atomic_add", "bb", Ret::None), // handles are int table indices
     ("__mdh_atomic_cas", "bbb", Ret::None),
     ("__mdh_atomic_load", "b", Ret::None),
@@ -272,6 +273,7 @@ pub const RUNTIME_OWNERSHIP: &[(&str, &str, Ret)] = &[
     ("__mdh_native_call8", "mbssssssss", Ret::Fresh), // args stored in object fields/state; obj mutated
     ("__mdh_native_get", "bb", Ret::Stored), // returns object field value (held in tri state)
     ("__mdh_native_set", "mbs", Ret::Stored), // returns value arg; key copied to Rust string (graphics3d)
+    ("__mdh_no_window", "", Ret::None),       // never returns; declared on first use
     ("__mdh_note_line", "-", Ret::None),
     ("__mdh_numpty_check", "b", Ret::Fresh),
     // The single allocator: a raw object payload the caller wraps in a value (the
@@ -443,6 +445,8 @@ dae f(xs, n) {
 blether f([1, 2], 1)
 blether join(["a"], ",")
 blether aw([1], |x| x)
+mak_siccar 1 == 1, "one"
+blether screen_width()
 "#;
 
     /// Every `__mdh_*` function declared (not defined) in a compiled module, with its
