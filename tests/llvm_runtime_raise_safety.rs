@@ -360,3 +360,110 @@ fer k in 0..2 {{
         assert_eq!(lines, [once, once].concat(), "rc={refcounting}");
     }
 }
+
+/// Compiled code's own allocations had no NULL check (MDH-BUG-FLU-00193): with every
+/// object of 1000 bytes or more failing, split's single-character path, a string
+/// concatenation and a string grown in place by `s = s + "x"` wrote through NULL and
+/// crashed (139). They now call the checked allocators, which raise the "ower muckle"
+/// error. The split source is a literal (static, so not allocated).
+#[cfg(debug_assertions)]
+#[test]
+fn compiled_object_allocations_raise_the_too_big_error() {
+    let src = format!(
+        r#"ken lang = "a,{tail}"
+ken half = "{half}"
+dae grow(n) {{
+    ken s = ""
+    fer i in 0..n {{
+        s = s + "x"
+    }}
+    gie s
+}}
+fer k in 0..2 {{
+    hae_a_bash {{
+        ken parts = split(lang, ",")
+        blether len(parts[1])
+    }} gin_it_gangs_wrang e {{
+        blether e
+    }}
+    hae_a_bash {{
+        ken s = half + half
+        blether len(s)
+    }} gin_it_gangs_wrang e {{
+        blether e
+    }}
+    hae_a_bash {{
+        blether len(grow(1500))
+    }} gin_it_gangs_wrang e {{
+        blether e
+    }}
+}}
+blether len(split("a,bc", ",")[1]) + len(half + "y") + len(grow(3))
+"#,
+        tail = "y".repeat(1500),
+        half = "h".repeat(600),
+    );
+    for refcounting in [false, true] {
+        let run = run_native_with_env(&src, refcounting, &[("MDH_TEST_ALLOC_FAIL_OVER", "1000")]);
+        assert_eq!(run.code, Some(0), "rc={refcounting}: {}", run.stderr);
+        let lines: Vec<&str> = run.stdout.lines().collect();
+        let once = [TOO_BIG, TOO_BIG, TOO_BIG];
+        let mut want = [once, once].concat();
+        want.push("606");
+        assert_eq!(lines, want, "rc={refcounting}");
+    }
+}
+
+/// The same for compiled code's buffers (MDH-BUG-FLU-00193): with every buffer of 1000
+/// bytes or more failing, a 100-item list literal, a 100-entry dict literal and an
+/// instance growing to 40 fields wrote through NULL and crashed; they now raise.
+#[cfg(debug_assertions)]
+#[test]
+fn compiled_buffer_allocations_raise_the_too_big_error() {
+    let items: Vec<String> = (0..100).map(|i| i.to_string()).collect();
+    let entries: Vec<String> = (0..100).map(|i| format!("\"k{i}\": {i}")).collect();
+    let fields: Vec<String> = (0..40)
+        .map(|i| format!("        masel.f{i} = {i}"))
+        .collect();
+    let src = format!(
+        r#"kin Big {{
+    dae init() {{
+{fields}
+    }}
+}}
+fer k in 0..2 {{
+    hae_a_bash {{
+        ken xs = [{items}]
+        blether len(xs)
+    }} gin_it_gangs_wrang e {{
+        blether e
+    }}
+    hae_a_bash {{
+        ken d = {{{entries}}}
+        blether len(d)
+    }} gin_it_gangs_wrang e {{
+        blether e
+    }}
+    hae_a_bash {{
+        ken b = Big()
+        blether b.f39
+    }} gin_it_gangs_wrang e {{
+        blether e
+    }}
+}}
+blether len([1, 2, 3]) + len({{"a": 1}})
+"#,
+        fields = fields.join("\n"),
+        items = items.join(", "),
+        entries = entries.join(", "),
+    );
+    for refcounting in [false, true] {
+        let run = run_native_with_env(&src, refcounting, &[("MDH_TEST_BUF_FAIL_OVER", "1000")]);
+        assert_eq!(run.code, Some(0), "rc={refcounting}: {}", run.stderr);
+        let lines: Vec<&str> = run.stdout.lines().collect();
+        let once = [TOO_BIG, TOO_BIG, TOO_BIG];
+        let mut want = [once, once].concat();
+        want.push("4");
+        assert_eq!(lines, want, "rc={refcounting}");
+    }
+}

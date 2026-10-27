@@ -64,10 +64,12 @@ pub const RUNTIME_OWNERSHIP: &[(&str, &str, Ret)] = &[
     ("__mdh_braw_time", "", Ret::Fresh),
     // The single allocator (runtime/gc_stub.c): raw memory, no MdhValue in or out.
     ("__mdh_buf_alloc", "-", Ret::None),
+    ("__mdh_buf_alloc_checked", "-", Ret::None), // raises "ower muckle"; declared on first use
     ("__mdh_buf_realloc", "--", Ret::None),
-    ("__mdh_builtin_error", "-", Ret::None), // never returns; declared on first use
-    ("__mdh_builtin_type_error", "-", Ret::None), // never returns; declared on first use
-    ("__mdh_bytes_append", "mb", Ret::Arg),  // returns bytes arg; bytes mutated in place
+    ("__mdh_buf_realloc_checked", "--", Ret::None), // raises "ower muckle"; declared on first use
+    ("__mdh_builtin_error", "-", Ret::None),        // never returns; declared on first use
+    ("__mdh_builtin_type_error", "-", Ret::None),   // never returns; declared on first use
+    ("__mdh_bytes_append", "mb", Ret::Arg),         // returns bytes arg; bytes mutated in place
     ("__mdh_bytes_from_string", "b", Ret::Fresh),
     ("__mdh_bytes_get", "bb", Ret::None),
     ("__mdh_bytes_len", "b", Ret::None),
@@ -280,7 +282,9 @@ pub const RUNTIME_OWNERSHIP: &[(&str, &str, Ret)] = &[
     // The single allocator: a raw object payload the caller wraps in a value (the
     // caller's +1 once R1 counts).
     ("__mdh_obj_alloc", "--", Ret::None),
+    ("__mdh_obj_alloc_checked", "--", Ret::None), // raises "ower muckle"; declared on first use
     ("__mdh_obj_realloc", "--", Ret::None),
+    ("__mdh_obj_realloc_checked", "--", Ret::None), // raises "ower muckle"; declared on first use
     ("__mdh_obj_strdup", "-", Ret::None),
     ("__mdh_obj_strdup_checked", "-", Ret::None), // raises "ower muckle"; declared on first use
     ("__mdh_och", "b", Ret::Fresh),
@@ -453,6 +457,12 @@ blether screen_width()
 blether sclaff([[1]])
 blether split("a,b", ",")
 blether assert_equal(1, 1)
+ken s = "a"
+s = s + "b"
+kin Pot {
+    dae init() { masel.n = 1 }
+}
+blether Pot().n
 "#;
 
     /// Every `__mdh_*` function declared (not defined) in a compiled module, with its

@@ -237,6 +237,11 @@ static void __mdh_raise_too_big(void) {
     __mdh_hurl_owned(__mdh_out_of_memory_message());
 }
 
+/* The same for gc_stub.c's checked allocators (MDH-BUG-FLU-00193). */
+void __mdh_raise_out_of_memory(void) {
+    __mdh_raise_too_big();
+}
+
 /* `p`, an allocation's result: when it is NULL (no memory), the "ower muckle" error is
  * raised instead, so a builtin never writes through NULL (MDH-BUG-FLU-00189). Not for
  * anything the Rust runtime calls, which must never be longjmp'd through. */

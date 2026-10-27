@@ -10,7 +10,7 @@
 //!
 //! Fresh values are recognised from the IR: a call whose `RUNTIME_OWNERSHIP` row is
 //! `Ret::Fresh`, a call to a compiled mdhavers function (they return +1), a value built from
-//! an `__mdh_obj_alloc` result, and phis of those.
+//! an `__mdh_obj_alloc` (or `__mdh_obj_alloc_checked`) result, and phis of those.
 
 use super::*;
 
@@ -277,6 +277,7 @@ impl<'ctx> CodeGen<'ctx> {
                             matches!(
                                 f.get_name().to_bytes(),
                                 b"__mdh_obj_alloc"
+                                    | b"__mdh_obj_alloc_checked"
                                     | b"__mdh_obj_strdup"
                                     | b"__mdh_obj_strdup_checked"
                             )

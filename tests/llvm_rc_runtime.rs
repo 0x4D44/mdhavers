@@ -22,6 +22,8 @@ int64_t test_line = 7;
 int64_t __mdh_rc_line(void) { return test_line; }
 /* thread_spawn sets this before its first thread; from then on counts are atomic. */
 int32_t __mdh_line_threaded = 0;
+/* The checked allocators' out-of-memory raise (mdh_runtime.c). */
+void __mdh_raise_out_of_memory(void) { abort(); }
 
 void __mdh_rc_children(uint32_t kind, void *payload, MdhRcVisit visit, void *ctx) {
     if (kind != MDH_KIND_LIST) return;

@@ -147,6 +147,14 @@ void *__mdh_buf_alloc(size_t size);
 void *__mdh_buf_realloc(void *buf, size_t size);
 void __mdh_buf_free(void *buf);
 char *__mdh_buf_strdup(const char *s);
+/* The same for compiled code: out of memory raises the "ower muckle" error instead of
+ * returning NULL (MDH-BUG-FLU-00193). Never call them from a runtime. */
+void *__mdh_obj_alloc_checked(uint32_t kind, size_t size);
+void *__mdh_obj_realloc_checked(void *obj, size_t size);
+void *__mdh_buf_alloc_checked(size_t size);
+void *__mdh_buf_realloc_checked(void *buf, size_t size);
+/* Raise the "ower muckle" error (mdh_runtime.c): it does not return. */
+void __mdh_raise_out_of_memory(void);
 /* Allocations made so far of a kind (MDH_KIND_BUFFER counts buffers), or -1 when the
  * runtime was built without MDH_ALLOC_STATS. */
 int64_t __mdh_alloc_count(uint32_t kind);

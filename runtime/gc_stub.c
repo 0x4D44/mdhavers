@@ -376,6 +376,31 @@ char *__mdh_buf_strdup(const char *s) {
     return out;
 }
 
+/* The allocators compiled code calls (MDH-BUG-FLU-00193): out of memory, they raise the
+ * "ower muckle" error (__mdh_raise_out_of_memory, mdh_runtime.c) instead of returning
+ * NULL for the program to write through. Never for the runtimes themselves, which must
+ * not be longjmp'd through. A NULL for 0 bytes is not a failure. */
+static inline void *__mdh_alloc_checked_result(void *p, size_t size) {
+    if (__builtin_expect(p == NULL, 0) && size != 0) __mdh_raise_out_of_memory();
+    return p;
+}
+
+void *__mdh_obj_alloc_checked(uint32_t kind, size_t size) {
+    return __mdh_alloc_checked_result(__mdh_obj_alloc(kind, size), size);
+}
+
+void *__mdh_obj_realloc_checked(void *obj, size_t size) {
+    return __mdh_alloc_checked_result(__mdh_obj_realloc(obj, size), size);
+}
+
+void *__mdh_buf_alloc_checked(size_t size) {
+    return __mdh_alloc_checked_result(__mdh_buf_alloc(size), size);
+}
+
+void *__mdh_buf_realloc_checked(void *buf, size_t size) {
+    return __mdh_alloc_checked_result(__mdh_buf_realloc(buf, size), size);
+}
+
 /* ========== Reference counting ========== */
 
 /* Kinds whose objects are counted (bit 1 << kind). Retain and release ignore the others,

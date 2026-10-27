@@ -4411,6 +4411,34 @@ impl<'ctx> CodeGen<'ctx> {
             .into_pointer_value()
     }
 
+    /// The checked form of one of the allocators in `self.libc` (`obj_alloc`, `obj_realloc`,
+    /// `buf_alloc`, `buf_realloc`): the same call, but out of memory raises the "ower
+    /// muckle" error instead of returning NULL (MDH-BUG-FLU-00193). Declared on first use,
+    /// so the IR of a program that allocates nothing inline is unchanged.
+    fn alloc_checked(&self, alloc: FunctionValue<'ctx>) -> FunctionValue<'ctx> {
+        let name = match alloc.get_name().to_bytes() {
+            b"__mdh_obj_alloc" => "__mdh_obj_alloc_checked",
+            b"__mdh_obj_realloc" => "__mdh_obj_realloc_checked",
+            b"__mdh_buf_alloc" => "__mdh_buf_alloc_checked",
+            b"__mdh_buf_realloc" => "__mdh_buf_realloc_checked",
+            other => panic!(
+                "alloc_checked: no checked form of {}",
+                String::from_utf8_lossy(other)
+            ),
+        };
+        self.module.get_function(name).unwrap_or_else(|| {
+            let f = self
+                .module
+                .add_function(name, alloc.get_type(), Some(Linkage::External));
+            // A fresh allocation aliases nothing, as the unchecked allocator's result.
+            let noalias = self
+                .context
+                .create_enum_attribute(Attribute::get_named_enum_kind_id("noalias"), 0);
+            f.add_attribute(AttributeLoc::Return, noalias);
+            f
+        })
+    }
+
     /// Emit a call to `__mdh_index_oob(index, size)` followed by `unreachable`.
     fn emit_index_oob(&mut self, index: IntValue<'ctx>, size: IntValue<'ctx>) {
         let oob = self.runtime_error_fn("__mdh_index_oob", 2);
@@ -7488,7 +7516,7 @@ impl<'ctx> CodeGen<'ctx> {
         let new_str = self
             .builder
             .build_call(
-                self.libc.obj_alloc,
+                self.alloc_checked(self.libc.obj_alloc),
                 &[self.obj_kind(ObjKind::String).into(), alloc_size.into()],
                 "new_str",
             )
@@ -9650,7 +9678,7 @@ impl<'ctx> CodeGen<'ctx> {
         let int_buf = self
             .builder
             .build_call(
-                self.libc.obj_alloc,
+                self.alloc_checked(self.libc.obj_alloc),
                 &[self.obj_kind(ObjKind::String).into(), buf_size.into()],
                 "int_buf",
             )
@@ -11606,7 +11634,7 @@ impl<'ctx> CodeGen<'ctx> {
         let new_str = self
             .builder
             .build_call(
-                self.libc.obj_alloc,
+                self.alloc_checked(self.libc.obj_alloc),
                 &[self.obj_kind(ObjKind::String).into(), alloc_size.into()],
                 "slap_new_str",
             )
@@ -12801,7 +12829,7 @@ impl<'ctx> CodeGen<'ctx> {
         let result_buf = self
             .builder
             .build_call(
-                self.libc.obj_alloc,
+                self.alloc_checked(self.libc.obj_alloc),
                 &[self.obj_kind(ObjKind::String).into(), buf_size.into()],
                 "upper_buf",
             )
@@ -12925,7 +12953,7 @@ impl<'ctx> CodeGen<'ctx> {
         let result_buf = self
             .builder
             .build_call(
-                self.libc.obj_alloc,
+                self.alloc_checked(self.libc.obj_alloc),
                 &[self.obj_kind(ObjKind::String).into(), buf_size.into()],
                 "lower_buf",
             )
@@ -13662,7 +13690,7 @@ impl<'ctx> CodeGen<'ctx> {
         let result_buf = self
             .builder
             .build_call(
-                self.libc.obj_alloc,
+                self.alloc_checked(self.libc.obj_alloc),
                 &[self.obj_kind(ObjKind::String).into(), buf_size.into()],
                 "trim_buf",
             )
@@ -14702,7 +14730,7 @@ impl<'ctx> CodeGen<'ctx> {
                         let list_ptr = self
                             .builder
                             .build_call(
-                                self.libc.obj_alloc,
+                                self.alloc_checked(self.libc.obj_alloc),
                                 &[self.obj_kind(ObjKind::Closure).into(), size_val.into()],
                                 "closure_ptr",
                             )
@@ -14860,7 +14888,7 @@ impl<'ctx> CodeGen<'ctx> {
                         let list_ptr = self
                             .builder
                             .build_call(
-                                self.libc.obj_alloc,
+                                self.alloc_checked(self.libc.obj_alloc),
                                 &[self.obj_kind(ObjKind::Closure).into(), size_val.into()],
                                 "closure_ptr",
                             )
@@ -15987,7 +16015,7 @@ impl<'ctx> CodeGen<'ctx> {
         let new_str = self
             .builder
             .build_call(
-                self.libc.obj_alloc,
+                self.alloc_checked(self.libc.obj_alloc),
                 &[self.obj_kind(ObjKind::String).into(), alloc_size.into()],
                 "new_str_fast",
             )
@@ -16242,7 +16270,7 @@ impl<'ctx> CodeGen<'ctx> {
         let malloc_result = self
             .builder
             .build_call(
-                self.libc.obj_alloc,
+                self.alloc_checked(self.libc.obj_alloc),
                 &[self.obj_kind(ObjKind::String).into(), new_cap.into()],
                 "new_buf",
             )
@@ -16274,7 +16302,7 @@ impl<'ctx> CodeGen<'ctx> {
         let realloc_result = self
             .builder
             .build_call(
-                self.libc.obj_realloc,
+                self.alloc_checked(self.libc.obj_realloc),
                 &[current_ptr.into(), new_cap.into()],
                 "grown_buf",
             )
@@ -26536,7 +26564,7 @@ impl<'ctx> CodeGen<'ctx> {
                     let buf = self
                         .builder
                         .build_call(
-                            self.libc.obj_alloc,
+                            self.alloc_checked(self.libc.obj_alloc),
                             &[self.obj_kind(ObjKind::String).into(), buf_size.into()],
                             "char_buf",
                         )
@@ -28374,7 +28402,7 @@ impl<'ctx> CodeGen<'ctx> {
         let char_str_ptr = self
             .builder
             .build_call(
-                self.libc.obj_alloc,
+                self.alloc_checked(self.libc.obj_alloc),
                 &[self.obj_kind(ObjKind::String).into(), two.into()],
                 "char_str",
             )
@@ -29422,7 +29450,7 @@ impl<'ctx> CodeGen<'ctx> {
         let list_ptr = self
             .builder
             .build_call(
-                self.libc.obj_alloc,
+                self.alloc_checked(self.libc.obj_alloc),
                 &[self.obj_kind(ObjKind::List).into(), list_struct_size.into()],
                 "list_struct",
             )
@@ -29441,7 +29469,11 @@ impl<'ctx> CodeGen<'ctx> {
             .const_int(initial_capacity as u64 * value_size, false);
         let items_ptr = self
             .builder
-            .build_call(self.libc.buf_alloc, &[items_size.into()], "list_items")
+            .build_call(
+                self.alloc_checked(self.libc.buf_alloc),
+                &[items_size.into()],
+                "list_items",
+            )
             .unwrap()
             .try_as_basic_value()
             .basic()
@@ -29529,7 +29561,7 @@ impl<'ctx> CodeGen<'ctx> {
         let list_ptr = self
             .builder
             .build_call(
-                self.libc.obj_alloc,
+                self.alloc_checked(self.libc.obj_alloc),
                 &[self.obj_kind(ObjKind::List).into(), list_struct_size.into()],
                 "spread_list_struct",
             )
@@ -29548,7 +29580,7 @@ impl<'ctx> CodeGen<'ctx> {
         let items_ptr = self
             .builder
             .build_call(
-                self.libc.buf_alloc,
+                self.alloc_checked(self.libc.buf_alloc),
                 &[items_size.into()],
                 "spread_list_items",
             )
@@ -29804,7 +29836,7 @@ impl<'ctx> CodeGen<'ctx> {
                     let char_str_ptr = self
                         .builder
                         .build_call(
-                            self.libc.obj_alloc,
+                            self.alloc_checked(self.libc.obj_alloc),
                             &[self.obj_kind(ObjKind::String).into(), two.into()],
                             "char_str",
                         )
@@ -29925,7 +29957,11 @@ impl<'ctx> CodeGen<'ctx> {
         let size_val = self.types.i64_type.const_int(total_size, false);
         let raw_ptr = self
             .builder
-            .build_call(self.libc.buf_alloc, &[size_val.into()], "dict_alloc")
+            .build_call(
+                self.alloc_checked(self.libc.buf_alloc),
+                &[size_val.into()],
+                "dict_alloc",
+            )
             .unwrap()
             .try_as_basic_value()
             .basic()
@@ -30005,7 +30041,7 @@ impl<'ctx> CodeGen<'ctx> {
         let handle_ptr = self
             .builder
             .build_call(
-                self.libc.obj_alloc,
+                self.alloc_checked(self.libc.obj_alloc),
                 &[self.obj_kind(ObjKind::Kv).into(), handle_size.into()],
                 "dict_handle_alloc",
             )
@@ -31481,7 +31517,7 @@ impl<'ctx> CodeGen<'ctx> {
         let sc_token_ptr = self
             .builder
             .build_call(
-                self.libc.obj_alloc,
+                self.alloc_checked(self.libc.obj_alloc),
                 &[self.obj_kind(ObjKind::String).into(), sc_token_size.into()],
                 "sc_token_ptr",
             )
@@ -31586,7 +31622,7 @@ impl<'ctx> CodeGen<'ctx> {
         let sc_final_ptr = self
             .builder
             .build_call(
-                self.libc.obj_alloc,
+                self.alloc_checked(self.libc.obj_alloc),
                 &[self.obj_kind(ObjKind::String).into(), sc_final_size.into()],
                 "sc_final_ptr",
             )
@@ -31780,7 +31816,7 @@ impl<'ctx> CodeGen<'ctx> {
         let token_ptr = self
             .builder
             .build_call(
-                self.libc.obj_alloc,
+                self.alloc_checked(self.libc.obj_alloc),
                 &[
                     self.obj_kind(ObjKind::String).into(),
                     token_alloc_size.into(),
@@ -32103,7 +32139,7 @@ impl<'ctx> CodeGen<'ctx> {
         let result_buf = self
             .builder
             .build_call(
-                self.libc.obj_alloc,
+                self.alloc_checked(self.libc.obj_alloc),
                 &[self.obj_kind(ObjKind::String).into(), alloc_size.into()],
                 "result_buf",
             )
@@ -33036,7 +33072,7 @@ impl<'ctx> CodeGen<'ctx> {
             let list_ptr = self
                 .builder
                 .build_call(
-                    self.libc.obj_alloc,
+                    self.alloc_checked(self.libc.obj_alloc),
                     &[self.obj_kind(ObjKind::Closure).into(), size_val.into()],
                     "closure_ptr",
                 )
@@ -33926,7 +33962,7 @@ impl<'ctx> CodeGen<'ctx> {
         let new_list_ptr = self
             .builder
             .build_call(
-                self.libc.obj_alloc,
+                self.alloc_checked(self.libc.obj_alloc),
                 &[self.obj_kind(ObjKind::List).into(), struct_size.into()],
                 "new_list_struct",
             )
@@ -33944,7 +33980,11 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         let new_items_ptr = self
             .builder
-            .build_call(self.libc.buf_alloc, &[items_size.into()], "new_items")
+            .build_call(
+                self.alloc_checked(self.libc.buf_alloc),
+                &[items_size.into()],
+                "new_items",
+            )
             .unwrap()
             .try_as_basic_value()
             .basic()
@@ -38149,7 +38189,7 @@ impl<'ctx> CodeGen<'ctx> {
         let new_list_struct = self
             .builder
             .build_call(
-                self.libc.obj_alloc,
+                self.alloc_checked(self.libc.obj_alloc),
                 &[self.obj_kind(ObjKind::List).into(), list_struct_size.into()],
                 "new_list_struct",
             )
@@ -38167,7 +38207,11 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         let new_items = self
             .builder
-            .build_call(self.libc.buf_alloc, &[data_size.into()], "new_items")
+            .build_call(
+                self.alloc_checked(self.libc.buf_alloc),
+                &[data_size.into()],
+                "new_items",
+            )
             .unwrap()
             .try_as_basic_value()
             .basic()
@@ -38619,7 +38663,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let list_ptr = self
                     .builder
                     .build_call(
-                        self.libc.obj_alloc,
+                        self.alloc_checked(self.libc.obj_alloc),
                         &[self.obj_kind(ObjKind::BoundMethod).into(), size_val.into()],
                         "bound_method_ptr",
                     )
@@ -39483,7 +39527,7 @@ impl<'ctx> CodeGen<'ctx> {
         let new_ptr = self
             .builder
             .build_call(
-                self.libc.buf_realloc,
+                self.alloc_checked(self.libc.buf_realloc),
                 &[instance_ptr.into(), new_size.into()],
                 "new_instance",
             )
@@ -39826,7 +39870,11 @@ impl<'ctx> CodeGen<'ctx> {
         let header_size = self.types.i64_type.const_int(16, false); // class_name_ptr + field_count
         let instance_ptr = self
             .builder
-            .build_call(self.libc.buf_alloc, &[header_size.into()], "instance_alloc")
+            .build_call(
+                self.alloc_checked(self.libc.buf_alloc),
+                &[header_size.into()],
+                "instance_alloc",
+            )
             .unwrap()
             .try_as_basic_value()
             .basic()
@@ -39874,7 +39922,7 @@ impl<'ctx> CodeGen<'ctx> {
         let handle_ptr = self
             .builder
             .build_call(
-                self.libc.obj_alloc,
+                self.alloc_checked(self.libc.obj_alloc),
                 &[self.obj_kind(ObjKind::Instance).into(), handle_size.into()],
                 "instance_handle_alloc",
             )
@@ -41374,7 +41422,7 @@ impl<'ctx> CodeGen<'ctx> {
         let buf = self
             .builder
             .build_call(
-                self.libc.obj_alloc,
+                self.alloc_checked(self.libc.obj_alloc),
                 &[self.obj_kind(ObjKind::String).into(), buf_size.into()],
                 "sb_buf",
             )
@@ -43027,7 +43075,7 @@ impl<'ctx> CodeGen<'ctx> {
         let new_str = self
             .builder
             .build_call(
-                self.libc.obj_alloc,
+                self.alloc_checked(self.libc.obj_alloc),
                 &[self.obj_kind(ObjKind::String).into(), alloc_size.into()],
                 "new_str",
             )
@@ -43171,7 +43219,7 @@ impl<'ctx> CodeGen<'ctx> {
         let new_str2 = self
             .builder
             .build_call(
-                self.libc.obj_alloc,
+                self.alloc_checked(self.libc.obj_alloc),
                 &[self.obj_kind(ObjKind::String).into(), str_alloc.into()],
                 "new_str_loop",
             )
@@ -43284,7 +43332,7 @@ impl<'ctx> CodeGen<'ctx> {
         let new_list_struct = self
             .builder
             .build_call(
-                self.libc.obj_alloc,
+                self.alloc_checked(self.libc.obj_alloc),
                 &[self.obj_kind(ObjKind::List).into(), list_struct_size.into()],
                 "new_list_struct",
             )
@@ -43302,7 +43350,11 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         let new_items = self
             .builder
-            .build_call(self.libc.buf_alloc, &[items_size.into()], "new_items")
+            .build_call(
+                self.alloc_checked(self.libc.buf_alloc),
+                &[items_size.into()],
+                "new_items",
+            )
             .unwrap()
             .try_as_basic_value()
             .basic()
