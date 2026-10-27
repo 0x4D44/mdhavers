@@ -131,6 +131,54 @@ const RC_DROP_FAMILIES: &[&str] = &[
     "toss",
 ];
 
+/// External (non-runtime) functions the codegen declares that neither run compiled code
+/// nor touch an object's count: libc readers, formatters into the caller's buffer, maths and
+/// clocks. Every other external is `RunsCode`: `qsort` calls back into compiled code, and
+/// `setjmp` returns a second time after the protected code ran, past calls the region scan
+/// cannot see on the CFG. Keep sorted.
+const RC_HARMLESS_EXTERNALS: &[&str] = &[
+    "acos",
+    "asin",
+    "atan",
+    "atan2",
+    "ceil",
+    "clock_gettime",
+    "cos",
+    "cosh",
+    "exit",
+    "exp",
+    "fgets",
+    "floor",
+    "getenv",
+    "isspace",
+    "log",
+    "log10",
+    "log2",
+    "memcpy",
+    "nanosleep",
+    "pow",
+    "printf",
+    "rand",
+    "sin",
+    "sinh",
+    "sleep",
+    "snprintf",
+    "sqrt",
+    "srand",
+    "strcat",
+    "strcmp",
+    "strcpy",
+    "strlen",
+    "strncmp",
+    "strstr",
+    "strtod",
+    "tan",
+    "tanh",
+    "time",
+    "tolower",
+    "toupper",
+];
+
 /// What a call can do to reference counts (see `rc_call_effect`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum RcCallEffect {
@@ -2044,9 +2092,9 @@ impl<'ctx> CodeGen<'ctx> {
         }
         if !name.starts_with("__mdh_") {
             return match name.as_ref() {
-                "qsort" => RcCallEffect::RunsCode,
                 "free" | "realloc" => RcCallEffect::Drops,
-                _ => RcCallEffect::None,
+                n if RC_HARMLESS_EXTERNALS.contains(&n) => RcCallEffect::None,
+                _ => RcCallEffect::RunsCode,
             };
         }
         if matches!(
