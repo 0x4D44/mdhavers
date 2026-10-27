@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00202 — heave_oot ratio perf test flakes red on trunk: 33 ms baseline, 4x step, 10x limit
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** tests
 - **Raised:** 2026-10-27T05:22:08Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261027T052215Z-03955c31
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00202-run-fix-20261027T052215Z-03955c31
-- **Owner base:** 841fbc1bce5220e70543ebea3c0e2d4536691eb8
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-27T05:22:15Z
-- **Owner until:** 2026-10-27T09:22:15Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-27T05:22:08Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-27T05:22:08Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-27T05:31:29Z, deltic:auto role=fix run=fix-20261027T052215Z-03955c31 branch=task/bug-MDH-BUG-FLU-00202-run-fix-20261027T052215Z-03955c31 code=05f257b gate=manual)
 
 ## Observation
 
