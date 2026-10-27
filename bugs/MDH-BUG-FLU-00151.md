@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00151 — C runtime puts declarations right after default: labels, a C23-only construct clang 15 rejects
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** native
 - **Raised:** 2026-10-25T09:59:23Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261026T214549Z-49d208b1
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00151-run-fix-20261026T214549Z-49d208b1
-- **Owner base:** e9aacdb5b2f66f7b00214d225728b201140c07cf
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-26T21:45:49Z
-- **Owner until:** 2026-10-27T01:45:49Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=1, indeterminate=0
-- **State history:** Open (2026-10-25T09:59:23Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-25T10:37:12Z, deltic:auto role=fix run=fix-20261025T100351Z-bed57b91 branch=task/bug-MDH-BUG-FLU-00151-run-fix-20261025T100351Z-bed57b91 code=8497359 gate=manual) -> Open (2026-10-26T21:44:08Z, deltic:manual role=verify run=verify-20261026T194306Z-e22233f2 verified_fix_run=fix-20261025T100351Z-bed57b91 verdict=doubt reason=reopen-verifier-gpt-6-luna-max-codex-recorded-by-lead-8497359-showing-a-float-an)
+- **State history:** Open (2026-10-25T09:59:23Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-25T10:37:12Z, deltic:auto role=fix run=fix-20261025T100351Z-bed57b91 branch=task/bug-MDH-BUG-FLU-00151-run-fix-20261025T100351Z-bed57b91 code=8497359 gate=manual) -> Open (2026-10-26T21:44:08Z, deltic:manual role=verify run=verify-20261026T194306Z-e22233f2 verified_fix_run=fix-20261025T100351Z-bed57b91 verdict=doubt reason=reopen-verifier-gpt-6-luna-max-codex-recorded-by-lead-8497359-showing-a-float-an) -> Fixed (2026-10-27T00:56:13Z, deltic:auto role=fix run=fix-20261026T214549Z-49d208b1 branch=task/bug-MDH-BUG-FLU-00151-run-fix-20261026T214549Z-49d208b1 code=976920b gate=manual)
 
 ## Observation
 
