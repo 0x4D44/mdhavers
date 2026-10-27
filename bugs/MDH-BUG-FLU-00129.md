@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00129 — benchmarks/large_scale: tick() deltas mislabelled as ms, and fib_large overflows natively
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** benchmarks
 - **Raised:** 2026-10-24T22:25:42Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261027T045159Z-f9fe2891
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00129-run-verify-20261027T045159Z-f9fe2891
-- **Owner base:** b2712adc7b304eb842407eae833911cd438de665
-- **Owner fingerprint:** sha256:0ace0aa28fc4bb1a2da717d2479d3cb341077d66c4823c98d67940f61dac0d77
-- **Owner since:** 2026-10-27T04:51:59Z
-- **Owner until:** 2026-10-27T08:51:59Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
-- **Attempts:** fix=0, doubt=1, indeterminate=0
-- **State history:** Open (2026-10-24T22:25:42Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-25T00:08:10Z, deltic:auto role=fix run=fix-20261024T224248Z-86473bee branch=task/bug-MDH-BUG-FLU-00129-run-fix-20261024T224248Z-86473bee code=7af9b14 gate=manual) -> Open (2026-10-26T23:48:13Z, deltic:manual role=verify run=verify-20261026T224201Z-9f60c95c verified_fix_run=fix-20261024T224248Z-86473bee verdict=doubt reason=reopen-regression-assertion-exists-to-run-or-mutate) -> Fixed (2026-10-27T04:50:59Z, deltic:auto role=fix run=fix-20261027T015311Z-86738477 branch=task/bug-MDH-BUG-FLU-00129-run-fix-20261027T015311Z-86738477 code=4c29d34 gate=manual)
+- **Attempts:** fix=0, doubt=0, indeterminate=0
+- **State history:** Open (2026-10-24T22:25:42Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-25T00:08:10Z, deltic:auto role=fix run=fix-20261024T224248Z-86473bee branch=task/bug-MDH-BUG-FLU-00129-run-fix-20261024T224248Z-86473bee code=7af9b14 gate=manual) -> Open (2026-10-26T23:48:13Z, deltic:manual role=verify run=verify-20261026T224201Z-9f60c95c verified_fix_run=fix-20261024T224248Z-86473bee verdict=doubt reason=reopen-regression-assertion-exists-to-run-or-mutate) -> Fixed (2026-10-27T04:50:59Z, deltic:auto role=fix run=fix-20261027T015311Z-86738477 branch=task/bug-MDH-BUG-FLU-00129-run-fix-20261027T015311Z-86738477 code=4c29d34 gate=manual) -> Closed (2026-10-27T05:22:54Z, deltic:manual role=verify run=verify-20261027T045159Z-f9fe2891 verified_fix_run=fix-20261027T015311Z-86738477 verdict=close)
 
 ## Observation
 
@@ -35,5 +35,9 @@ Evidence fingerprint: `manual:v1:benchmarks-large-scale-tick-deltas-mislabelled-
 ### Verification summary (2026-10-26T23:48:13Z, deltic:manual run=verify-20261026T224201Z-9f60c95c verified_fix_run=fix-20261024T224248Z-86473bee verdict=doubt)
 
 Verifier note: Manual verify: [la luna] 7af9b14 changed 13 benchmark files but added no tests; rg found no benchmark references under tests/. Interpreter primes_large exits 0 (1M: 66,629 ms); native fib_large exits 0 with capped values. No regression assertion exists to run or mutate.
+
+### Verification summary (2026-10-27T05:22:54Z, deltic:manual run=verify-20261027T045159Z-f9fe2891 verified_fix_run=fix-20261027T015311Z-86738477 verdict=close)
+
+Verifier note: Manual verify: [lf luna] 7af9b14/4c29d34; benchmark_timing_labels_match_their_divisors and fib_large_function_does_not_overflow pass; /1000-for-ms mutant failed scanner assertion; unmodded fib mutant overflowed at line 16; restored both tests pass; diff clean
 
 ## Notes

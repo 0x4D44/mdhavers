@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00106 — A test writes a file named hello into the repo root and never removes it
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** tests
 - **Raised:** 2026-10-24T02:14:14Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261027T045159Z-258d8026
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00106-run-verify-20261027T045159Z-258d8026
-- **Owner base:** b2712adc7b304eb842407eae833911cd438de665
-- **Owner fingerprint:** sha256:8c61c3749cb426bde6364d96807893de4f86692121565d7f6cb7d780211ba68e
-- **Owner since:** 2026-10-27T04:51:59Z
-- **Owner until:** 2026-10-27T08:51:59Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
-- **Attempts:** fix=0, doubt=1, indeterminate=0
-- **State history:** Open (2026-10-24T02:14:14Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T02:58:41Z, deltic:auto role=fix run=fix-20261024T025834Z-392b3393 branch=task/bug-MDH-BUG-FLU-00106-run-fix-20261024T025834Z-392b3393 code=1c57be6 gate=manual) -> Open (2026-10-27T01:51:48Z, deltic:manual role=verify run=verify-20261026T233955Z-98f24b9c verified_fix_run=fix-20261024T025834Z-392b3393 verdict=doubt reason=reopen-lc-luna-47057d9-native-builtins-coverage-passed-on-trunk-without-a-root-h) -> Fixed (2026-10-27T04:50:50Z, deltic:auto role=fix run=fix-20261027T015303Z-9836d589 branch=task/bug-MDH-BUG-FLU-00106-run-fix-20261027T015303Z-9836d589 code=1f084a0 gate=manual)
+- **Attempts:** fix=0, doubt=0, indeterminate=0
+- **State history:** Open (2026-10-24T02:14:14Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T02:58:41Z, deltic:auto role=fix run=fix-20261024T025834Z-392b3393 branch=task/bug-MDH-BUG-FLU-00106-run-fix-20261024T025834Z-392b3393 code=1c57be6 gate=manual) -> Open (2026-10-27T01:51:48Z, deltic:manual role=verify run=verify-20261026T233955Z-98f24b9c verified_fix_run=fix-20261024T025834Z-392b3393 verdict=doubt reason=reopen-lc-luna-47057d9-native-builtins-coverage-passed-on-trunk-without-a-root-h) -> Fixed (2026-10-27T04:50:50Z, deltic:auto role=fix run=fix-20261027T015303Z-9836d589 branch=task/bug-MDH-BUG-FLU-00106-run-fix-20261027T015303Z-9836d589 code=1f084a0 gate=manual) -> Closed (2026-10-27T05:22:54Z, deltic:manual role=verify run=verify-20261027T045159Z-258d8026 verified_fix_run=fix-20261027T015303Z-9836d589 verdict=close)
 
 ## Observation
 
@@ -35,5 +35,9 @@ Evidence fingerprint: `manual:v1:a-test-writes-a-file-named-hello-into-the-repo-
 ### Verification summary (2026-10-27T01:51:48Z, deltic:manual run=verify-20261026T233955Z-98f24b9c verified_fix_run=fix-20261024T025834Z-392b3393 verdict=doubt)
 
 Verifier note: Manual verify: [lc luna] 47057d9: native builtins coverage passed on trunk without a root `hello`; removing its temp-cwd setup left the same test green but created `.scratch/hello` (directory). Test does not cover the fix. Mutant/artifact restored.
+
+### Verification summary (2026-10-27T05:22:54Z, deltic:manual run=verify-20261027T045159Z-258d8026 verified_fix_run=fix-20261027T015303Z-9836d589 verdict=close)
+
+Verifier note: Manual verify: [lf luna] 47057d9/1f084a0; interpreter_calls_all_native_builtins_for_coverage passed 5/5; chdir-removed mutant failed the temp-root assertion; restored pass; diff clean
 
 ## Notes

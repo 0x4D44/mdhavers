@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00198 — heave_oot_100k perf test fails on a loaded box: 30 s wall-clock limit for under 1 s of CPU
 
-- **State:** Fixed
+- **State:** Open
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** tests
 - **Raised:** 2026-10-27T00:57:03Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261027T045159Z-b011d81c
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00198-run-verify-20261027T045159Z-b011d81c
-- **Owner base:** b2712adc7b304eb842407eae833911cd438de665
-- **Owner fingerprint:** sha256:4827f0c16983f70c51e8acfc1012bd08fdcc5680a094d5bb7a06601c51be68d3
-- **Owner since:** 2026-10-27T04:51:59Z
-- **Owner until:** 2026-10-27T08:51:59Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
-- **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-27T00:57:03Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-27T04:51:23Z, deltic:auto role=fix run=fix-20261027T015330Z-7a888907 branch=task/bug-MDH-BUG-FLU-00198-run-fix-20261027T015330Z-7a888907 code=f13e3f0 gate=manual)
+- **Attempts:** fix=0, doubt=1, indeterminate=0
+- **State history:** Open (2026-10-27T00:57:03Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-27T04:51:23Z, deltic:auto role=fix run=fix-20261027T015330Z-7a888907 branch=task/bug-MDH-BUG-FLU-00198-run-fix-20261027T015330Z-7a888907 code=f13e3f0 gate=manual) -> Open (2026-10-27T05:22:54Z, deltic:manual role=verify run=verify-20261027T045159Z-b011d81c verified_fix_run=fix-20261027T015330Z-7a888907 verdict=doubt reason=reopen-regression-remains-red-under-load-restored-diff-clean)
 
 ## Observation
 
@@ -40,5 +40,9 @@ Evidence fingerprint: `manual:v1:heave-oot-100k-perf-test-fails-on-a-loaded-box-
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-27T05:22:54Z, deltic:manual run=verify-20261027T045159Z-b011d81c verified_fix_run=fix-20261027T015330Z-7a888907 verdict=doubt)
+
+Verifier note: Manual verify: [lf luna] f13e3f0; heave_oot_scales_linearly_not_quadratically selected and failed 3/3 alone at its 10x timeout; pre-5432 100k/30s mutant passed 1/1 in 4.15s; current regression remains red under load; restored; diff clean
 
 ## Notes

@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00199 — make coverage is red: 4 cfg(coverage) LLVM tests call with wrong arity since 166
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** tests
 - **Raised:** 2026-10-27T02:47:37Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261027T045159Z-6223b518
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00199-run-verify-20261027T045159Z-6223b518
-- **Owner base:** b2712adc7b304eb842407eae833911cd438de665
-- **Owner fingerprint:** sha256:3becf8cf836eec2bd1ca28f7a37610dec5a6cd4df865ed499fdeaa83d13f87cc
-- **Owner since:** 2026-10-27T04:51:59Z
-- **Owner until:** 2026-10-27T08:51:59Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-27T02:47:37Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-27T03:01:22Z, deltic:auto role=fix run=fix-20261027T024755Z-bd243944 branch=task/bug-MDH-BUG-FLU-00199-run-fix-20261027T024755Z-bd243944 code=60979ac gate=manual)
+- **State history:** Open (2026-10-27T02:47:37Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-27T03:01:22Z, deltic:auto role=fix run=fix-20261027T024755Z-bd243944 branch=task/bug-MDH-BUG-FLU-00199-run-fix-20261027T024755Z-bd243944 code=60979ac gate=manual) -> Closed (2026-10-27T05:22:54Z, deltic:manual role=verify run=verify-20261027T045159Z-6223b518 verified_fix_run=fix-20261027T024755Z-bd243944 verdict=close)
 
 ## Observation
 
@@ -44,5 +44,9 @@ Evidence fingerprint: `manual:v1:make-coverage-is-red-4-cfg-coverage-llvm-tests-
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-27T05:22:54Z, deltic:manual run=verify-20261027T045159Z-6223b518 verified_fix_run=fix-20261027T024755Z-bd243944 verdict=close)
+
+Verifier note: Manual verify: [lf luna] 60979ac: compile_non_native_method_call_static_defaults_for_coverage,static_method_lookup_cycle_guard_and_best_match_branch_are_exercised_for_coverage,llvm_codegen_more_control_flow_and_object_constructs_are_exercised_for_unit_coverage,llvm_codegen_remaining_instantiation_hotspots_are_exercised_for_coverage; pass 4/4; inverse mutant arity fails 4/4; restored 4/4; diff clean
 
 ## Notes
