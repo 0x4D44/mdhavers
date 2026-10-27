@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00106 — A test writes a file named hello into the repo root and never removes it
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** tests
 - **Raised:** 2026-10-24T02:14:14Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261027T015303Z-9836d589
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00106-run-fix-20261027T015303Z-9836d589
-- **Owner base:** 4dcf1cef77da01ceefc0e6a2be7b27b78904ae38
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-27T01:53:03Z
-- **Owner until:** 2026-10-27T05:53:03Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=1, indeterminate=0
-- **State history:** Open (2026-10-24T02:14:14Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T02:58:41Z, deltic:auto role=fix run=fix-20261024T025834Z-392b3393 branch=task/bug-MDH-BUG-FLU-00106-run-fix-20261024T025834Z-392b3393 code=1c57be6 gate=manual) -> Open (2026-10-27T01:51:48Z, deltic:manual role=verify run=verify-20261026T233955Z-98f24b9c verified_fix_run=fix-20261024T025834Z-392b3393 verdict=doubt reason=reopen-lc-luna-47057d9-native-builtins-coverage-passed-on-trunk-without-a-root-h)
+- **State history:** Open (2026-10-24T02:14:14Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T02:58:41Z, deltic:auto role=fix run=fix-20261024T025834Z-392b3393 branch=task/bug-MDH-BUG-FLU-00106-run-fix-20261024T025834Z-392b3393 code=1c57be6 gate=manual) -> Open (2026-10-27T01:51:48Z, deltic:manual role=verify run=verify-20261026T233955Z-98f24b9c verified_fix_run=fix-20261024T025834Z-392b3393 verdict=doubt reason=reopen-lc-luna-47057d9-native-builtins-coverage-passed-on-trunk-without-a-root-h) -> Fixed (2026-10-27T04:50:50Z, deltic:auto role=fix run=fix-20261027T015303Z-9836d589 branch=task/bug-MDH-BUG-FLU-00106-run-fix-20261027T015303Z-9836d589 code=1f084a0 gate=manual)
 
 ## Observation
 
