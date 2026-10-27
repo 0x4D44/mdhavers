@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00177 — haud_yer_wheesht() cannot be called: the lexer reads haud as a keyword and the parse fails
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** parser
 - **Raised:** 2026-10-26T05:32:14Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261027T013251Z-669af31a
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00177-run-verify-20261027T013251Z-669af31a
-- **Owner base:** dc207b08e001e4c28ffbe641571b9bde4a9b16c3
-- **Owner fingerprint:** sha256:260044016d390346405c819780fbde3294486a5db5adf92f7c810a9ede1ab893
-- **Owner since:** 2026-10-27T01:32:51Z
-- **Owner until:** 2026-10-27T05:32:51Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-26T05:32:14Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T22:26:10Z, deltic:auto role=fix run=fix-20261026T222505Z-720f6381 branch=task/bug-MDH-BUG-FLU-00177-run-fix-20261026T222505Z-720f6381 code=e8e6bda gate=manual)
+- **State history:** Open (2026-10-26T05:32:14Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T22:26:10Z, deltic:auto role=fix run=fix-20261026T222505Z-720f6381 branch=task/bug-MDH-BUG-FLU-00177-run-fix-20261026T222505Z-720f6381 code=e8e6bda gate=manual) -> Closed (2026-10-27T02:37:15Z, deltic:manual role=verify run=verify-20261027T013251Z-669af31a verified_fix_run=fix-20261026T222505Z-720f6381 verdict=close)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:haud-yer-wheesht-cannot-be-called-the-lexer-rea
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-27T02:37:15Z, deltic:manual run=verify-20261027T013251Z-669af31a verified_fix_run=fix-20261026T222505Z-720f6381 verdict=close)
+
+Verifier note: Manual verify: Independent Opus review (lead landed this, so lead did not decide): close - round-4 decision keeps haud_yer_wheesht as a continue keyword and removes the dead builtin, so haud_yer_wheesht() parsing as the keyword is decided behaviour; builtin gone from interpreter/LLVM; covered by lexer test_keywords_only_match_whole_identifiers and interpreter haud_yer_wheesht_is_a_keyword_not_a_builtin; builtin-arm mutant fails the coverage test's assertion. Verifier: [le luna] fix e8e6bda; cfg(coverage) test passed and failed its expect_err assertion when the LLVM builtin arm was restored, but the original haud_yer_wheesht() repro still exits 1: “Unexpected (” because the lexer treats it as the haud keyword.
 
 ## Notes
