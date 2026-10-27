@@ -6,15 +6,15 @@
 - **Area:** wasm
 - **Raised:** 2026-10-24T05:29:44Z
 - **Discovery source:** Agent
-- **Owner:** -
-- **Owner role:** -
-- **Owner run:** -
-- **Owner host:** -
-- **Owner branch:** -
-- **Owner base:** -
-- **Owner fingerprint:** -
-- **Owner since:** -
-- **Owner until:** -
+- **Owner:** deltic:manual
+- **Owner role:** verify
+- **Owner run:** verify-20261027T001425Z-20077765
+- **Owner host:** flux
+- **Owner branch:** task/bug-MDH-BUG-FLU-00125-run-verify-20261027T001425Z-20077765
+- **Owner base:** bb18b71792fa6c1bc5f55d254da1f174c2d0af01
+- **Owner fingerprint:** sha256:6fb4b6e79427512b3345a6fb9fb2bc2ca8bc5df502c3b19438616641de0363e1
+- **Owner since:** 2026-10-27T00:14:25Z
+- **Owner until:** 2026-10-27T04:14:25Z
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
