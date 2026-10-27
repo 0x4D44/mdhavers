@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00201 — dict_remove block-copy ratio test fails under parallel test load (27x vs 10x limit)
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** tests
 - **Raised:** 2026-10-27T04:32:42Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261027T043249Z-c729790a
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00201-run-fix-20261027T043249Z-c729790a
-- **Owner base:** 9983f3d5908f9ba8fc54a4a56af38c22c7570141
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-27T04:32:49Z
-- **Owner until:** 2026-10-27T08:32:49Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-27T04:32:42Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-27T04:32:42Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-27T04:51:33Z, deltic:auto role=fix run=fix-20261027T043249Z-c729790a branch=task/bug-MDH-BUG-FLU-00201-run-fix-20261027T043249Z-c729790a code=65ae7f7 gate=manual)
 
 ## Observation
 
