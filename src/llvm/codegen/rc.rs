@@ -1443,6 +1443,55 @@ impl<'ctx> CodeGen<'ctx> {
                 f
             });
         self.builder.build_call(f, &[], "").unwrap();
+        // Declared with counting on in every build, so the module's declarations do not
+        // depend on the compiler's profile (see `rc_debug_check_dead`).
+        self.rc_check_fn();
+    }
+
+    /// `__mdh_rc_check(MdhValue, const char *op)` (runtime/gc_stub.c): aborts on a DEAD object.
+    fn rc_check_fn(&mut self) -> FunctionValue<'ctx> {
+        match self.module.get_function("__mdh_rc_check") {
+            Some(f) => f,
+            None => {
+                let ptr = self.context.ptr_type(AddressSpace::default());
+                let ty = self
+                    .types
+                    .void_type
+                    .fn_type(&[self.types.value_type.into(), ptr.into()], false);
+                let f = self
+                    .module
+                    .add_function("__mdh_rc_check", ty, Some(Linkage::External));
+                let nounwind = self
+                    .context
+                    .create_enum_attribute(Attribute::get_named_enum_kind_id("nounwind"), 0);
+                f.add_attribute(AttributeLoc::Function, nounwind);
+                f
+            }
+        }
+    }
+
+    /// Debug builds of the compiler (which embed the debug runtime), with counting on:
+    /// abort if `v` is a DEAD object when an operation reads it (`op` names it). With
+    /// MDH_RC_NOFREE=1 an object that died early is kept and marked DEAD, but a read whose
+    /// retain borrowing elided leaves nothing else to touch it, so the early free would go
+    /// unseen. Release builds emit nothing.
+    pub(super) fn rc_debug_check_dead(&mut self, v: BasicValueEnum<'ctx>, op: &str) {
+        if !cfg!(debug_assertions) || !self.rc_active() || !self.rc_is_value(v) {
+            return;
+        }
+        let f = self.rc_check_fn();
+        let name = format!("__mdh_rc_check_op_{op}");
+        let op_ptr = match self.module.get_global(&name) {
+            Some(g) => g.as_pointer_value(),
+            None => self
+                .builder
+                .build_global_string_ptr(op, &name)
+                .unwrap()
+                .as_pointer_value(),
+        };
+        self.builder
+            .build_call(f, &[v.into(), op_ptr.into()], "")
+            .unwrap();
     }
 
     /// With counting off, the retain/release declarations are unused: remove them, so the
@@ -2101,7 +2150,11 @@ impl<'ctx> CodeGen<'ctx> {
         // pointer into `items` loaded before it is stale after it (values read out are not).
         if matches!(
             name.as_ref(),
-            RC_BORROW_MARKER | "__mdh_retain" | "__mdh_rc_retain_obj" | "__mdh_list_push"
+            RC_BORROW_MARKER
+                | "__mdh_retain"
+                | "__mdh_rc_retain_obj"
+                | "__mdh_rc_check"
+                | "__mdh_list_push"
         ) {
             return RcCallEffect::None;
         }

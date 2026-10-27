@@ -7458,6 +7458,8 @@ impl<'ctx> CodeGen<'ctx> {
 
         // String concatenation: if either operand is a string, coerce both to string
         self.builder.position_at_end(string_case);
+        self.rc_debug_check_dead(left, "concat");
+        self.rc_debug_check_dead(right, "concat");
         let left_str = self.inline_tae_string(left);
         let right_str = self.inline_tae_string(right);
         // A non-string side was shown as a fresh string; a string side is the original.
@@ -15930,6 +15932,8 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
         let left_val = self.compile_expr(left)?;
         let right_val = self.compile_expr(right)?;
+        self.rc_debug_check_dead(left_val, "concat");
+        self.rc_debug_check_dead(right_val, "concat");
 
         let left_data = self.extract_data(left_val).unwrap();
         let right_data = self.extract_data(right_val).unwrap();
@@ -30096,6 +30100,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         let obj_val = self.compile_expr(object)?;
         let idx_val = self.compile_expr(index)?;
+        self.rc_debug_check_dead(obj_val, "index");
 
         // Extract the tag and data from the object
         let obj_tag = self.extract_tag(obj_val).unwrap();
@@ -30392,6 +30397,10 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_to_ptr(list_data, i64_ptr_type, "list_ptr_fast")
             .unwrap();
+        if cfg!(debug_assertions) && self.rc_enabled {
+            let list_val = self.make_list(list_ptr);
+            self.rc_debug_check_dead(list_val, "index");
+        }
 
         // Load items pointer from offset 0
         let items_ptr_as_i64 = self
@@ -38420,6 +38429,7 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
         let function = self.current_function.unwrap();
         let obj_val = self.compile_expr(object)?;
+        self.rc_debug_check_dead(obj_val, "field");
         let tag = self.extract_tag(obj_val).unwrap();
 
         let dict_tag = self
