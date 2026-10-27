@@ -20,6 +20,23 @@ fn mdhavers_lsp_bin() -> PathBuf {
     PathBuf::from("target/debug/mdhavers-lsp")
 }
 
+/// Spawn the server with all three stdio pipes, one spawn at a time.
+///
+/// std creates pipes and sets close-on-exec in two steps on macOS. A concurrent spawn in another
+/// test thread can fork inside that window and keep a copy of our pipe ends open, so a test that
+/// closes its read end of the server's stdout would not really disconnect it (MDH-BUG-FLU-00204).
+/// Holding this lock across spawn closes the window.
+fn spawn_lsp() -> std::process::Child {
+    static SPAWN_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _guard = SPAWN_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    Command::new(mdhavers_lsp_bin())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn mdhavers-lsp")
+}
+
 fn lsp_frame(json: &str) -> String {
     let bytes = json.as_bytes();
     format!("Content-Length: {}\r\n\r\n{}", bytes.len(), json)
@@ -29,12 +46,7 @@ fn lsp_frame(json: &str) -> String {
 fn lsp_binary_handles_initialize_requests_and_shutdown() {
     use std::io::Write;
 
-    let mut child = Command::new(mdhavers_lsp_bin())
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("spawn mdhavers-lsp");
+    let mut child = spawn_lsp();
 
     let stdin = child.stdin.as_mut().expect("stdin");
 
@@ -196,12 +208,7 @@ fn lsp_binary_handles_initialize_requests_and_shutdown() {
 
 #[test]
 fn lsp_binary_handles_client_disconnect_during_initialize() {
-    let mut child = Command::new(mdhavers_lsp_bin())
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("spawn mdhavers-lsp");
+    let mut child = spawn_lsp();
 
     drop(child.stdin.take());
 
@@ -219,12 +226,7 @@ fn lsp_binary_propagates_stdout_disconnect_after_initialize_for_coverage() {
     use std::thread;
     use std::time::{Duration, Instant};
 
-    let mut child = Command::new(mdhavers_lsp_bin())
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("spawn mdhavers-lsp");
+    let mut child = spawn_lsp();
 
     let mut stdin = child.stdin.take().expect("stdin");
     let child_stdout = child.stdout.take().expect("stdout");
@@ -318,12 +320,7 @@ fn lsp_binary_reports_io_thread_join_error_after_stdout_disconnect_for_coverage(
     use std::thread;
     use std::time::{Duration, Instant};
 
-    let mut child = Command::new(mdhavers_lsp_bin())
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("spawn mdhavers-lsp");
+    let mut child = spawn_lsp();
 
     let mut stdin = child.stdin.take().expect("stdin");
     let child_stdout = child.stdout.take().expect("stdout");
