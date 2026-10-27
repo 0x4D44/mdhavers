@@ -38,6 +38,13 @@ fn interpreter_calls_all_native_builtins_for_coverage() {
     // Natives such as `scrieve_append` write to relative paths; keep them out of the repo root.
     // This binary holds a single test, so changing the process cwd cannot race another test.
     std::env::set_current_dir(temp.path()).unwrap();
+    let temp_root = temp.path().canonicalize().unwrap();
+    // MDH-BUG-FLU-00106: the sweep starts inside its temp dir (not the repo root).
+    assert_eq!(
+        std::env::current_dir().unwrap().canonicalize().unwrap(),
+        temp_root,
+        "the sweep must start in its own temp dir"
+    );
     let temp_file = temp.path().join("mdh_native_cov.txt");
     std::fs::write(&temp_file, "hello\nworld\n").unwrap();
     let temp_path = temp_file.to_string_lossy().to_string();
@@ -276,12 +283,15 @@ fn interpreter_calls_all_native_builtins_for_coverage() {
         }
     }
 
-    // MDH-BUG-FLU-00106: relative-path natives (scrieve_append("hello", ..)) must have
-    // written into the temp cwd, not the repo.
-    assert_eq!(
-        std::env::current_dir().unwrap().canonicalize().unwrap(),
-        temp.path().canonicalize().unwrap(),
-        "the sweep must run in its own temp dir"
+    // The `chdir` builtin may move the sweep into a directory it made (`hello`), depending
+    // on the order builtins are visited in, so only require that it stayed under the temp dir.
+    assert!(
+        std::env::current_dir()
+            .unwrap()
+            .canonicalize()
+            .unwrap()
+            .starts_with(&temp_root),
+        "the sweep left its temp dir"
     );
     let repo_hello = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("hello");
     assert!(
