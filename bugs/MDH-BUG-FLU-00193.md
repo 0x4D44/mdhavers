@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00193 — Native codegen: about 35 inline allocations are unchecked (split, list/dict literals, instances)
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** native
 - **Raised:** 2026-10-26T15:38:17Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261027T045241Z-2f69b43a
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00193-run-fix-20261027T045241Z-2f69b43a
-- **Owner base:** d518a71b4144bbc245944ca5abd908549ca9d31c
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-27T04:52:41Z
-- **Owner until:** 2026-10-27T08:52:41Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-26T15:38:17Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-26T15:38:17Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-27T05:57:50Z, deltic:auto role=fix run=fix-20261027T045241Z-2f69b43a branch=task/bug-MDH-BUG-FLU-00193-run-fix-20261027T045241Z-2f69b43a code=85e9daf gate=manual)
 
 ## Observation
 
