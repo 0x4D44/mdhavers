@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00195 — Interpreter has no clear builtin, though native does
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** interpreter
 - **Raised:** 2026-10-26T19:24:07Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261026T214549Z-1a7fa5b0
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00195-run-fix-20261026T214549Z-1a7fa5b0
-- **Owner base:** e9aacdb5b2f66f7b00214d225728b201140c07cf
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-26T21:45:49Z
-- **Owner until:** 2026-10-27T01:45:49Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-26T19:24:07Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-26T19:24:07Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-27T00:56:38Z, deltic:auto role=fix run=fix-20261026T214549Z-1a7fa5b0 branch=task/bug-MDH-BUG-FLU-00195-run-fix-20261026T214549Z-1a7fa5b0 code=97fb62e gate=manual)
 
 ## Observation
 
