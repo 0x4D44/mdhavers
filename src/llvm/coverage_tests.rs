@@ -562,10 +562,10 @@ blether p["a"]
 blether p["b"]
 
 kin Foo {
-    dae init(a, b, c = 2) {
+    dae init(a, b = 1, c = 2) {
         masel.c = c
     }
-    dae m(a, b, c = 2) {
+    dae m(a, b = 1, c = 2) {
         gie c
     }
 }
@@ -902,7 +902,7 @@ scrieve_append("instantiation.txt", "there")
 blether regex_replace_first("aaaa", "a+", "b")
 blether regex_split("a b c", "\\s+")
 
-blether muckle([1, 2, 3])
+blether muckle(3, 1)
 blether muckle(1, 2)
 blether dicht([1, 2, 3], 1)
 

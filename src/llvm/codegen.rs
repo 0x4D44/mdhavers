@@ -48132,9 +48132,13 @@ dae f() { gie 32 }
         let span = Span::new(1, 1);
         let methods = vec![Stmt::Function {
             name: "m".to_string(),
+            // A default makes the zero-argument call below valid native arity (MDH-BUG-FLU-00199).
             params: vec![Param {
                 name: "x".to_string(),
-                default: None,
+                default: Some(Expr::Literal {
+                    value: Literal::Integer(1),
+                    span,
+                }),
             }],
             body: Vec::new(),
             span,
@@ -50063,12 +50067,20 @@ dae f() { gie 32 }
         codegen.functions.insert("C_m".to_string(), method_fn);
 
         let span = Span::new(1, 1);
+        // Both user parameters have defaults, so the zero-argument call is valid native arity
+        // (MDH-BUG-FLU-00199) and still fills each missing argument from its default.
         codegen.function_defaults.insert(
             "C_m".to_string(),
-            vec![Some(Expr::Literal {
-                value: Literal::Integer(2),
-                span,
-            })],
+            vec![
+                Some(Expr::Literal {
+                    value: Literal::Integer(2),
+                    span,
+                }),
+                Some(Expr::Literal {
+                    value: Literal::Integer(3),
+                    span,
+                }),
+            ],
         );
 
         codegen
