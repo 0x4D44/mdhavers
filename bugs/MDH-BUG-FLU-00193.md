@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00193 — Native codegen: about 35 inline allocations are unchecked (split, list/dict literals, instances)
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** native
 - **Raised:** 2026-10-26T15:38:17Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261027T055825Z-a8428af6
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00193-run-verify-20261027T055825Z-a8428af6
-- **Owner base:** 236046e6bb39d5c4f5b767b3e94e55074ad41dfc
-- **Owner fingerprint:** sha256:95cf2a3278b9ee66189bab371706186ac5f39930ea6856c74399ddcd8bcc9bf8
-- **Owner since:** 2026-10-27T05:58:25Z
-- **Owner until:** 2026-10-27T09:58:25Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-26T15:38:17Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-27T05:57:50Z, deltic:auto role=fix run=fix-20261027T045241Z-2f69b43a branch=task/bug-MDH-BUG-FLU-00193-run-fix-20261027T045241Z-2f69b43a code=85e9daf gate=manual)
+- **State history:** Open (2026-10-26T15:38:17Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-27T05:57:50Z, deltic:auto role=fix run=fix-20261027T045241Z-2f69b43a branch=task/bug-MDH-BUG-FLU-00193-run-fix-20261027T045241Z-2f69b43a code=85e9daf gate=manual) -> Closed (2026-10-27T06:15:02Z, deltic:manual role=verify run=verify-20261027T055825Z-a8428af6 verified_fix_run=fix-20261027T045241Z-2f69b43a verdict=close)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:native-codegen-about-35-inline-allocations-are-
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-27T06:15:02Z, deltic:manual run=verify-20261027T055825Z-a8428af6 verified_fix_run=fix-20261027T045241Z-2f69b43a verdict=close)
+
+Verifier note: Manual verify: [lh luna] 85e9daf; 1500-char comma-split repro exited 0 and printed the too-big error; both focused tests passed (1 selected each); unchecked inline_split sc_final_ptr and compile_dict dict_alloc mutants failed their run.code assertions; 38 checked sites found, with only inline_repeat raw and null-checked.
 
 ## Notes

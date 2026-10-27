@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00188 — Native: __mdh_make_string returns a string with a NULL pointer on out-of-memory
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** native
 - **Raised:** 2026-10-26T11:40:50Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261027T055825Z-23bbd363
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00188-run-verify-20261027T055825Z-23bbd363
-- **Owner base:** 236046e6bb39d5c4f5b767b3e94e55074ad41dfc
-- **Owner fingerprint:** sha256:b34a5908612480f318e7364b54829839687e973f1ca7431538c42229d39796ed
-- **Owner since:** 2026-10-27T05:58:25Z
-- **Owner until:** 2026-10-27T09:58:25Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
-- **Attempts:** fix=0, doubt=1, indeterminate=0
-- **State history:** Open (2026-10-26T11:40:50Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T14:03:11Z, deltic:auto role=fix run=fix-20261026T122015Z-c681ecb3 branch=task/bug-MDH-BUG-FLU-00188-run-fix-20261026T122015Z-c681ecb3 code=6cf14c5 gate=manual) -> Open (2026-10-27T02:35:24Z, deltic:manual role=verify run=verify-20261027T013251Z-2302915c verified_fix_run=fix-20261026T122015Z-c681ecb3 verdict=doubt reason=reopen-error-then-after-but-running-out-of-memory-making-a-string-raises-the-too) -> Fixed (2026-10-27T05:57:58Z, deltic:auto role=fix run=fix-20261027T045250Z-dc7cc8a5 branch=task/bug-MDH-BUG-FLU-00188-run-fix-20261027T045250Z-dc7cc8a5 code=3975f37 gate=manual)
+- **Attempts:** fix=0, doubt=0, indeterminate=0
+- **State history:** Open (2026-10-26T11:40:50Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T14:03:11Z, deltic:auto role=fix run=fix-20261026T122015Z-c681ecb3 branch=task/bug-MDH-BUG-FLU-00188-run-fix-20261026T122015Z-c681ecb3 code=6cf14c5 gate=manual) -> Open (2026-10-27T02:35:24Z, deltic:manual role=verify run=verify-20261027T013251Z-2302915c verified_fix_run=fix-20261026T122015Z-c681ecb3 verdict=doubt reason=reopen-error-then-after-but-running-out-of-memory-making-a-string-raises-the-too) -> Fixed (2026-10-27T05:57:58Z, deltic:auto role=fix run=fix-20261027T045250Z-dc7cc8a5 branch=task/bug-MDH-BUG-FLU-00188-run-fix-20261027T045250Z-dc7cc8a5 code=3975f37 gate=manual) -> Closed (2026-10-27T06:15:02Z, deltic:manual role=verify run=verify-20261027T055825Z-23bbd363 verified_fix_run=fix-20261027T045250Z-dc7cc8a5 verdict=close)
 
 ## Observation
 
@@ -35,5 +35,9 @@ Evidence fingerprint: `manual:v1:native-mdh-make-string-returns-a-string-with-a-
 ### Verification summary (2026-10-27T02:35:24Z, deltic:manual run=verify-20261027T013251Z-2302915c verified_fix_run=fix-20261026T122015Z-c681ecb3 verdict=doubt)
 
 Verifier note: Manual verify: [le luna] 6cf14c5; fixed env_get(MDH_BIG) repro returned the too-big error then “after”. But running_out_of_memory_making_a_string_raises_the_too_big_error and shared compiled_string_copies_raise_the_too_big_error both stayed green after removing only __mdh_make_string’s NULL guard; they miss this C hunk.
+
+### Verification summary (2026-10-27T06:15:02Z, deltic:manual run=verify-20261027T055825Z-23bbd363 verified_fix_run=fix-20261027T045250Z-dc7cc8a5 verdict=close)
+
+Verifier note: Manual verify: [lh luna] 3975f37; env_get_out_of_memory_raises_the_too_big_error passed (1 selected); removing __mdh_make_string NULL guard failed expected-lines assertion: got "(null)" twice, expected too-big error; wee still read.
 
 ## Notes

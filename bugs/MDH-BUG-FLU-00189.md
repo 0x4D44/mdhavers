@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00189 — Native: remaining unchecked allocations (codegen strdup, make_list, empty_dict, slurp/lines/words)
 
-- **State:** Fixed
+- **State:** Open
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** native
 - **Raised:** 2026-10-26T13:29:44Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261027T055825Z-5fbfbe41
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00189-run-verify-20261027T055825Z-5fbfbe41
-- **Owner base:** 236046e6bb39d5c4f5b767b3e94e55074ad41dfc
-- **Owner fingerprint:** sha256:facaa05faab309163a889b3bc7141be908079498b5386f771a445dfe541384ac
-- **Owner since:** 2026-10-27T05:58:25Z
-- **Owner until:** 2026-10-27T09:58:25Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
-- **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-26T13:29:44Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T16:41:26Z, deltic:auto role=fix run=fix-20261026T140328Z-b8cc2164 branch=task/bug-MDH-BUG-FLU-00189-run-fix-20261026T140328Z-b8cc2164 code=3c19d7e gate=manual)
+- **Attempts:** fix=0, doubt=1, indeterminate=0
+- **State history:** Open (2026-10-26T13:29:44Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T16:41:26Z, deltic:auto role=fix run=fix-20261026T140328Z-b8cc2164 branch=task/bug-MDH-BUG-FLU-00189-run-fix-20261026T140328Z-b8cc2164 code=3c19d7e gate=manual) -> Open (2026-10-27T06:15:02Z, deltic:manual role=verify run=verify-20261027T055825Z-5fbfbe41 verified_fix_run=fix-20261026T140328Z-b8cc2164 verdict=doubt reason=reopen-error-and-container-buffers-out-of-memory-raise-the-too-big-errors-failed)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:native-remaining-unchecked-allocations-codegen-
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-27T06:15:02Z, deltic:manual run=verify-20261027T055825Z-5fbfbe41 verified_fix_run=fix-20261026T140328Z-b8cc2164 verdict=doubt)
+
+Verifier note: Manual verify: [lh luna] 3c19d7e/8a99f01; four tests passed; compiled_string_copies_raise_the_too_big_error and container_buffers_out_of_memory_raise_the_too_big_errors failed after unchecked allocation mutants, but container_buffers stayed green when mdh_new_list reverted to raising __mdh_make_list across Rust; test misses the no-longjmp fix.
 
 ## Notes
