@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00201 — dict_remove block-copy ratio test fails under parallel test load (27x vs 10x limit)
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** tests
 - **Raised:** 2026-10-27T04:32:42Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261027T045159Z-86e7e129
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00201-run-verify-20261027T045159Z-86e7e129
-- **Owner base:** b2712adc7b304eb842407eae833911cd438de665
-- **Owner fingerprint:** sha256:e5f2c09a6377fb7ddabe6b9aa87bcaf730b67edabf2cb3f095aa8f788acd5091
-- **Owner since:** 2026-10-27T04:51:59Z
-- **Owner until:** 2026-10-27T08:51:59Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-27T04:32:42Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-27T04:51:33Z, deltic:auto role=fix run=fix-20261027T043249Z-c729790a branch=task/bug-MDH-BUG-FLU-00201-run-fix-20261027T043249Z-c729790a code=65ae7f7 gate=manual)
+- **State history:** Open (2026-10-27T04:32:42Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-27T04:51:33Z, deltic:auto role=fix run=fix-20261027T043249Z-c729790a branch=task/bug-MDH-BUG-FLU-00201-run-fix-20261027T043249Z-c729790a code=65ae7f7 gate=manual) -> Closed (2026-10-27T05:23:43Z, deltic:manual role=verify run=verify-20261027T045159Z-86e7e129 verified_fix_run=fix-20261027T043249Z-c729790a verdict=close)
 
 ## Observation
 
@@ -37,5 +37,9 @@ Evidence fingerprint: `manual:v1:dict-remove-block-copy-ratio-test-fails-under-p
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-27T05:23:43Z, deltic:manual run=verify-20261027T045159Z-86e7e129 verified_fix_run=fix-20261027T043249Z-c729790a verdict=close)
+
+Verifier note: Manual verify: Independent Opus review (lead landed this): close - a load-flakiness fix cannot show a deterministic fails-before; adequate evidence is the paired, best-of-5 design plus the test still catching the re-insertion mutant (fixer-reported 24-27x vs 10x limit, not yet independently reproduced). Verifier: [lf luna] 65ae7f7; dict_remove_copies_the_entries_in_blocks_instead_of_reinserting_them passed 5/5 on trunk; reversing to prior unpaired timing stayed green 1/1, restored pass; test does not cover the fix
 
 ## Notes
