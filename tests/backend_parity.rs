@@ -96,7 +96,7 @@ blether s[0]
 
 fn node_available() -> bool {
     if Command::new("node").arg("--version").output().is_err() {
-        eprintln!("Skipping JS parity tests: node not found");
+        eprintln!("SKIPPED: `node` is no' on PATH, so this JS parity test checked naething");
         return false;
     }
     true
