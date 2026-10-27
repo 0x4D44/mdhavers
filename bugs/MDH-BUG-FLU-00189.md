@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00189 — Native: remaining unchecked allocations (codegen strdup, make_list, empty_dict, slurp/lines/words)
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** native
 - **Raised:** 2026-10-26T13:29:44Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261027T061545Z-f2c1fbca
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00189-run-fix-20261027T061545Z-f2c1fbca
-- **Owner base:** 820451d56565880965f52311830030e5508922b3
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-27T06:15:45Z
-- **Owner until:** 2026-10-27T10:15:45Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=1, indeterminate=0
-- **State history:** Open (2026-10-26T13:29:44Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T16:41:26Z, deltic:auto role=fix run=fix-20261026T140328Z-b8cc2164 branch=task/bug-MDH-BUG-FLU-00189-run-fix-20261026T140328Z-b8cc2164 code=3c19d7e gate=manual) -> Open (2026-10-27T06:15:02Z, deltic:manual role=verify run=verify-20261027T055825Z-5fbfbe41 verified_fix_run=fix-20261026T140328Z-b8cc2164 verdict=doubt reason=reopen-error-and-container-buffers-out-of-memory-raise-the-too-big-errors-failed)
+- **State history:** Open (2026-10-26T13:29:44Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T16:41:26Z, deltic:auto role=fix run=fix-20261026T140328Z-b8cc2164 branch=task/bug-MDH-BUG-FLU-00189-run-fix-20261026T140328Z-b8cc2164 code=3c19d7e gate=manual) -> Open (2026-10-27T06:15:02Z, deltic:manual role=verify run=verify-20261027T055825Z-5fbfbe41 verified_fix_run=fix-20261026T140328Z-b8cc2164 verdict=doubt reason=reopen-error-and-container-buffers-out-of-memory-raise-the-too-big-errors-failed) -> Fixed (2026-10-27T06:59:02Z, deltic:auto role=fix run=fix-20261027T061545Z-f2c1fbca branch=task/bug-MDH-BUG-FLU-00189-run-fix-20261027T061545Z-f2c1fbca code=039c5b8 gate=manual)
 
 ## Observation
 
