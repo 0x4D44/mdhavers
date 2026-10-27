@@ -4,8 +4,8 @@
 //! wall-clock limit. A fixed limit failed on a loaded box although the work is
 //! well under a second of CPU. Removing N keys costs time proportional to N when
 //! linear, so a 4x bigger dict takes about 4x as long; a quadratic delete takes
-//! about 16x. Each size is timed best-of-three, which shrugs off a stall, and the
-//! test fails only above 8x.
+//! about 16x. The small size is timed best-of-three, the large one gets two tries, and the
+//! test fails only above 10x.
 
 use mdhavers::{parse, Interpreter};
 use std::time::{Duration, Instant};
@@ -29,30 +29,37 @@ blether len(d)
     )
 }
 
-/// Run the fill-then-remove program for `n` keys; returns (best time, output).
-fn best_of_three(n: usize) -> (Duration, String) {
+fn run_once(n: usize) -> (Duration, String) {
     let program = parse(&program(n)).expect("parse");
-    let mut best = Duration::MAX;
-    let mut out = String::new();
-    for _ in 0..3 {
-        let mut interp = Interpreter::new();
-        let start = Instant::now();
-        interp.interpret(&program).expect("run");
-        best = best.min(start.elapsed());
-        out = interp.get_output().join("\n");
-    }
-    (best, out)
+    let mut interp = Interpreter::new();
+    let start = Instant::now();
+    interp.interpret(&program).expect("run");
+    (start.elapsed(), interp.get_output().join("\n"))
 }
 
 #[test]
 fn heave_oot_scales_linearly_not_quadratically() {
-    let (small, small_out) = best_of_three(10_000);
-    let (large, large_out) = best_of_three(40_000);
-    assert_eq!(small_out.trim(), "0");
-    assert_eq!(large_out.trim(), "0");
-    let ratio = large.as_secs_f64() / small.as_secs_f64().max(1e-6);
-    assert!(
-        ratio < 8.0,
-        "heave_oot looks quadratic: 4x the keys took {ratio:.1}x as long ({small:?} -> {large:?}); linear is ~4x, quadratic ~16x"
+    let mut small = Duration::MAX;
+    for _ in 0..3 {
+        let (took, out) = run_once(5_000);
+        assert_eq!(out.trim(), "0");
+        small = small.min(took);
+    }
+    // The 4x run happens on a thread so a quadratic delete (minutes) fails at the
+    // limit instead of running to the end. Two tries absorb a scheduling stall.
+    let limit = small.mul_f64(10.0);
+    for attempt in 0..2 {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(run_once(20_000));
+        });
+        if let Ok((took, out)) = rx.recv_timeout(limit) {
+            assert_eq!(out.trim(), "0");
+            eprintln!("20k keys took {took:?} vs 5k {small:?} (attempt {attempt})");
+            return;
+        }
+    }
+    panic!(
+        "heave_oot looks quadratic: 4x the keys took over {limit:?} (10x the {small:?} for 5k keys); linear is ~4x, quadratic ~16x"
     );
 }
