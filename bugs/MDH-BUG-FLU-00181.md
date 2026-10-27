@@ -6,19 +6,22 @@
 - **Area:** native
 - **Raised:** 2026-10-26T07:45:19Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261027T070547Z-fa55c86d
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00181-run-fix-20261027T070547Z-fa55c86d
-- **Owner base:** d5a5bbdced3f83c612db32db8756faabf7888104
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-27T07:05:47Z
-- **Owner until:** 2026-10-27T11:05:47Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
+- **Platform:** linux
+- **Verify unstarted:** 0
+- **Verify blocker:** fix needs a linux host; learned by flux (manual fix) at 2026-10-27T07:05:56Z: Linux main-thread stack guard: needs a Linux host to reproduce and test; the fleet has only Windows boxes and this Mac (deltic hosts, 2026-10-26).
 - **State history:** Open (2026-10-26T07:45:19Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
 
 ## Observation
