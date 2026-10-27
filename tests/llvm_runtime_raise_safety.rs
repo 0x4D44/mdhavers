@@ -154,6 +154,40 @@ blether len(regex_replace("abc", "b", "xyz"))
     }
 }
 
+/// `env_get` copies the variable's value with `__mdh_make_string` (C runtime), the path
+/// the tests above miss: `slurp` builds its string another way and compiled code copies
+/// with `__mdh_obj_strdup_checked`. With every string of 1000 bytes or more failing, the
+/// copy of a 1500-byte value raises the "ower muckle" error instead of handing back a
+/// string with no text (MDH-BUG-FLU-00188), which printed "(null)".
+#[cfg(debug_assertions)]
+#[test]
+fn env_get_out_of_memory_raises_the_too_big_error() {
+    let src = r#"fer k in 0..2 {
+    hae_a_bash {
+        blether env_get("MDH_BIG")
+    } gin_it_gangs_wrang e {
+        blether e
+    }
+}
+blether env_get("MDH_WEE")
+"#;
+    let big = "z".repeat(1500);
+    for refcounting in [false, true] {
+        let run = run_native_with_env(
+            src,
+            refcounting,
+            &[
+                ("MDH_TEST_ALLOC_FAIL_OVER", "1000"),
+                ("MDH_BIG", &big),
+                ("MDH_WEE", "wee"),
+            ],
+        );
+        assert_eq!(run.code, Some(0), "rc={refcounting}: {}", run.stderr);
+        let lines: Vec<&str> = run.stdout.lines().collect();
+        assert_eq!(lines, vec![TOO_BIG, TOO_BIG, "wee"], "rc={refcounting}");
+    }
+}
+
 const LIST_TOO_BIG: &str = "Och! This list's grown ower muckle";
 const DICT_TOO_BIG: &str = "Och! That dictionary would be ower muckle tae fit in memory";
 
