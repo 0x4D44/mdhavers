@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00056 — stdlib calls functions the interpreter does not define (has_key, slice, tae_json)
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** stdlib
 - **Raised:** 2026-10-22T23:24:11Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261027T015229Z-57a7fd30
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00056-run-fix-20261027T015229Z-57a7fd30
-- **Owner base:** 81cad1760ab4901830a2e8688f6fc18f27a50fe7
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-27T01:52:29Z
-- **Owner until:** 2026-10-27T05:52:29Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=1, indeterminate=0
-- **State history:** Open (2026-10-22T23:24:11Z, raised via `deltic bugs new` model=claude-opus-5-5@medium) -> Fixed (2026-10-23T02:49:32Z, deltic:auto role=fix run=fix-20261023T024926Z-b94978e1 branch=task/bug-MDH-BUG-FLU-00056-run-fix-20261023T024926Z-b94978e1 code=77f950a gate=manual) -> Open (2026-10-27T01:51:48Z, deltic:manual role=verify run=verify-20261026T233955Z-68ccab16 verified_fix_run=fix-20261023T024926Z-b94978e1 verdict=doubt reason=reopen-failed-with-undefined-function-errors-restoring-tae-json-in-swarm-symphon)
+- **State history:** Open (2026-10-22T23:24:11Z, raised via `deltic bugs new` model=claude-opus-5-5@medium) -> Fixed (2026-10-23T02:49:32Z, deltic:auto role=fix run=fix-20261023T024926Z-b94978e1 branch=task/bug-MDH-BUG-FLU-00056-run-fix-20261023T024926Z-b94978e1 code=77f950a gate=manual) -> Open (2026-10-27T01:51:48Z, deltic:manual role=verify run=verify-20261026T233955Z-68ccab16 verified_fix_run=fix-20261023T024926Z-b94978e1 verdict=doubt reason=reopen-failed-with-undefined-function-errors-restoring-tae-json-in-swarm-symphon) -> Fixed (2026-10-27T04:50:20Z, deltic:auto role=fix run=fix-20261027T015229Z-57a7fd30 branch=task/bug-MDH-BUG-FLU-00056-run-fix-20261027T015229Z-57a7fd30 code=aa81b64 gate=manual)
 
 ## Observation
 
