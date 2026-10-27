@@ -1,5 +1,10 @@
 # Lessons learnt
 
+- tests/interpreter_dict_remove_perf.rs:heave_oot_removal_costs_a_small_multiple_of_a_plain_loop - on the shared FLUX
+  Mac (load 60-250) a perf test must compare against a same-size control loop timed in the same process, not a
+  wall-clock limit and not a ratio across sizes: even a plain interpreter loop there scales superlinearly with size
+  (13 ms at 5k -> 150-360 ms at 40k), so a linear heave_oot measured 10x for 4x keys. Two trunk-red flakes on
+  2026-10-27 (198, 202). Size the limit so trunk and the quadratic mutant are each >=10x away.
 - Makefile:coverage - `--cfg coverage` tests (`*_coverage_only.rs`, `src/llvm/coverage_tests.rs`) compile in no
   focused gate, so semantic changes break them silently (the coverage build was broken 2026-10-23 to 2026-10-25). After a
   language-semantics or Value-layout change, run `RUSTFLAGS="--cfg coverage" cargo test --no-default-features --features
