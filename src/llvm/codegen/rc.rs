@@ -2097,6 +2097,8 @@ impl<'ctx> CodeGen<'ctx> {
                 _ => RcCallEffect::RunsCode,
             };
         }
+        // `__mdh_list_push` drops no count, but it may move the list's items buffer: a
+        // pointer into `items` loaded before it is stale after it (values read out are not).
         if matches!(
             name.as_ref(),
             RC_BORROW_MARKER | "__mdh_retain" | "__mdh_rc_retain_obj" | "__mdh_list_push"

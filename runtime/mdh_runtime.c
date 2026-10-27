@@ -1957,6 +1957,9 @@ void __mdh_list_set(MdhValue list, int64_t index, MdhValue value) {
     __mdh_release(old);
 }
 
+/* May move the list's items buffer (growing it reallocates): a caller must not keep a
+ * pointer into `items` (its own, or one read before the call) across a push. It drops no
+ * count, which is why RC borrowing treats it as harmless (rc_call_effect in rc.rs). */
 void __mdh_list_push(MdhValue list, MdhValue value) {
     __mdh_list_push_owned(list, __mdh_retained(value));
 }
