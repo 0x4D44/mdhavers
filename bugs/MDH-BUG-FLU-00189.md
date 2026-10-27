@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00189 — Native: remaining unchecked allocations (codegen strdup, make_list, empty_dict, slurp/lines/words)
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** native
 - **Raised:** 2026-10-26T13:29:44Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261027T065919Z-2a4e78ea
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00189-run-verify-20261027T065919Z-2a4e78ea
-- **Owner base:** 6b4b31f4d02682431b9c056fc248a64a1e13462d
-- **Owner fingerprint:** sha256:8ffe66cff0c6ec9e9a64ebb2d8ebddcc030ed11b16204d1689d8add4713abd15
-- **Owner since:** 2026-10-27T06:59:19Z
-- **Owner until:** 2026-10-27T10:59:19Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
-- **Attempts:** fix=0, doubt=1, indeterminate=0
-- **State history:** Open (2026-10-26T13:29:44Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T16:41:26Z, deltic:auto role=fix run=fix-20261026T140328Z-b8cc2164 branch=task/bug-MDH-BUG-FLU-00189-run-fix-20261026T140328Z-b8cc2164 code=3c19d7e gate=manual) -> Open (2026-10-27T06:15:02Z, deltic:manual role=verify run=verify-20261027T055825Z-5fbfbe41 verified_fix_run=fix-20261026T140328Z-b8cc2164 verdict=doubt reason=reopen-error-and-container-buffers-out-of-memory-raise-the-too-big-errors-failed) -> Fixed (2026-10-27T06:59:02Z, deltic:auto role=fix run=fix-20261027T061545Z-f2c1fbca branch=task/bug-MDH-BUG-FLU-00189-run-fix-20261027T061545Z-f2c1fbca code=039c5b8 gate=manual)
+- **Attempts:** fix=0, doubt=0, indeterminate=0
+- **State history:** Open (2026-10-26T13:29:44Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T16:41:26Z, deltic:auto role=fix run=fix-20261026T140328Z-b8cc2164 branch=task/bug-MDH-BUG-FLU-00189-run-fix-20261026T140328Z-b8cc2164 code=3c19d7e gate=manual) -> Open (2026-10-27T06:15:02Z, deltic:manual role=verify run=verify-20261027T055825Z-5fbfbe41 verified_fix_run=fix-20261026T140328Z-b8cc2164 verdict=doubt reason=reopen-error-and-container-buffers-out-of-memory-raise-the-too-big-errors-failed) -> Fixed (2026-10-27T06:59:02Z, deltic:auto role=fix run=fix-20261027T061545Z-f2c1fbca branch=task/bug-MDH-BUG-FLU-00189-run-fix-20261027T061545Z-f2c1fbca code=039c5b8 gate=manual) -> Closed (2026-10-27T07:05:31Z, deltic:manual role=verify run=verify-20261027T065919Z-2a4e78ea verified_fix_run=fix-20261027T061545Z-f2c1fbca verdict=close)
 
 ## Observation
 
@@ -35,5 +35,9 @@ Evidence fingerprint: `manual:v1:native-remaining-unchecked-allocations-codegen-
 ### Verification summary (2026-10-27T06:15:02Z, deltic:manual run=verify-20261027T055825Z-5fbfbe41 verified_fix_run=fix-20261026T140328Z-b8cc2164 verdict=doubt)
 
 Verifier note: Manual verify: [lh luna] 3c19d7e/8a99f01; four tests passed; compiled_string_copies_raise_the_too_big_error and container_buffers_out_of_memory_raise_the_too_big_errors failed after unchecked allocation mutants, but container_buffers stayed green when mdh_new_list reverted to raising __mdh_make_list across Rust; test misses the no-longjmp fix.
+
+### Verification summary (2026-10-27T07:05:31Z, deltic:manual run=verify-20261027T065919Z-2a4e78ea verified_fix_run=fix-20261027T061545Z-f2c1fbca verdict=close)
+
+Verifier note: Manual verify: [lj luna] 039c5b8; safety 11/11, RC 12/12; empty_dict_out_of_memory_raises_the_too_big_error and slurp_lines_and_words_need_no_temporary_buffer pass; outputs assert TOO_BIG x4, efter, and 2097152 x6. list/dict raising-call mutants make rust_runtime_value_makers_out_of_memory_never_raise_across_rust fail the stderr guard-abort assertion; clean diff after both.
 
 ## Notes
