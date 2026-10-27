@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00198 — heave_oot_100k perf test fails on a loaded box: 30 s wall-clock limit for under 1 s of CPU
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** tests
 - **Raised:** 2026-10-27T00:57:03Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261027T053312Z-f63fe685
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00198-run-verify-20261027T053312Z-f63fe685
-- **Owner base:** 8ddd5f0c323e45b224a0dfb5d647908058dac8d5
-- **Owner fingerprint:** sha256:ce4932ac1a8a3105df06e033cca1664ebac8b05bb2a35aa3dd9297b3ac45b587
-- **Owner since:** 2026-10-27T05:33:12Z
-- **Owner until:** 2026-10-27T09:33:12Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
-- **Attempts:** fix=0, doubt=1, indeterminate=0
-- **State history:** Open (2026-10-27T00:57:03Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-27T04:51:23Z, deltic:auto role=fix run=fix-20261027T015330Z-7a888907 branch=task/bug-MDH-BUG-FLU-00198-run-fix-20261027T015330Z-7a888907 code=f13e3f0 gate=manual) -> Open (2026-10-27T05:22:54Z, deltic:manual role=verify run=verify-20261027T045159Z-b011d81c verified_fix_run=fix-20261027T015330Z-7a888907 verdict=doubt reason=reopen-regression-remains-red-under-load-restored-diff-clean) -> Fixed (2026-10-27T05:31:41Z, deltic:auto role=fix run=fix-20261027T053134Z-1ecc6be7 branch=task/bug-MDH-BUG-FLU-00198-run-fix-20261027T053134Z-1ecc6be7 code=05f257b gate=manual)
+- **Attempts:** fix=0, doubt=0, indeterminate=0
+- **State history:** Open (2026-10-27T00:57:03Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-27T04:51:23Z, deltic:auto role=fix run=fix-20261027T015330Z-7a888907 branch=task/bug-MDH-BUG-FLU-00198-run-fix-20261027T015330Z-7a888907 code=f13e3f0 gate=manual) -> Open (2026-10-27T05:22:54Z, deltic:manual role=verify run=verify-20261027T045159Z-b011d81c verified_fix_run=fix-20261027T015330Z-7a888907 verdict=doubt reason=reopen-regression-remains-red-under-load-restored-diff-clean) -> Fixed (2026-10-27T05:31:41Z, deltic:auto role=fix run=fix-20261027T053134Z-1ecc6be7 branch=task/bug-MDH-BUG-FLU-00198-run-fix-20261027T053134Z-1ecc6be7 code=05f257b gate=manual) -> Closed (2026-10-27T05:42:18Z, deltic:manual role=verify run=verify-20261027T053312Z-f63fe685 verified_fix_run=fix-20261027T053134Z-1ecc6be7 verdict=close)
 
 ## Observation
 
@@ -44,5 +44,9 @@ Evidence fingerprint: `manual:v1:heave-oot-100k-perf-test-fails-on-a-loaded-box-
 ### Verification summary (2026-10-27T05:22:54Z, deltic:manual run=verify-20261027T045159Z-b011d81c verified_fix_run=fix-20261027T015330Z-7a888907 verdict=doubt)
 
 Verifier note: Manual verify: [lf luna] f13e3f0; heave_oot_scales_linearly_not_quadratically selected and failed 3/3 alone at its 10x timeout; pre-5432 100k/30s mutant passed 1/1 in 4.15s; current regression remains red under load; restored; diff clean
+
+### Verification summary (2026-10-27T05:42:18Z, deltic:manual run=verify-20261027T053312Z-f63fe685 verified_fix_run=fix-20261027T053134Z-1ecc6be7 verdict=close)
+
+Verifier note: Manual verify: [lg luna] 05f257b replaced the 30s wall-clock gate; heave_oot_removal_costs_a_small_multiple_of_a_plain_loop passed 8/8 (max 3.70x); 72144ea mutant (compact each delete) failed its ratio assertion at 215720/277 ms (>25x).
 
 ## Notes

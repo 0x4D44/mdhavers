@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00202 — heave_oot ratio perf test flakes red on trunk: 33 ms baseline, 4x step, 10x limit
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** tests
 - **Raised:** 2026-10-27T05:22:08Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261027T053312Z-78fdbca5
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00202-run-verify-20261027T053312Z-78fdbca5
-- **Owner base:** 8ddd5f0c323e45b224a0dfb5d647908058dac8d5
-- **Owner fingerprint:** sha256:d1079d7d8ed3598b2aafe914e33565c6bf5feff3936d6d1a75aab98ab42f6d31
-- **Owner since:** 2026-10-27T05:33:12Z
-- **Owner until:** 2026-10-27T09:33:12Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-27T05:22:08Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-27T05:31:29Z, deltic:auto role=fix run=fix-20261027T052215Z-03955c31 branch=task/bug-MDH-BUG-FLU-00202-run-fix-20261027T052215Z-03955c31 code=05f257b gate=manual)
+- **State history:** Open (2026-10-27T05:22:08Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-27T05:31:29Z, deltic:auto role=fix run=fix-20261027T052215Z-03955c31 branch=task/bug-MDH-BUG-FLU-00202-run-fix-20261027T052215Z-03955c31 code=05f257b gate=manual) -> Closed (2026-10-27T05:42:18Z, deltic:manual role=verify run=verify-20261027T053312Z-78fdbca5 verified_fix_run=fix-20261027T052215Z-03955c31 verdict=close)
 
 ## Observation
 
@@ -38,5 +38,9 @@ Evidence fingerprint: `trunk-red:v2:mdhavers-heave-oot-ratio-perf-test-flakes-re
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-27T05:42:18Z, deltic:manual run=verify-20261027T053312Z-78fdbca5 verified_fix_run=fix-20261027T052215Z-03955c31 verdict=close)
+
+Verifier note: Manual verify: [lg luna] 05f257b; heave_oot_removal_costs_a_small_multiple_of_a_plain_loop passed 8/8 (removal/control ms: 170/136,61/122,89/141,150/135,281/94,159/43,110/53,55/118); 72144ea mutant (compact each delete) selected test failed ratio assertion at 215720/277 ms (>25x).
 
 ## Notes
