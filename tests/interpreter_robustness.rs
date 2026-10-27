@@ -187,6 +187,31 @@ blether len(json_parse("[" * 100 + "]" * 100))
     assert_eq!(out, "caught\n1");
 }
 
+/// A balanced document just past the cap parses fine without the guard (no
+/// stack pressure), so only the depth check itself can make this fail.
+#[test]
+fn json_parse_depth_guard_rejects_balanced_nesting_past_the_cap() {
+    let out = run_ok(
+        r#"
+hae_a_bash {
+    json_parse("[" * 600 + "]" * 600)
+    blether "no error"
+} gin_it_gangs_wrang e {
+    blether e
+}
+blether len(json_parse("[" * 500 + "]" * 500))
+"#,
+    );
+    assert!(
+        out.contains("nested ower deep"),
+        "600-deep JSON should hit the depth guard, got: {out}"
+    );
+    assert!(
+        out.ends_with("\n1"),
+        "500-deep JSON should still parse: {out}"
+    );
+}
+
 #[test]
 fn json_stringify_of_a_cycle_is_a_catchable_error() {
     let out = run_ok(
