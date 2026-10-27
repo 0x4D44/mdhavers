@@ -275,4 +275,18 @@ fn interpreter_calls_all_native_builtins_for_coverage() {
             let _ = std::panic::catch_unwind(AssertUnwindSafe(|| (native.func)(args)));
         }
     }
+
+    // MDH-BUG-FLU-00106: relative-path natives (scrieve_append("hello", ..)) must have
+    // written into the temp cwd, not the repo.
+    assert_eq!(
+        std::env::current_dir().unwrap().canonicalize().unwrap(),
+        temp.path().canonicalize().unwrap(),
+        "the sweep must run in its own temp dir"
+    );
+    let repo_hello = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("hello");
+    assert!(
+        !repo_hello.exists(),
+        "a test left an artefact in the repo root: {}",
+        repo_hello.display()
+    );
 }
