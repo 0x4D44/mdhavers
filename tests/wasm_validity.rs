@@ -416,17 +416,49 @@ const HEAVY_FACTOR: u64 = 10;
 /// The per-case time limit: `base_secs`, times `HEAVY_FACTOR` for a heavy golden, times
 /// `MDH_GOLDEN_TIMEOUT_SCALE` (default 1) for a loaded box (MDH-BUG-FLU-00182).
 fn case_timeout(name: &str, base_secs: u64) -> Duration {
-    let scale = std::env::var("MDH_GOLDEN_TIMEOUT_SCALE")
-        .ok()
-        .and_then(|v| v.parse::<f64>().ok())
+    let raw = std::env::var("MDH_GOLDEN_TIMEOUT_SCALE").ok();
+    case_timeout_scaled(name, base_secs, timeout_scale(raw.as_deref()))
+}
+
+/// `MDH_GOLDEN_TIMEOUT_SCALE` as a number; anything unusable means 1.
+fn timeout_scale(raw: Option<&str>) -> f64 {
+    raw.and_then(|v| v.parse::<f64>().ok())
         .filter(|s| s.is_finite() && *s > 0.0)
-        .unwrap_or(1.0);
+        .unwrap_or(1.0)
+}
+
+fn case_timeout_scaled(name: &str, base_secs: u64, scale: f64) -> Duration {
     let heavy = if HEAVY_GOLDENS.contains(&name) {
         HEAVY_FACTOR
     } else {
         1
     };
     Duration::from_secs_f64((base_secs * heavy) as f64 * scale)
+}
+
+/// MDH-BUG-FLU-00182: the limit scales with case weight and with the box's load.
+#[test]
+fn case_timeout_scales_with_weight_and_load_scale() {
+    let plain = case_timeout_scaled("some_light_golden", 60, 1.0);
+    let heavy = case_timeout_scaled("showcase_blether_lisp", 60, 1.0);
+    assert_eq!(plain, Duration::from_secs(60));
+    assert!(
+        heavy >= plain * 10,
+        "a heavy golden must get a far larger limit ({heavy:?} vs {plain:?})"
+    );
+    assert_eq!(
+        case_timeout_scaled("some_light_golden", 60, 3.0),
+        plain * 3,
+        "MDH_GOLDEN_TIMEOUT_SCALE multiplies the limit"
+    );
+    assert_eq!(
+        case_timeout_scaled("showcase_blether_lisp", 60, 2.0),
+        heavy * 2
+    );
+    assert_eq!(timeout_scale(Some("2.5")), 2.5);
+    assert_eq!(timeout_scale(Some("junk")), 1.0);
+    assert_eq!(timeout_scale(Some("-4")), 1.0);
+    assert_eq!(timeout_scale(None), 1.0);
 }
 
 fn run_golden(name: &str, source: String, expected: String) -> GoldenOutcome {
