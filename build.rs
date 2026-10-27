@@ -73,6 +73,11 @@ fn main() {
     if env::var("CARGO_FEATURE_GRAPHICS3D").is_ok() {
         build.define("MDH_TRI_RUST", None);
     }
+    // Debug builds: abort on a raise that would longjmp across Rust runtime frames
+    // (MDH-BUG-FLU-00189, __mdh_rust_enter in runtime/mdh_runtime.c); never in release.
+    if env::var("PROFILE").as_deref() == Ok("debug") {
+        build.define("MDH_ALLOC_FAULTS", None);
+    }
 
     build.compile("mdh_runtime");
 

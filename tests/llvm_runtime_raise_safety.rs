@@ -467,3 +467,91 @@ blether len([1, 2, 3]) + len({{"a": 1}})
         assert_eq!(lines, want, "rc={refcounting}");
     }
 }
+
+/// The Rust runtime must reach memory only through the C runtime's never-raising calls:
+/// a raising one would longjmp across its frames (MDH-BUG-FLU-00183), which is undefined
+/// behaviour that usually still prints the right error. So debug builds abort on any raise
+/// across Rust frames (`__mdh_rust_enter`, runtime/mdh_runtime.c), and this drives the
+/// Rust runtime's value makers out of memory (MDH-BUG-FLU-00189): lists and dicts from
+/// `json_parse`, `regex_match`, `regex_match_all` and `regex_split` with every buffer of
+/// 16 bytes or more failing, and strings from `json_parse` and `regex_split` with every
+/// object of 1000 bytes or more failing. Each must give the caught "ower muckle" error.
+#[cfg(debug_assertions)]
+#[test]
+fn rust_runtime_value_makers_out_of_memory_never_raise_across_rust() {
+    let containers = r#"fer k in 0..2 {
+    hae_a_bash {
+        blether len(json_parse("[1, 2, 3]"))
+    } gin_it_gangs_wrang e {
+        blether e
+    }
+    hae_a_bash {
+        blether len(json_parse("{}"))
+    } gin_it_gangs_wrang e {
+        blether e
+    }
+    hae_a_bash {
+        blether len(regex_match("abc", "b"))
+    } gin_it_gangs_wrang e {
+        blether e
+    }
+    hae_a_bash {
+        blether len(regex_match_all("abab", "b"))
+    } gin_it_gangs_wrang e {
+        blether e
+    }
+    hae_a_bash {
+        blether len(regex_split("a,b", ","))
+    } gin_it_gangs_wrang e {
+        blether e
+    }
+}
+blether "efter"
+"#;
+    let long = "x".repeat(1500);
+    let strings = format!(
+        r#"fer k in 0..2 {{
+    hae_a_bash {{
+        blether len(json_parse("\"{long}\""))
+    }} gin_it_gangs_wrang e {{
+        blether e
+    }}
+    hae_a_bash {{
+        blether len(json_parse("{{\"{long}\": 1}}"))
+    }} gin_it_gangs_wrang e {{
+        blether e
+    }}
+    hae_a_bash {{
+        blether len(regex_split("{long},b", ","))
+    }} gin_it_gangs_wrang e {{
+        blether e
+    }}
+}}
+blether len(json_parse("\"wee\""))
+"#
+    );
+    let cases: [(&str, (&str, &str), usize, &str); 2] = [
+        (containers, ("MDH_TEST_BUF_FAIL_OVER", "16"), 5, "efter"),
+        (&strings, ("MDH_TEST_ALLOC_FAIL_OVER", "1000"), 3, "3"),
+    ];
+    for (src, knob, per_round, last) in cases {
+        for refcounting in [false, true] {
+            let run = run_native_with_env(src, refcounting, &[knob]);
+            assert!(
+                !run.stderr.contains("across Rust runtime frames"),
+                "{knob:?} rc={refcounting}: {}",
+                run.stderr
+            );
+            assert_eq!(
+                run.code,
+                Some(0),
+                "{knob:?} rc={refcounting}: {}",
+                run.stderr
+            );
+            let lines: Vec<&str> = run.stdout.lines().collect();
+            let mut want = vec![TOO_BIG; 2 * per_round];
+            want.push(last);
+            assert_eq!(lines, want, "{knob:?} rc={refcounting}");
+        }
+    }
+}

@@ -168,10 +168,12 @@ fn with_state<F>(func: F) -> MdhValue
 where
     F: FnOnce(&mut AudioState) -> Result<MdhValue, String>,
 {
+    let frames = crate::RustFrames::enter();
     let result = AUDIO_STATE.with(|state| {
         let mut state = state.borrow_mut();
         func(&mut state)
     });
+    drop(frames);
     match result {
         Ok(value) => value,
         Err(msg) => {

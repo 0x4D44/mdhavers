@@ -1545,6 +1545,7 @@ unsafe fn tri_module_call(method: &str, args: &[MdhValue]) -> TriResult {
 
 #[no_mangle]
 pub unsafe extern "C" fn __mdh_tri_rs_module() -> MdhValue {
+    let _frames = crate::RustFrames::enter();
     *TRI_MODULE.get_or_init(|| {
         let ptr = new_native_object(MDH_NATIVE_TRI_MODULE, "tri.module", None);
         mdh_make_native(ptr)
@@ -1556,7 +1557,9 @@ pub unsafe extern "C" fn __mdh_tri_rs_module() -> MdhValue {
 
 #[no_mangle]
 pub unsafe extern "C" fn __mdh_tri_rs_get(obj: *mut MdhNativeObject, key: MdhValue) -> MdhValue {
+    let frames = crate::RustFrames::enter();
     let result = tri_rs_get(obj, key);
+    drop(frames);
     tri_finish(result)
 }
 
@@ -1585,7 +1588,9 @@ pub unsafe extern "C" fn __mdh_tri_rs_set(
     key: MdhValue,
     value: MdhValue,
 ) -> MdhValue {
+    let frames = crate::RustFrames::enter();
     let result = tri_rs_set(obj, key, value);
+    drop(frames);
     tri_finish(result)
 }
 
@@ -1613,7 +1618,9 @@ pub unsafe extern "C" fn __mdh_tri_rs_call(
     argc: i32,
     argv: *const MdhValue,
 ) -> MdhValue {
+    let frames = crate::RustFrames::enter();
     let result = tri_rs_call(obj, method, argc, argv);
+    drop(frames);
     tri_finish(result)
 }
 

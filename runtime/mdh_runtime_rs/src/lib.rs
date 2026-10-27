@@ -99,6 +99,39 @@ extern "C" {
     fn __mdh_release(value: MdhValue);
 }
 
+#[cfg(debug_assertions)]
+extern "C" {
+    fn __mdh_rust_enter() -> i64;
+    fn __mdh_rust_leave(outer: i64);
+}
+
+/// While alive, debug builds' C runtime aborts on any raise that would longjmp across
+/// this frame (MDH-BUG-FLU-00189, `__mdh_rust_enter` in mdh_runtime.c). For the entries
+/// compiled code calls directly (audio, tri); the C runtime marks its own calls into
+/// Rust. Drop it before the entry raises its error. Nothing in release builds.
+pub(crate) struct RustFrames {
+    #[cfg(debug_assertions)]
+    outer: i64,
+}
+
+impl RustFrames {
+    pub(crate) fn enter() -> Self {
+        RustFrames {
+            #[cfg(debug_assertions)]
+            outer: unsafe { __mdh_rust_enter() },
+        }
+    }
+}
+
+impl Drop for RustFrames {
+    fn drop(&mut self) {
+        #[cfg(debug_assertions)]
+        unsafe {
+            __mdh_rust_leave(self.outer)
+        }
+    }
+}
+
 fn cstring_lossy(s: &str) -> CString {
     CString::new(s).unwrap_or_else(|_| CString::new("Runtime error").expect("CString literal"))
 }

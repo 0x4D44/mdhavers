@@ -155,6 +155,22 @@ static void __mdh_hurl_owned(MdhValue msg);
 static void __mdh_stack_guard_init(void);
 static void __mdh_stack_guard_fini(void);
 static int __mdh_stack_check(void);
+/* Rust runtime frames are live from __mdh_rust_enter to __mdh_rust_leave (see there).
+ * Debug builds only: MDH_IN_RUST brackets the C runtime's calls into Rust, and Rust's
+ * own entries called straight from compiled code (audio, tri) mark themselves. */
+int64_t __mdh_rust_enter(void);
+void __mdh_rust_leave(int64_t outer);
+#ifdef MDH_ALLOC_FAULTS
+#define MDH_IN_RUST(call)                                                                  \
+    ({                                                                                     \
+        int64_t mdh_rust_outer_ = __mdh_rust_enter();                                      \
+        MdhRsResult mdh_rust_result_ = (call);                                             \
+        __mdh_rust_leave(mdh_rust_outer_);                                                 \
+        mdh_rust_result_;                                                                  \
+    })
+#else
+#define MDH_IN_RUST(call) (call)
+#endif
 
 /* `v` retained: a borrowed value handed to an `_owned` helper. */
 static MdhValue __mdh_retained(MdhValue v) {
@@ -3471,7 +3487,7 @@ MdhValue __mdh_dns_srv(MdhValue service, MdhValue domain) {
         return __mdh_result_err("dns_srv expects service and domain strings", -1);
     }
 
-    MdhRsResult r = __mdh_rs_dns_srv(service, domain);
+    MdhRsResult r = MDH_IN_RUST(__mdh_rs_dns_srv(service, domain));
     if (!r.ok) {
         const char *msg = __mdh_get_string(r.error);
         if (!msg || msg[0] == '\0') {
@@ -3488,7 +3504,7 @@ MdhValue __mdh_dns_naptr(MdhValue domain) {
         return __mdh_result_err("dns_naptr expects a domain string", -1);
     }
 
-    MdhRsResult r = __mdh_rs_dns_naptr(domain);
+    MdhRsResult r = MDH_IN_RUST(__mdh_rs_dns_naptr(domain));
     if (!r.ok) {
         const char *msg = __mdh_get_string(r.error);
         if (!msg || msg[0] == '\0') {
@@ -3507,7 +3523,7 @@ MdhValue __mdh_tls_client_new(MdhValue config) {
         __mdh_builtin_error("tls_client_new() expects config dict");
         return __mdh_make_nil();
     }
-    MdhRsResult r = __mdh_rs_tls_client_new(config);
+    MdhRsResult r = MDH_IN_RUST(__mdh_rs_tls_client_new(config));
     if (!r.ok) {
         const char *msg = __mdh_get_string(r.error);
         if (!msg || msg[0] == '\0') {
@@ -3539,7 +3555,7 @@ MdhValue __mdh_tls_connect(MdhValue tls, MdhValue sock) {
         return __mdh_result_errno("tls_connect dup");
     }
     MdhValue fd_val = __mdh_make_int(dup_fd);
-    MdhRsResult r = __mdh_rs_tls_connect(tls, fd_val);
+    MdhRsResult r = MDH_IN_RUST(__mdh_rs_tls_connect(tls, fd_val));
     if (!r.ok) {
         const char *msg = __mdh_get_string(r.error);
         if (!msg || msg[0] == '\0') {
@@ -3560,7 +3576,7 @@ MdhValue __mdh_tls_send(MdhValue tls, MdhValue buf) {
         __mdh_type_error("tls_send", buf.tag, 0);
         return __mdh_result_err("tls_send expects bytes", -1);
     }
-    MdhRsResult r = __mdh_rs_tls_send(tls, buf);
+    MdhRsResult r = MDH_IN_RUST(__mdh_rs_tls_send(tls, buf));
     if (!r.ok) {
         const char *msg = __mdh_get_string(r.error);
         if (!msg || msg[0] == '\0') {
@@ -3580,7 +3596,7 @@ MdhValue __mdh_tls_recv(MdhValue tls, MdhValue max_len) {
         __mdh_type_error("tls_recv", max_len.tag, 0);
         return __mdh_result_err("tls_recv expects max_len", -1);
     }
-    MdhRsResult r = __mdh_rs_tls_recv(tls, max_len);
+    MdhRsResult r = MDH_IN_RUST(__mdh_rs_tls_recv(tls, max_len));
     if (!r.ok) {
         const char *msg = __mdh_get_string(r.error);
         if (!msg || msg[0] == '\0') {
@@ -3596,7 +3612,7 @@ MdhValue __mdh_tls_close(MdhValue tls) {
         __mdh_type_error("tls_close", tls.tag, 0);
         return __mdh_result_err("tls_close expects TLS handle", -1);
     }
-    MdhRsResult r = __mdh_rs_tls_close(tls);
+    MdhRsResult r = MDH_IN_RUST(__mdh_rs_tls_close(tls));
     if (!r.ok) {
         const char *msg = __mdh_get_string(r.error);
         if (!msg || msg[0] == '\0') {
@@ -3608,7 +3624,7 @@ MdhValue __mdh_tls_close(MdhValue tls) {
 }
 
 MdhValue __mdh_dtls_server_new(MdhValue config) {
-    MdhRsResult r = __mdh_rs_dtls_server_new(config);
+    MdhRsResult r = MDH_IN_RUST(__mdh_rs_dtls_server_new(config));
     if (!r.ok) {
         const char *msg = __mdh_get_string(r.error);
         if (!msg || msg[0] == '\0') {
@@ -3634,7 +3650,7 @@ MdhValue __mdh_dtls_handshake(MdhValue dtls, MdhValue sock) {
         return __mdh_result_errno("dtls_handshake dup");
     }
     MdhValue fd_val = __mdh_make_int(dup_fd);
-    MdhRsResult r = __mdh_rs_dtls_handshake(dtls, fd_val);
+    MdhRsResult r = MDH_IN_RUST(__mdh_rs_dtls_handshake(dtls, fd_val));
     if (!r.ok) {
         const char *msg = __mdh_get_string(r.error);
         if (!msg || msg[0] == '\0') {
@@ -3648,7 +3664,7 @@ MdhValue __mdh_dtls_handshake(MdhValue dtls, MdhValue sock) {
 }
 
 MdhValue __mdh_srtp_create(MdhValue keys) {
-    MdhRsResult r = __mdh_rs_srtp_create(keys);
+    MdhRsResult r = MDH_IN_RUST(__mdh_rs_srtp_create(keys));
     if (!r.ok) {
         const char *msg = __mdh_get_string(r.error);
         if (!msg || msg[0] == '\0') {
@@ -3668,7 +3684,7 @@ MdhValue __mdh_srtp_protect(MdhValue srtp, MdhValue rtp_packet) {
         __mdh_type_error("srtp_protect", rtp_packet.tag, 0);
         return __mdh_result_err("srtp_protect expects bytes", -1);
     }
-    MdhRsResult r = __mdh_rs_srtp_protect(srtp, rtp_packet);
+    MdhRsResult r = MDH_IN_RUST(__mdh_rs_srtp_protect(srtp, rtp_packet));
     if (!r.ok) {
         const char *msg = __mdh_get_string(r.error);
         if (!msg || msg[0] == '\0') {
@@ -3688,7 +3704,7 @@ MdhValue __mdh_srtp_unprotect(MdhValue srtp, MdhValue rtp_packet) {
         __mdh_type_error("srtp_unprotect", rtp_packet.tag, 0);
         return __mdh_result_err("srtp_unprotect expects bytes", -1);
     }
-    MdhRsResult r = __mdh_rs_srtp_unprotect(srtp, rtp_packet);
+    MdhRsResult r = MDH_IN_RUST(__mdh_rs_srtp_unprotect(srtp, rtp_packet));
     if (!r.ok) {
         const char *msg = __mdh_get_string(r.error);
         if (!msg || msg[0] == '\0') {
@@ -9217,7 +9233,7 @@ MdhValue __mdh_regex_test(MdhValue text, MdhValue pattern) {
         return __mdh_make_bool(false);
     }
 
-    MdhRsResult r = __mdh_rs_regex_test(text, pattern);
+    MdhRsResult r = MDH_IN_RUST(__mdh_rs_regex_test(text, pattern));
     if (!r.ok) {
         __mdh_hurl_owned(r.error);
         return __mdh_make_bool(false);
@@ -9231,7 +9247,7 @@ MdhValue __mdh_regex_match(MdhValue text, MdhValue pattern) {
         return __mdh_make_nil();
     }
 
-    MdhRsResult r = __mdh_rs_regex_match(text, pattern);
+    MdhRsResult r = MDH_IN_RUST(__mdh_rs_regex_match(text, pattern));
     if (!r.ok) {
         __mdh_hurl_owned(r.error);
         return __mdh_make_nil();
@@ -9245,7 +9261,7 @@ MdhValue __mdh_regex_match_all(MdhValue text, MdhValue pattern) {
         return __mdh_make_list(0);
     }
 
-    MdhRsResult r = __mdh_rs_regex_match_all(text, pattern);
+    MdhRsResult r = MDH_IN_RUST(__mdh_rs_regex_match_all(text, pattern));
     if (!r.ok) {
         __mdh_hurl_owned(r.error);
         return __mdh_make_list(0);
@@ -9260,7 +9276,7 @@ MdhValue __mdh_regex_replace(MdhValue text, MdhValue pattern, MdhValue replaceme
         return text.tag == MDH_TAG_STRING ? __mdh_retained(text) : __mdh_make_string("");
     }
 
-    MdhRsResult r = __mdh_rs_regex_replace(text, pattern, replacement);
+    MdhRsResult r = MDH_IN_RUST(__mdh_rs_regex_replace(text, pattern, replacement));
     if (!r.ok) {
         __mdh_hurl_owned(r.error);
         return __mdh_make_string("");
@@ -9275,7 +9291,7 @@ MdhValue __mdh_regex_replace_first(MdhValue text, MdhValue pattern, MdhValue rep
         return text.tag == MDH_TAG_STRING ? __mdh_retained(text) : __mdh_make_string("");
     }
 
-    MdhRsResult r = __mdh_rs_regex_replace_first(text, pattern, replacement);
+    MdhRsResult r = MDH_IN_RUST(__mdh_rs_regex_replace_first(text, pattern, replacement));
     if (!r.ok) {
         __mdh_hurl_owned(r.error);
         return __mdh_make_string("");
@@ -9289,7 +9305,7 @@ MdhValue __mdh_regex_split(MdhValue text, MdhValue pattern) {
         return __mdh_make_list(0);
     }
 
-    MdhRsResult r = __mdh_rs_regex_split(text, pattern);
+    MdhRsResult r = MDH_IN_RUST(__mdh_rs_regex_split(text, pattern));
     if (!r.ok) {
         __mdh_hurl_owned(r.error);
         return __mdh_make_list(0);
@@ -9764,7 +9780,7 @@ MdhValue __mdh_json_parse(MdhValue json_str) {
         return __mdh_make_nil();
     }
 
-    MdhRsResult r = __mdh_rs_json_parse(json_str);
+    MdhRsResult r = MDH_IN_RUST(__mdh_rs_json_parse(json_str));
     if (!r.ok) {
         __mdh_hurl_owned(r.error);
         return __mdh_make_nil();
@@ -9773,7 +9789,7 @@ MdhValue __mdh_json_parse(MdhValue json_str) {
 }
 
 MdhValue __mdh_json_stringify(MdhValue value) {
-    MdhRsResult r = __mdh_rs_json_stringify(value);
+    MdhRsResult r = MDH_IN_RUST(__mdh_rs_json_stringify(value));
     if (!r.ok) {
         __mdh_hurl_owned(r.error);
         return __mdh_make_string("");
@@ -9782,7 +9798,7 @@ MdhValue __mdh_json_stringify(MdhValue value) {
 }
 
 MdhValue __mdh_json_pretty(MdhValue value) {
-    MdhRsResult r = __mdh_rs_json_pretty(value);
+    MdhRsResult r = MDH_IN_RUST(__mdh_rs_json_pretty(value));
     if (!r.ok) {
         __mdh_hurl_owned(r.error);
         return __mdh_make_string("");
@@ -11548,9 +11564,36 @@ MdhValue __mdh_get_last_error(void) {
     return __mdh_last_error;
 }
 
+/* A raise must never longjmp across live Rust runtime frames (MDH-BUG-FLU-00183): Rust
+ * reaches C only through never-raising calls and raises its errors once its frames are
+ * gone. A slip there (say a raising allocator called from Rust) usually still "works"
+ * in a test, so debug builds check it (MDH-BUG-FLU-00189): __mdh_rust_floor is the try
+ * depth when the innermost live Rust frame was entered (-1: none), and a raise whose
+ * handler lies at or below it, or that has no handler, aborts the program. A handler
+ * pushed inside the Rust call (__mdh_call_fn_caught) is above the floor. Release builds
+ * never call these. */
+static __thread int64_t __mdh_rust_floor = -1;
+
+int64_t __mdh_rust_enter(void) {
+    int64_t outer = __mdh_rust_floor;
+    __mdh_rust_floor = __mdh_try_depth;
+    return outer;
+}
+
+void __mdh_rust_leave(int64_t outer) {
+    __mdh_rust_floor = outer;
+}
+
 /* __mdh_last_error holds one reference to the value it keeps: the new one is stored
  * before the old one is released (a re-hurl of the caught error keeps it alive). */
 static void __mdh_hurl_owned(MdhValue msg) {
+#ifdef MDH_ALLOC_FAULTS
+    if (__mdh_rust_floor >= 0 && __mdh_try_depth <= __mdh_rust_floor) {
+        fprintf(stderr, "mdhavers runtime bug: an error raised across Rust runtime frames "
+                        "(MDH-BUG-FLU-00183)\n");
+        abort();
+    }
+#endif
     MdhValue old = __mdh_last_error;
     __mdh_last_error = msg;
     __mdh_release(old);
