@@ -641,6 +641,46 @@ fn parity_js_maths_builtins_mdh_bug_flu_00100() {
     assert_js_parity(&[("00100 maths builtins", MATHS_SOURCE, MATHS_EXPECTED)]);
 }
 
+/// MDH-BUG-FLU-00172: JS transcendentals (`Math.*`) may differ from the
+/// interpreter's libm in the last place; docs/src/advanced/interop.md says to
+/// compare them rounded. Rounded to nine decimals, both must print the same,
+/// so a JS result that is wrong by more than the last digit still fails.
+const FLOATS_ROUNDED_SOURCE: &str = r#"blether round(log(3) * 1000000000)
+blether round(tan(2.5) * 1000000000)
+blether round(sin(1.7) * 1000000000)
+blether round(cos(2.2) * 1000000000)
+blether round(exp(1.5) * 1000000000)
+blether round(log10(7) * 1000000000)
+blether round(log2(10) * 1000000000)
+blether round(atan(0.5) * 1000000000)
+blether round(asin(0.3) * 1000000000)
+blether round(acos(0.3) * 1000000000)
+blether round(pooer(1.7, 2.3) * 1000000000)"#;
+
+const FLOATS_ROUNDED_EXPECTED: &str = "1098612289
+-747022297
+991664810
+-588501117
+4481689070
+845098040
+3321928095
+463647609
+304692654
+1266103673
+3388695291";
+
+#[test]
+fn parity_js_transcendentals_agree_when_rounded_mdh_bug_flu_00172() {
+    if !node_available() {
+        return;
+    }
+    assert_js_parity(&[(
+        "00172 rounded transcendentals",
+        FLOATS_ROUNDED_SOURCE,
+        FLOATS_ROUNDED_EXPECTED,
+    )]);
+}
+
 /// A wee stand-in fer three.js: every numeric input must be a JS number, an'
 /// `add` only takes objects it made itsel' (no' a Proxy roond one).
 const FAKE_THREE: &str = r#"
