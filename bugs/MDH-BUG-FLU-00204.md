@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00204 — LSP stdout-disconnect coverage test races under parallel load and sees exit 0
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** lsp
 - **Raised:** 2026-10-27T06:58:38Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261027T075015Z-14687a35
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00204-run-verify-20261027T075015Z-14687a35
-- **Owner base:** 793184375353d78af85c698f8680ff8e9ef91ac1
-- **Owner fingerprint:** sha256:fd75a8858da69f9fa81971c083771ccea9253c58e9da1cd2f10ccacdf0b575ce
-- **Owner since:** 2026-10-27T07:50:15Z
-- **Owner until:** 2026-10-27T11:50:15Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-27T06:58:38Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-27T07:16:25Z, deltic:auto role=fix run=fix-20261027T070623Z-ff615304 branch=task/bug-MDH-BUG-FLU-00204-run-fix-20261027T070623Z-ff615304 code=a6b3584 gate=manual)
+- **State history:** Open (2026-10-27T06:58:38Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-27T07:16:25Z, deltic:auto role=fix run=fix-20261027T070623Z-ff615304 branch=task/bug-MDH-BUG-FLU-00204-run-fix-20261027T070623Z-ff615304 code=a6b3584 gate=manual) -> Closed (2026-10-27T08:04:31Z, deltic:manual role=verify run=verify-20261027T075015Z-14687a35 verified_fix_run=fix-20261027T070623Z-ff615304 verdict=close)
 
 ## Observation
 
@@ -37,5 +37,9 @@ Evidence fingerprint: `manual:v1:lsp-stdout-disconnect-coverage-test-races-under
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-27T08:04:31Z, deltic:manual run=verify-20261027T075015Z-14687a35 verified_fix_run=fix-20261027T070623Z-ff615304 verdict=close)
+
+Verifier note: Manual verify: [lk luna] a6b3584; lsp_binary_reports_io_thread_join_error_after_stdout_disconnect_for_coverage passed in 10/10 full targets (4/4 each), first six overlapping llvm_refcount (23/23, 15.95s); ignoring join made its status assertion fail with status=Some(0).
 
 ## Notes

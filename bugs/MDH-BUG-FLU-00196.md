@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00196 — RC borrowing follow-ups: dead-object checks, libc allow-list, regression probes
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** native
 - **Raised:** 2026-10-26T19:42:46Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261027T075015Z-84f68818
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00196-run-verify-20261027T075015Z-84f68818
-- **Owner base:** 793184375353d78af85c698f8680ff8e9ef91ac1
-- **Owner fingerprint:** sha256:42e29cb938bf5c8585d37d0ed3762a5c276c4ccc7af79e873c7deba854a7b91d
-- **Owner since:** 2026-10-27T07:50:15Z
-- **Owner until:** 2026-10-27T11:50:15Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-26T19:42:46Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-27T07:49:55Z, deltic:auto role=fix run=fix-20261027T070615Z-7d05bcb2 branch=task/bug-MDH-BUG-FLU-00196-run-fix-20261027T070615Z-7d05bcb2 code=c3d58cf gate=manual)
+- **State history:** Open (2026-10-26T19:42:46Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-27T07:49:55Z, deltic:auto role=fix run=fix-20261027T070615Z-7d05bcb2 branch=task/bug-MDH-BUG-FLU-00196-run-fix-20261027T070615Z-7d05bcb2 code=c3d58cf gate=manual) -> Closed (2026-10-27T08:04:31Z, deltic:manual role=verify run=verify-20261027T075015Z-84f68818 verified_fix_run=fix-20261027T070615Z-7d05bcb2 verdict=close)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:rc-borrowing-follow-ups-dead-object-checks-libc
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-27T08:04:31Z, deltic:manual run=verify-20261027T075015Z-84f68818 verified_fix_run=fix-20261027T070615Z-7d05bcb2 verdict=close)
+
+Verifier note: Manual verify: [lk luna] c3d58cf; 3 RC probes pass normal+NOFREE (including an_assigned_element_survives_a_call_that_overwrites_it). Combined old external/element-borrow mutant fails its stdout assertion: xyxy vs abxy; NOFREE+checks aborts on DEAD concat; removing checks makes it pass clean. Three RC-off IR spots byte-identical.
 
 ## Notes
