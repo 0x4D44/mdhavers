@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00122 — WASM prints non-string dict keys in Rust debug form
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** wasm
 - **Raised:** 2026-10-24T04:51:03Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261027T001425Z-a9229111
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00122-run-verify-20261027T001425Z-a9229111
-- **Owner base:** bb18b71792fa6c1bc5f55d254da1f174c2d0af01
-- **Owner fingerprint:** sha256:9265a9f117de36d833a83a4ca792b88e389d824bffea6e9719f4673286fd6828
-- **Owner since:** 2026-10-27T00:14:25Z
-- **Owner until:** 2026-10-27T04:14:25Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-24T04:51:03Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T05:07:00Z, deltic:auto role=fix run=fix-20261024T050653Z-0ae1cee1 branch=task/bug-MDH-BUG-FLU-00122-run-fix-20261024T050653Z-0ae1cee1 code=cce0f83 gate=manual)
+- **State history:** Open (2026-10-24T04:51:03Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T05:07:00Z, deltic:auto role=fix run=fix-20261024T050653Z-0ae1cee1 branch=task/bug-MDH-BUG-FLU-00122-run-fix-20261024T050653Z-0ae1cee1 code=cce0f83 gate=manual) -> Closed (2026-10-27T01:32:14Z, deltic:manual role=verify run=verify-20261027T001425Z-a9229111 verified_fix_run=fix-20261024T050653Z-0ae1cee1 verdict=close)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:wasm-prints-non-string-dict-keys-in-rust-debug-
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-27T01:32:14Z, deltic:manual run=verify-20261027T001425Z-a9229111 verified_fix_run=fix-20261024T050653Z-0ae1cee1 verdict=close)
+
+Verifier note: Manual verify: [ld luna] fix e0c5eb1; dict_display_matches_the_interpreter_for_every_key_type passed; Debug-key mutant failed parity with keys like "Int(1)" and "Float(...)".
 
 ## Notes

@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00125 — WASM: forward-global reads, block ken over globals, non-constant dae defaults
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** wasm
 - **Raised:** 2026-10-24T05:29:44Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261027T001425Z-20077765
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00125-run-verify-20261027T001425Z-20077765
-- **Owner base:** bb18b71792fa6c1bc5f55d254da1f174c2d0af01
-- **Owner fingerprint:** sha256:6fb4b6e79427512b3345a6fb9fb2bc2ca8bc5df502c3b19438616641de0363e1
-- **Owner since:** 2026-10-27T00:14:25Z
-- **Owner until:** 2026-10-27T04:14:25Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-24T05:29:44Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T06:14:48Z, deltic:auto role=fix run=fix-20261024T061442Z-c872c15f branch=task/bug-MDH-BUG-FLU-00125-run-fix-20261024T061442Z-c872c15f code=c436abd gate=manual)
+- **State history:** Open (2026-10-24T05:29:44Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T06:14:48Z, deltic:auto role=fix run=fix-20261024T061442Z-c872c15f branch=task/bug-MDH-BUG-FLU-00125-run-fix-20261024T061442Z-c872c15f code=c436abd gate=manual) -> Closed (2026-10-27T01:32:14Z, deltic:manual role=verify run=verify-20261027T001425Z-20077765 verified_fix_run=fix-20261024T061442Z-c872c15f verdict=close)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:wasm-forward-global-reads-block-ken-over-global
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-27T01:32:14Z, deltic:manual run=verify-20261027T001425Z-20077765 verified_fix_run=fix-20261024T061442Z-c872c15f verdict=close)
+
+Verifier note: Manual verify: [ld luna] fix c436abd (source 703a6e9, cf97d90, e0c5eb1); defaults/global-before-ken/shadowing/nested-kin/operator-line regressions passed; targeted mutants each failed, including wrong line 11 after overload.
 
 ## Notes

@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00127 — WASM builtin bridge cannot carry function values (dict of lambdas to contains)
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** wasm
 - **Raised:** 2026-10-24T06:14:54Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261027T001425Z-490a14ea
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00127-run-verify-20261027T001425Z-490a14ea
-- **Owner base:** bb18b71792fa6c1bc5f55d254da1f174c2d0af01
-- **Owner fingerprint:** sha256:fa999b5242a87a40b8bc77e46a7c5f1762cf258bf05d61103c79c3fc1eb727a5
-- **Owner since:** 2026-10-27T00:14:25Z
-- **Owner until:** 2026-10-27T04:14:25Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-24T06:14:54Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T06:41:54Z, deltic:auto role=fix run=fix-20261024T064147Z-a4a054ee branch=task/bug-MDH-BUG-FLU-00127-run-fix-20261024T064147Z-a4a054ee code=dae3c18 gate=manual)
+- **State history:** Open (2026-10-24T06:14:54Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T06:41:54Z, deltic:auto role=fix run=fix-20261024T064147Z-a4a054ee branch=task/bug-MDH-BUG-FLU-00127-run-fix-20261024T064147Z-a4a054ee code=dae3c18 gate=manual) -> Closed (2026-10-27T01:32:14Z, deltic:manual role=verify run=verify-20261027T001425Z-490a14ea verified_fix_run=fix-20261024T064147Z-a4a054ee verdict=close)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:wasm-builtin-bridge-cannot-carry-function-value
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-27T01:32:14Z, deltic:manual run=verify-20261027T001425Z-490a14ea verified_fix_run=fix-20261024T064147Z-a4a054ee verdict=close)
+
+Verifier note: Manual verify: [ld luna] fix dae3c18 (source 8254242); wasm_golden_parity passed 263 fixtures; rejecting HostValue::Function made showcase_bothy_adventure.braw fail parity with output mismatch.
 
 ## Notes
