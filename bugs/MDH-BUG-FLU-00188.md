@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00188 — Native: __mdh_make_string returns a string with a NULL pointer on out-of-memory
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** native
 - **Raised:** 2026-10-26T11:40:50Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261027T045250Z-dc7cc8a5
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00188-run-fix-20261027T045250Z-dc7cc8a5
-- **Owner base:** 20a324094de4c2b22f64427177766e637f17e53b
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-27T04:52:50Z
-- **Owner until:** 2026-10-27T08:52:50Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=1, indeterminate=0
-- **State history:** Open (2026-10-26T11:40:50Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T14:03:11Z, deltic:auto role=fix run=fix-20261026T122015Z-c681ecb3 branch=task/bug-MDH-BUG-FLU-00188-run-fix-20261026T122015Z-c681ecb3 code=6cf14c5 gate=manual) -> Open (2026-10-27T02:35:24Z, deltic:manual role=verify run=verify-20261027T013251Z-2302915c verified_fix_run=fix-20261026T122015Z-c681ecb3 verdict=doubt reason=reopen-error-then-after-but-running-out-of-memory-making-a-string-raises-the-too)
+- **State history:** Open (2026-10-26T11:40:50Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T14:03:11Z, deltic:auto role=fix run=fix-20261026T122015Z-c681ecb3 branch=task/bug-MDH-BUG-FLU-00188-run-fix-20261026T122015Z-c681ecb3 code=6cf14c5 gate=manual) -> Open (2026-10-27T02:35:24Z, deltic:manual role=verify run=verify-20261027T013251Z-2302915c verified_fix_run=fix-20261026T122015Z-c681ecb3 verdict=doubt reason=reopen-error-then-after-but-running-out-of-memory-making-a-string-raises-the-too) -> Fixed (2026-10-27T05:57:58Z, deltic:auto role=fix run=fix-20261027T045250Z-dc7cc8a5 branch=task/bug-MDH-BUG-FLU-00188-run-fix-20261027T045250Z-dc7cc8a5 code=3975f37 gate=manual)
 
 ## Observation
 
