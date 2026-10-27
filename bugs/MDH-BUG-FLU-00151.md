@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00151 — C runtime puts declarations right after default: labels, a C23-only construct clang 15 rejects
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** native
 - **Raised:** 2026-10-25T09:59:23Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261027T013251Z-a1af5c2f
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00151-run-verify-20261027T013251Z-a1af5c2f
-- **Owner base:** dc207b08e001e4c28ffbe641571b9bde4a9b16c3
-- **Owner fingerprint:** sha256:0006309c906bc6dc0e934f15a4dafcaa45433f8d80bfe0fb9912e14bfc252445
-- **Owner since:** 2026-10-27T01:32:51Z
-- **Owner until:** 2026-10-27T05:32:51Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
-- **Attempts:** fix=0, doubt=1, indeterminate=0
-- **State history:** Open (2026-10-25T09:59:23Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-25T10:37:12Z, deltic:auto role=fix run=fix-20261025T100351Z-bed57b91 branch=task/bug-MDH-BUG-FLU-00151-run-fix-20261025T100351Z-bed57b91 code=8497359 gate=manual) -> Open (2026-10-26T21:44:08Z, deltic:manual role=verify run=verify-20261026T194306Z-e22233f2 verified_fix_run=fix-20261025T100351Z-bed57b91 verdict=doubt reason=reopen-verifier-gpt-6-luna-max-codex-recorded-by-lead-8497359-showing-a-float-an) -> Fixed (2026-10-27T00:56:13Z, deltic:auto role=fix run=fix-20261026T214549Z-49d208b1 branch=task/bug-MDH-BUG-FLU-00151-run-fix-20261026T214549Z-49d208b1 code=976920b gate=manual)
+- **Attempts:** fix=0, doubt=0, indeterminate=0
+- **State history:** Open (2026-10-25T09:59:23Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-25T10:37:12Z, deltic:auto role=fix run=fix-20261025T100351Z-bed57b91 branch=task/bug-MDH-BUG-FLU-00151-run-fix-20261025T100351Z-bed57b91 code=8497359 gate=manual) -> Open (2026-10-26T21:44:08Z, deltic:manual role=verify run=verify-20261026T194306Z-e22233f2 verified_fix_run=fix-20261025T100351Z-bed57b91 verdict=doubt reason=reopen-verifier-gpt-6-luna-max-codex-recorded-by-lead-8497359-showing-a-float-an) -> Fixed (2026-10-27T00:56:13Z, deltic:auto role=fix run=fix-20261026T214549Z-49d208b1 branch=task/bug-MDH-BUG-FLU-00151-run-fix-20261026T214549Z-49d208b1 code=976920b gate=manual) -> Closed (2026-10-27T02:35:24Z, deltic:manual role=verify run=verify-20261027T013251Z-a1af5c2f verified_fix_run=fix-20261026T214549Z-49d208b1 verdict=close)
 
 ## Observation
 
@@ -35,5 +35,9 @@ Evidence fingerprint: `manual:v1:c-runtime-puts-declarations-right-after-default
 ### Verification summary (2026-10-26T21:44:08Z, deltic:manual run=verify-20261026T194306Z-e22233f2 verified_fix_run=fix-20261025T100351Z-bed57b91 verdict=doubt)
 
 Verifier note: Manual verify: [verifier gpt-6-luna max (Codex), recorded by lead] 8497359; showing_a_float_and_splitting_on_a_long_delimiter_leak_nothing selected/pass on trunk and after reversing both C23 braces; clang 21 reports C23-extension warnings under the mutant. Existing test does not cover C labels.
+
+### Verification summary (2026-10-27T02:35:24Z, deltic:manual run=verify-20261027T013251Z-a1af5c2f verified_fix_run=fix-20261026T214549Z-49d208b1 verdict=close)
+
+Verifier note: Manual verify: [le luna] fix 976920b; runtime_has_no_c23_extensions_under_clang passed 1/1. Reverting the C braced-default hunks from 8497359 made its assertion fail on both labels with Clang -Werror=c23-extensions.
 
 ## Notes

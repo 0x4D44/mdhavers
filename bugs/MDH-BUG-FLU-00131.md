@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00131 — Native dtls_handshake: probable double close of the dup fd on a failed handshake
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** native
 - **Raised:** 2026-10-25T01:32:22Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261027T013251Z-952260ca
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00131-run-verify-20261027T013251Z-952260ca
-- **Owner base:** dc207b08e001e4c28ffbe641571b9bde4a9b16c3
-- **Owner fingerprint:** sha256:fdc19ce0bdf89a3cd1414c2bde09c8b13b2424ba9e2bc383d4aa10f51107a156
-- **Owner since:** 2026-10-27T01:32:51Z
-- **Owner until:** 2026-10-27T05:32:51Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
-- **Attempts:** fix=0, doubt=1, indeterminate=0
-- **State history:** Open (2026-10-25T01:32:22Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-25T02:15:59Z, deltic:auto role=fix run=fix-20261025T020015Z-990f2c0f branch=task/bug-MDH-BUG-FLU-00131-run-fix-20261025T020015Z-990f2c0f code=6a72241 gate=manual) -> Open (2026-10-26T19:40:44Z, deltic:manual role=verify run=verify-20261026T182021Z-640b9af0 verified_fix_run=fix-20261025T020015Z-990f2c0f verdict=doubt reason=reopen-verifier-gpt-6-luna-max-codex-recorded-by-lead-fix6a72241-native-invalid) -> Fixed (2026-10-27T00:55:56Z, deltic:auto role=fix run=fix-20261026T214549Z-c450ac05 branch=task/bug-MDH-BUG-FLU-00131-run-fix-20261026T214549Z-c450ac05 code=990108f gate=manual)
+- **Attempts:** fix=0, doubt=0, indeterminate=0
+- **State history:** Open (2026-10-25T01:32:22Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-25T02:15:59Z, deltic:auto role=fix run=fix-20261025T020015Z-990f2c0f branch=task/bug-MDH-BUG-FLU-00131-run-fix-20261025T020015Z-990f2c0f code=6a72241 gate=manual) -> Open (2026-10-26T19:40:44Z, deltic:manual role=verify run=verify-20261026T182021Z-640b9af0 verified_fix_run=fix-20261025T020015Z-990f2c0f verdict=doubt reason=reopen-verifier-gpt-6-luna-max-codex-recorded-by-lead-fix6a72241-native-invalid) -> Fixed (2026-10-27T00:55:56Z, deltic:auto role=fix run=fix-20261026T214549Z-c450ac05 branch=task/bug-MDH-BUG-FLU-00131-run-fix-20261026T214549Z-c450ac05 code=990108f gate=manual) -> Closed (2026-10-27T02:35:24Z, deltic:manual role=verify run=verify-20261027T013251Z-952260ca verified_fix_run=fix-20261026T214549Z-c450ac05 verdict=close)
 
 ## Observation
 
@@ -35,5 +35,9 @@ Evidence fingerprint: `manual:v1:native-dtls-handshake-probable-double-close-of-
 ### Verification summary (2026-10-26T19:40:44Z, deltic:manual run=verify-20261026T182021Z-640b9af0 verified_fix_run=fix-20261025T020015Z-990f2c0f verdict=doubt)
 
 Verifier note: Manual verify: [verifier gpt-6-luna max (Codex), recorded by lead] fix=6a72241; native invalid-handle repro returned Unknown DTLS handle and original socket_close=aye; no DTLS test exists under tests/llvm_*.rs (fix commit adds only 00132 chunks test), so no selected assertion can be mutation-checked.
+
+### Verification summary (2026-10-27T02:35:24Z, deltic:manual run=verify-20261027T013251Z-952260ca verified_fix_run=fix-20261026T214549Z-c450ac05 verdict=close)
+
+Verifier note: Manual verify: [le luna] fix 990108f; runtime_dtls_fd_ownership passed 2/2. Restoring C close made the reused-fd assertion show `reused_fd_still_open=0`; validating Rust handle before fd ownership made zero/negative handles leave fds open.
 
 ## Notes

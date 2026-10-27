@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00188 — Native: __mdh_make_string returns a string with a NULL pointer on out-of-memory
 
-- **State:** Fixed
+- **State:** Open
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** native
 - **Raised:** 2026-10-26T11:40:50Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261027T013251Z-2302915c
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00188-run-verify-20261027T013251Z-2302915c
-- **Owner base:** dc207b08e001e4c28ffbe641571b9bde4a9b16c3
-- **Owner fingerprint:** sha256:377368ed6d5b4c41e7d7dc38ec62b116d9f2df70bff82298938c45b302d9d747
-- **Owner since:** 2026-10-27T01:32:51Z
-- **Owner until:** 2026-10-27T05:32:51Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
-- **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-26T11:40:50Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T14:03:11Z, deltic:auto role=fix run=fix-20261026T122015Z-c681ecb3 branch=task/bug-MDH-BUG-FLU-00188-run-fix-20261026T122015Z-c681ecb3 code=6cf14c5 gate=manual)
+- **Attempts:** fix=0, doubt=1, indeterminate=0
+- **State history:** Open (2026-10-26T11:40:50Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T14:03:11Z, deltic:auto role=fix run=fix-20261026T122015Z-c681ecb3 branch=task/bug-MDH-BUG-FLU-00188-run-fix-20261026T122015Z-c681ecb3 code=6cf14c5 gate=manual) -> Open (2026-10-27T02:35:24Z, deltic:manual role=verify run=verify-20261027T013251Z-2302915c verified_fix_run=fix-20261026T122015Z-c681ecb3 verdict=doubt reason=reopen-error-then-after-but-running-out-of-memory-making-a-string-raises-the-too)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:native-mdh-make-string-returns-a-string-with-a-
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-27T02:35:24Z, deltic:manual run=verify-20261027T013251Z-2302915c verified_fix_run=fix-20261026T122015Z-c681ecb3 verdict=doubt)
+
+Verifier note: Manual verify: [le luna] 6cf14c5; fixed env_get(MDH_BIG) repro returned the too-big error then “after”. But running_out_of_memory_making_a_string_raises_the_too_big_error and shared compiled_string_copies_raise_the_too_big_error both stayed green after removing only __mdh_make_string’s NULL guard; they miss this C hunk.
 
 ## Notes

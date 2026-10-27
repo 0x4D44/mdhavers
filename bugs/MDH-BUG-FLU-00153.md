@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00153 — Coverage-cfg lib unit tests fail to compile: LoopContext literals miss rc_scope_depth
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** llvm
 - **Raised:** 2026-10-25T22:15:58Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261027T013251Z-ee933361
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00153-run-verify-20261027T013251Z-ee933361
-- **Owner base:** dc207b08e001e4c28ffbe641571b9bde4a9b16c3
-- **Owner fingerprint:** sha256:4ca106e2ff5140a83634939afda66381edbfd211776dffcaf0b506c43370a468
-- **Owner since:** 2026-10-27T01:32:51Z
-- **Owner until:** 2026-10-27T05:32:51Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-25T22:15:58Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-25T23:21:11Z, deltic:auto role=fix run=fix-20261025T223241Z-49b8e1e9 branch=task/bug-MDH-BUG-FLU-00153-run-fix-20261025T223241Z-49b8e1e9 code=f5d5a24 gate=manual)
+- **State history:** Open (2026-10-25T22:15:58Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-25T23:21:11Z, deltic:auto role=fix run=fix-20261025T223241Z-49b8e1e9 branch=task/bug-MDH-BUG-FLU-00153-run-fix-20261025T223241Z-49b8e1e9 code=f5d5a24 gate=manual) -> Closed (2026-10-27T02:35:24Z, deltic:manual role=verify run=verify-20261027T013251Z-ee933361 verified_fix_run=fix-20261025T223241Z-49b8e1e9 verdict=close)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:coverage-cfg-lib-unit-tests-fail-to-compile-loo
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-27T02:35:24Z, deltic:manual run=verify-20261027T013251Z-ee933361 verified_fix_run=fix-20261025T223241Z-49b8e1e9 verdict=close)
+
+Verifier note: Manual verify: [le luna] f5d5a24; coverage --lib selected 1602 tests (1594 pass, 8 unrelated TLS-permission/arity failures); both literal tests passed 1/1. Removing both fields restores E0063, but this compile-only mutant cannot reach an assertion.
 
 ## Notes
