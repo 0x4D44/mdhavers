@@ -96,3 +96,73 @@ fn make_status_on_darwin_reports_missing_pieces() {
         "{out}"
     );
 }
+
+/// Run `scripts/setup-deps.sh` as if on macOS: a stub `uname` says Darwin, and every
+/// tool that could install anything is a stub that only appends its command line to a
+/// log (the Linux package managers and `sudo` log too, so a wrong branch is seen and
+/// nothing is ever installed). Returns (exit ok, stdout, the log).
+fn setup_deps_on_darwin(args: &[&str]) -> (bool, String, String) {
+    let home = tempfile::tempdir().unwrap();
+    let stubs = home.path().join("stubs");
+    let log = home.path().join("calls.log");
+    write_exe(&stubs.join("uname"), "#!/bin/sh\necho Darwin\n");
+    write_exe(
+        &stubs.join("brew"),
+        &format!(
+            "#!/bin/sh\n[ \"$1\" = \"--prefix\" ] && {{ echo \"{h}/$2\"; exit 0; }}\necho \"brew $*\" >> \"{l}\"\n",
+            h = home.path().display(),
+            l = log.display()
+        ),
+    );
+    for tool in ["xcode-select", "sudo", "apt-get", "dnf", "pacman", "zypper"] {
+        write_exe(
+            &stubs.join(tool),
+            &format!("#!/bin/sh\necho \"{tool} $*\" >> \"{}\"\n", log.display()),
+        );
+    }
+    let path = format!(
+        "{}:{}",
+        stubs.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let out = Command::new("bash")
+        .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("scripts/setup-deps.sh"))
+        .args(args)
+        .env("PATH", path)
+        .stdin(Stdio::null())
+        .output()
+        .expect("run setup-deps.sh");
+    (
+        out.status.success(),
+        String::from_utf8_lossy(&out.stdout).to_string(),
+        std::fs::read_to_string(&log).unwrap_or_default(),
+    )
+}
+
+/// MDH-BUG-FLU-00059: on Darwin the script must pick Homebrew and its package names,
+/// never apt/sudo.
+#[test]
+fn setup_deps_on_darwin_uses_brew_and_homebrew_package_names() {
+    let (ok, stdout, calls) = setup_deps_on_darwin(&["--all"]);
+    assert!(ok, "setup-deps.sh failed:\n{stdout}\n{calls}");
+    assert!(
+        stdout.contains("Detected package manager: brew"),
+        "{stdout}"
+    );
+    for want in [
+        "brew install pkg-config",
+        "brew install llvm@19 cmake zstd",
+        "brew install cmake",
+    ] {
+        assert!(
+            calls.lines().any(|l| l == want),
+            "missing `{want}` in:\n{calls}"
+        );
+    }
+    for bad in ["sudo", "apt-get", "dnf", "pacman", "zypper"] {
+        assert!(
+            !calls.lines().any(|l| l.starts_with(bad)),
+            "Darwin run called {bad}:\n{calls}"
+        );
+    }
+}
