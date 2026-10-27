@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00154 — Native modules and --emit-llvm output hard-code the x86_64-linux target triple and data layout
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** llvm
 - **Raised:** 2026-10-25T22:16:12Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261026T214549Z-935a001f
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00154-run-fix-20261026T214549Z-935a001f
-- **Owner base:** e9aacdb5b2f66f7b00214d225728b201140c07cf
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-26T21:45:49Z
-- **Owner until:** 2026-10-27T01:45:49Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=1, indeterminate=0
-- **State history:** Open (2026-10-25T22:16:12Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T01:31:47Z, deltic:auto role=fix run=fix-20261025T230506Z-37196da3 branch=task/bug-MDH-BUG-FLU-00154-run-fix-20261025T230506Z-37196da3 code=c5abe17 gate=manual) -> Open (2026-10-26T21:44:08Z, deltic:manual role=verify run=verify-20261026T194306Z-2c133d22 verified_fix_run=fix-20261025T230506Z-37196da3 verdict=doubt reason=reopen-fails-when-the-triple-is-reverted-a-layout-only-mutant-using-the-old-x86)
+- **State history:** Open (2026-10-25T22:16:12Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T01:31:47Z, deltic:auto role=fix run=fix-20261025T230506Z-37196da3 branch=task/bug-MDH-BUG-FLU-00154-run-fix-20261025T230506Z-37196da3 code=c5abe17 gate=manual) -> Open (2026-10-26T21:44:08Z, deltic:manual role=verify run=verify-20261026T194306Z-2c133d22 verified_fix_run=fix-20261025T230506Z-37196da3 verdict=doubt reason=reopen-fails-when-the-triple-is-reverted-a-layout-only-mutant-using-the-old-x86) -> Fixed (2026-10-27T00:56:22Z, deltic:auto role=fix run=fix-20261026T214549Z-935a001f branch=task/bug-MDH-BUG-FLU-00154-run-fix-20261026T214549Z-935a001f code=9ab918a gate=manual)
 
 ## Observation
 
