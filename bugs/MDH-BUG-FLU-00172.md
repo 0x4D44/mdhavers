@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00172 — JS: log, tan and similar float builtins differ from the interpreter in the last digit
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** js
 - **Raised:** 2026-10-26T05:03:59Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261027T015317Z-0dd4b00f
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00172-run-fix-20261027T015317Z-0dd4b00f
-- **Owner base:** c8d6ae45b1d7bcb8370fec2356ebdc60d2b62f4c
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-27T01:53:17Z
-- **Owner until:** 2026-10-27T05:53:17Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=1, indeterminate=0
-- **State history:** Open (2026-10-26T05:03:59Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T05:56:53Z, deltic:auto role=fix run=fix-20261026T050440Z-8e62b090 branch=task/bug-MDH-BUG-FLU-00172-run-fix-20261026T050440Z-8e62b090 code=ec9e931 gate=manual) -> Open (2026-10-26T23:39:42Z, deltic:manual role=verify run=verify-20261026T225713Z-05513f9c verified_fix_run=fix-20261026T050440Z-8e62b090 verdict=doubt reason=reopen-regression-covers-the-documented-tolerance-behavior-so-test-does-not-cove)
+- **State history:** Open (2026-10-26T05:03:59Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T05:56:53Z, deltic:auto role=fix run=fix-20261026T050440Z-8e62b090 branch=task/bug-MDH-BUG-FLU-00172-run-fix-20261026T050440Z-8e62b090 code=ec9e931 gate=manual) -> Open (2026-10-26T23:39:42Z, deltic:manual role=verify run=verify-20261026T225713Z-05513f9c verified_fix_run=fix-20261026T050440Z-8e62b090 verdict=doubt reason=reopen-regression-covers-the-documented-tolerance-behavior-so-test-does-not-cove) -> Fixed (2026-10-27T04:51:07Z, deltic:auto role=fix run=fix-20261027T015317Z-0dd4b00f branch=task/bug-MDH-BUG-FLU-00172-run-fix-20261027T015317Z-0dd4b00f code=895148e gate=manual)
 
 ## Observation
 
