@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00134 — Coverage build (make coverage) fails to compile: 12 errors in coverage-only tests
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** tests
 - **Raised:** 2026-10-25T01:59:43Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T233955Z-39b8107b
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00134-run-verify-20261026T233955Z-39b8107b
-- **Owner base:** 3a7321efd6af1e16d34dcd7fed8e7df5ad38c691
-- **Owner fingerprint:** sha256:ccf2ff9f92eca01df06f98f9a351927dc8fe3a0decca9fb4d63d4e313cd59ff7
-- **Owner since:** 2026-10-26T23:39:55Z
-- **Owner until:** 2026-10-27T03:39:55Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-25T01:59:43Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-25T02:35:19Z, deltic:auto role=fix run=fix-20261025T015951Z-30669772 branch=task/bug-MDH-BUG-FLU-00134-run-fix-20261025T015951Z-30669772 code=8e89bd6 gate=manual)
+- **State history:** Open (2026-10-25T01:59:43Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-25T02:35:19Z, deltic:auto role=fix run=fix-20261025T015951Z-30669772 branch=task/bug-MDH-BUG-FLU-00134-run-fix-20261025T015951Z-30669772 code=8e89bd6 gate=manual) -> Closed (2026-10-27T01:51:48Z, deltic:manual role=verify run=verify-20261026T233955Z-39b8107b verified_fix_run=fix-20261025T015951Z-30669772 verdict=close)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:coverage-build-make-coverage-fails-to-compile-1
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-27T01:51:48Z, deltic:manual run=verify-20261026T233955Z-39b8107b verified_fix_run=fix-20261025T015951Z-30669772 verdict=close)
+
+Verifier note: Manual verify: LEAD: close - the regression fixture fails on the old LoopJumpInBlockExpr behaviour; the remaining red coverage build was MDH-BUG-FLU-00194 (wasm_tak_drap_strings ungated), fixed in 094641b after this tree's base. Verifier: [lc luna] 8e89bd6: coverage-only interpreter regression passed and old block-jump fixture failed on LoopJumpInBlockExpr, but the recorded coverage check still fails under cli,llvm,native with E0432/E0433 in tests/wasm_tak_drap_strings.rs (requires wasm_runner). Full coverage build remains red.
 
 ## Notes

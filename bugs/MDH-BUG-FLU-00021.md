@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00021 — F-string holes silently drop trailing tokens and report errors at line 1
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** parser
 - **Raised:** 2026-10-22T23:24:08Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T233955Z-eb2e2097
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00021-run-verify-20261026T233955Z-eb2e2097
-- **Owner base:** 3a7321efd6af1e16d34dcd7fed8e7df5ad38c691
-- **Owner fingerprint:** sha256:c85f64acfe03b24771479d0503185b2d0070ea76caf1ea65bce657fb01f1624f
-- **Owner since:** 2026-10-26T23:39:55Z
-- **Owner until:** 2026-10-27T03:39:55Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-22T23:24:08Z, raised via `deltic bugs new` model=claude-opus-5-5@medium) -> Fixed (2026-10-23T01:51:30Z, deltic:auto role=fix run=fix-20261023T015124Z-d729e4e3 branch=task/bug-MDH-BUG-FLU-00021-run-fix-20261023T015124Z-d729e4e3 code=8204122 gate=manual)
+- **State history:** Open (2026-10-22T23:24:08Z, raised via `deltic bugs new` model=claude-opus-5-5@medium) -> Fixed (2026-10-23T01:51:30Z, deltic:auto role=fix run=fix-20261023T015124Z-d729e4e3 branch=task/bug-MDH-BUG-FLU-00021-run-fix-20261023T015124Z-d729e4e3 code=8204122 gate=manual) -> Closed (2026-10-27T01:51:48Z, deltic:manual role=verify run=verify-20261026T233955Z-eb2e2097 verified_fix_run=fix-20261023T015124Z-d729e4e3 verdict=close)
 
 ## Observation
 
@@ -28,5 +28,9 @@ Confirmed: f"{a b}" prints a; f"{x:>5}" ignores the spec (parser.rs:1591 never c
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-27T01:51:48Z, deltic:manual run=verify-20261026T233955Z-eb2e2097 verified_fix_run=fix-20261023T015124Z-d729e4e3 verdict=close)
+
+Verifier note: Manual verify: [lc luna] 8204122: fstring_hole_* unit tests passed; removing leftover-token check failed `parse(...).is_err()` for `{a b}`, and line-shift mutant changed expected line 3 to 1. Source diff restored clean.
 
 ## Notes

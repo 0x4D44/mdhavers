@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00182 — WASM golden parity times out on showcase_blether_lisp under load
 
-- **State:** Fixed
+- **State:** Open
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** tests
 - **Raised:** 2026-10-26T08:37:21Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T233955Z-b2ab774c
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00182-run-verify-20261026T233955Z-b2ab774c
-- **Owner base:** 3a7321efd6af1e16d34dcd7fed8e7df5ad38c691
-- **Owner fingerprint:** sha256:330255b60f2b69df55da1840e508245bd02904f5432e3293cfc56328ae136835
-- **Owner since:** 2026-10-26T23:39:55Z
-- **Owner until:** 2026-10-27T03:39:55Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
-- **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-26T08:37:21Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T11:36:30Z, deltic:auto role=fix run=fix-20261026T091430Z-25c8deaa branch=task/bug-MDH-BUG-FLU-00182-run-fix-20261026T091430Z-25c8deaa code=e1b9d8f gate=manual)
+- **Attempts:** fix=0, doubt=1, indeterminate=0
+- **State history:** Open (2026-10-26T08:37:21Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-26T11:36:30Z, deltic:auto role=fix run=fix-20261026T091430Z-25c8deaa branch=task/bug-MDH-BUG-FLU-00182-run-fix-20261026T091430Z-25c8deaa code=e1b9d8f gate=manual) -> Open (2026-10-27T01:51:48Z, deltic:manual role=verify run=verify-20261026T233955Z-b2ab774c verified_fix_run=fix-20261026T091430Z-25c8deaa verdict=doubt reason=reopen-lc-luna-e1b9d8f-wasm-validity-parity-golden-corpora-passed-with-fixed-lim)
 
 ## Observation
 
@@ -31,5 +31,9 @@ Evidence fingerprint: `manual:v1:wasm-golden-parity-times-out-on-showcase-blethe
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-27T01:51:48Z, deltic:manual run=verify-20261026T233955Z-b2ab774c verified_fix_run=fix-20261026T091430Z-25c8deaa verdict=doubt)
+
+Verifier note: Manual verify: [lc luna] e1b9d8f: WASM validity/parity golden corpora passed with fixed limits, but reverting both timeout helpers to the prior 30s unweighted limits also left each selected corpus green (74.84s/80.43s). Test does not cover the fix at current load. Mutants restored clean.
 
 ## Notes

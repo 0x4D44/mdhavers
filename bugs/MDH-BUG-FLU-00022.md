@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00022 — F-string containing a double-quoted string literal fails to lex (README example broken)
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** parser
 - **Raised:** 2026-10-22T23:24:08Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261026T233955Z-7f9708f9
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00022-run-verify-20261026T233955Z-7f9708f9
-- **Owner base:** 3a7321efd6af1e16d34dcd7fed8e7df5ad38c691
-- **Owner fingerprint:** sha256:503b4d4f7e8a4a9a9883b3dc32ad8be367435912b2bade3d3459bc1116c2c774
-- **Owner since:** 2026-10-26T23:39:55Z
-- **Owner until:** 2026-10-27T03:39:55Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-22T23:24:08Z, raised via `deltic bugs new` model=claude-opus-5-5@medium) -> Fixed (2026-10-23T01:51:40Z, deltic:auto role=fix run=fix-20261023T015135Z-eb4f690e branch=task/bug-MDH-BUG-FLU-00022-run-fix-20261023T015135Z-eb4f690e code=8204122 gate=manual)
+- **State history:** Open (2026-10-22T23:24:08Z, raised via `deltic bugs new` model=claude-opus-5-5@medium) -> Fixed (2026-10-23T01:51:40Z, deltic:auto role=fix run=fix-20261023T015135Z-eb4f690e branch=task/bug-MDH-BUG-FLU-00022-run-fix-20261023T015135Z-eb4f690e code=8204122 gate=manual) -> Closed (2026-10-27T01:51:48Z, deltic:manual role=verify run=verify-20261026T233955Z-7f9708f9 verified_fix_run=fix-20261023T015135Z-eb4f690e verdict=close)
 
 ## Observation
 
@@ -28,5 +28,9 @@ Confirmed: README.md:455 example f"Cities: {["Edinburgh", "Glasgow"]}" fails to 
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-27T01:51:48Z, deltic:manual run=verify-20261026T233955Z-7f9708f9 verified_fix_run=fix-20261023T015135Z-eb4f690e verdict=close)
+
+Verifier note: Manual verify: [lc luna] 8204122: fstring_with_string_literal_in_hole_is_one_token passed; restoring the old regex split the README example into FString plus Identifier/String tokens and failed token equality. Source diff restored clean.
 
 ## Notes
