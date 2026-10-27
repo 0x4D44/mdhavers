@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00203 — JS transcendental parity test passes silently when node is missing
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** tests
 - **Raised:** 2026-10-27T05:23:56Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261027T055918Z-a13d06e8
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00203-run-fix-20261027T055918Z-a13d06e8
-- **Owner base:** f147b5dfbff2b2927df4b1e1a76b55e2aa0eb3e6
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-27T05:59:18Z
-- **Owner until:** 2026-10-27T09:59:18Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-27T05:23:56Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-27T05:23:56Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-27T06:12:28Z, deltic:auto role=fix run=fix-20261027T055918Z-a13d06e8 branch=task/bug-MDH-BUG-FLU-00203-run-fix-20261027T055918Z-a13d06e8 code=5acc548 gate=manual)
 
 ## Observation
 
