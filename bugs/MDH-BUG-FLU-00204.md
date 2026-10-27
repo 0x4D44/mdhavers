@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00204 — LSP stdout-disconnect coverage test races under parallel load and sees exit 0
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** lsp
 - **Raised:** 2026-10-27T06:58:38Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261027T070623Z-ff615304
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00204-run-fix-20261027T070623Z-ff615304
-- **Owner base:** 53b0ba87077468c6f33240e62a43389b7b1341d8
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-27T07:06:23Z
-- **Owner until:** 2026-10-27T11:06:23Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-27T06:58:38Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-27T06:58:38Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-27T07:16:25Z, deltic:auto role=fix run=fix-20261027T070623Z-ff615304 branch=task/bug-MDH-BUG-FLU-00204-run-fix-20261027T070623Z-ff615304 code=a6b3584 gate=manual)
 
 ## Observation
 
