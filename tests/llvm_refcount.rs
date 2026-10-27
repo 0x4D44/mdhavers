@@ -871,3 +871,103 @@ blether churn(3000)
         }
     }
 }
+
+/// `run_native` for a main program that `fetch`es sibling modules: `files` are written
+/// next to it first.
+fn run_native_with_modules(source: &str, files: &[(&str, &str)], envs: &[(&str, &str)]) -> Run {
+    let dir = tempdir().expect("temp dir");
+    for (name, text) in files {
+        std::fs::write(dir.path().join(name), text).expect("write module");
+    }
+    let main_path = dir.path().join("main.braw");
+    std::fs::write(&main_path, source).expect("write main");
+    let program = parse(source).expect("parse");
+    let exe_path = dir.path().join("rc_exe");
+    LLVMCompiler::new()
+        .with_refcounting(true)
+        .compile_to_native_with_source(&program, &exe_path, 2, Some(&main_path))
+        .expect("compile to native");
+    let mut cmd = Command::new(&exe_path);
+    cmd.stdin(Stdio::null());
+    for (k, v) in envs {
+        cmd.env(k, v);
+    }
+    let output = cmd.output().expect("run executable");
+    Run {
+        code: output.status.code(),
+        stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+        stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+    }
+}
+
+/// Checks a borrowing probe (MDH-BUG-FLU-00196): the interpreter's output, nothing live at
+/// exit, and with MDH_RC_NOFREE=1 no read of an object that died early (debug builds check
+/// concatenation, index and field reads for DEAD objects).
+fn assert_probe(run: impl Fn(&[(&str, &str)]) -> Run, expected: &str) {
+    for envs in [
+        &[("MDH_RC_REPORT", "1")][..],
+        &[("MDH_RC_REPORT", "1"), ("MDH_RC_NOFREE", "1")][..],
+    ] {
+        let run = run(envs);
+        assert_eq!(run.code, Some(0), "{envs:?}: {}", run.stderr);
+        assert_eq!(run.stdout, expected, "{envs:?}: {}", run.stderr);
+        for kind in ["string", "list", "closure"] {
+            assert_eq!(reported_live(&run.stderr, kind), 0, "{}", run.stderr);
+        }
+    }
+}
+
+/// An assignment's value is borrowed from the element it stored; the call on the right
+/// overwrites that element, so the left operand must keep its own reference.
+#[test]
+fn an_assigned_element_survives_a_call_that_overwrites_it() {
+    let src = r#"
+ken ys = ["q" + "r"]
+dae zap() {
+    ys[0] = "z" + "z"
+    ken j = "x" + "y"
+    gie j
+}
+blether (ys[0] = "a" + "b") + zap()
+blether ys[0]
+"#;
+    assert_probe(|envs| run_native(src, envs), "abxy\nzz\n");
+}
+
+/// A local captured by a lambda lives in a cell the lambda can write: the value read for
+/// `s + inner()` must survive `inner` overwriting the cell.
+#[test]
+fn a_captured_local_survives_a_lambda_that_overwrites_it() {
+    let src = r#"
+dae outer() {
+    ken s = "a" + "b"
+    ken inner = || {
+        s = "c" + "d"
+        ken j = "x" + "y"
+        gie j
+    }
+    s = s + inner()
+    gie s
+}
+blether outer()
+"#;
+    assert_probe(|envs| run_native(src, envs), "abxy\n");
+}
+
+/// A fetched module's global read before a call to the module's function that writes it.
+#[test]
+fn a_fetched_global_survives_a_call_that_overwrites_it() {
+    let module = r#"
+ken mg = "m" + "g"
+dae setmg() {
+    mg = "n" + "h"
+    ken j = "x" + "y"
+    gie j
+}
+"#;
+    let src = "fetch \"m\"\nblether mg + setmg()\n";
+    assert_probe(
+        |envs| run_native_with_modules(src, &[("m.braw", module)], envs),
+        "mgxy\n",
+    );
+}
