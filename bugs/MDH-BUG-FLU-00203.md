@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00203 — JS transcendental parity test passes silently when node is missing
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** tests
 - **Raised:** 2026-10-27T05:23:56Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261027T061519Z-c04c7c13
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00203-run-verify-20261027T061519Z-c04c7c13
-- **Owner base:** d6edeceae6882c391a0c0409f8a5cb1a285747d0
-- **Owner fingerprint:** sha256:32da47be01d34edc4468b750b62926a8af85653a05914709cb373e00e67b9f2b
-- **Owner since:** 2026-10-27T06:15:19Z
-- **Owner until:** 2026-10-27T10:15:19Z
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-27T05:23:56Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-27T06:12:28Z, deltic:auto role=fix run=fix-20261027T055918Z-a13d06e8 branch=task/bug-MDH-BUG-FLU-00203-run-fix-20261027T055918Z-a13d06e8 code=5acc548 gate=manual)
+- **State history:** Open (2026-10-27T05:23:56Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-27T06:12:28Z, deltic:auto role=fix run=fix-20261027T055918Z-a13d06e8 branch=task/bug-MDH-BUG-FLU-00203-run-fix-20261027T055918Z-a13d06e8 code=5acc548 gate=manual) -> Closed (2026-10-27T06:19:36Z, deltic:manual role=verify run=verify-20261027T061519Z-c04c7c13 verified_fix_run=fix-20261027T055918Z-a13d06e8 verdict=close)
 
 ## Observation
 
@@ -33,5 +33,9 @@ Evidence fingerprint: `manual:v1:js-transcendental-parity-test-passes-silently-w
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-27T06:19:36Z, deltic:manual run=verify-20261027T061519Z-c04c7c13 verified_fix_run=fix-20261027T055918Z-a13d06e8 verdict=close)
+
+Verifier note: Manual verify: [li luna] 5acc548; parity_js_transcendentals_agree_when_rounded_mdh_bug_flu_00172 passed 1/1 with Node; with PATH=/usr/bi[PATH] and --nocapture it selected 1/1 and printed SKIPPED: node is no' on PATH; checked nothing; other JS tests use SKIPPED; math goldens emit simple values or integer/image output.
 
 ## Notes
