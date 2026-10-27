@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00196 — RC borrowing follow-ups: dead-object checks, libc allow-list, regression probes
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** native
 - **Raised:** 2026-10-26T19:42:46Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261027T070615Z-7d05bcb2
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00196-run-fix-20261027T070615Z-7d05bcb2
-- **Owner base:** 3223788bd5e7f824ad3f8c6265eb56ceb4a385ad
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-27T07:06:15Z
-- **Owner until:** 2026-10-27T11:06:15Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-26T19:42:46Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-26T19:42:46Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-27T07:49:55Z, deltic:auto role=fix run=fix-20261027T070615Z-7d05bcb2 branch=task/bug-MDH-BUG-FLU-00196-run-fix-20261027T070615Z-7d05bcb2 code=c3d58cf gate=manual)
 
 ## Observation
 
