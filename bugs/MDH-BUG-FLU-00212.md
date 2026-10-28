@@ -1,26 +1,25 @@
 # MDH-BUG-FLU-00212 — cargo clippy -D warnings fails on trunk with --features cli,llvm,native
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** tooling
 - **Raised:** 2026-10-28T21:34:47Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261028T214559Z-4c457540
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00212-run-fix-20261028T214559Z-4c457540
-- **Owner base:** 756080545d330baca4212db4a98e00e1078c1728
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-28T21:45:59Z
-- **Owner until:** 2026-10-29T01:45:59Z
-- **Owner session:** flux/2a9090d7-08f7-48c7-bee8-7b7d1d963ab2 (run fix-20261028T214559Z-4c457540)
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-28T21:34:47Z, raised via `deltic bugs new --land`)
+- **State history:** Open (2026-10-28T21:34:47Z, raised via `deltic bugs new --land`) -> Fixed (2026-10-28T21:46:06Z, deltic:auto role=fix run=fix-20261028T214559Z-4c457540 branch=task/bug-MDH-BUG-FLU-00212-run-fix-20261028T214559Z-4c457540 code=df7a6e0 gate=manual)
 
 ## Observation
 
