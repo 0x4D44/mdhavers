@@ -1180,3 +1180,287 @@ dae setmg() {
         "mgxy\nnh\n",
     );
 }
+
+// RC7 A: a callee may let go of a heap holder while the caller still borrows it.
+#[test]
+fn rc7_a1_a_closure_can_remove_its_own_list_holder() {
+    let src = r#"
+dae install(fs) {
+    ken label = "a" + "b"
+    shove(fs, || {
+        yank(fs)
+        gie label + "!"
+    })
+}
+dae run() {
+    ken fs = []
+    install(fs)
+    blether fs[0]()
+    blether len(fs)
+}
+run()
+"#;
+    assert_exact_run(src, "ab!\n0\n");
+}
+
+#[test]
+fn rc7_a2_a_closure_can_replace_its_global_holder() {
+    let src = r#"
+ken held = naething
+dae install() {
+    ken label = "a" + "b"
+    held = || {
+        held = naething
+        gie label + "!"
+    }
+}
+install()
+blether held()
+blether held
+"#;
+    assert_exact_run(src, "ab!\nnaething\n");
+}
+
+#[test]
+fn rc7_a3_a_plain_element_store_preserves_the_callers_old_value() {
+    let src = r#"
+dae overwrite(xs) {
+    xs[0] = "c" + "d"
+    gie "x" + "y"
+}
+dae run() {
+    ken xs = ["a" + "b"]
+    blether xs[0] + overwrite(xs)
+    blether xs[0]
+}
+run()
+"#;
+    assert_exact_run(src, "abxy\ncd\n");
+}
+
+#[test]
+fn rc7_a4_heap_drops_propagate_through_two_calls() {
+    let src = r#"
+dae mutate(xs) {
+    xs[0] = "c" + "d"
+    gie "x" + "y"
+}
+dae intermediate(xs) { gie mutate(xs) }
+dae wrapper(xs) {
+    gie intermediate(xs)
+}
+dae run() {
+    ken xs = ["a" + "b"]
+    blether xs[0] + wrapper(xs)
+    blether xs[0]
+}
+run()
+"#;
+    assert_exact_run(src, "abxy\ncd\n");
+}
+
+#[test]
+fn rc7_a5_heap_drops_propagate_through_mutual_recursion() {
+    let src = r#"
+dae first(xs, n) {
+    gin n == 0 { gie "x" + "y" }
+    gie bridge(xs, n - 1)
+}
+dae bridge(xs, n) { gie second(xs, n) }
+dae second(xs, n) {
+    gin n == 0 {
+        xs[0] = "c" + "d"
+        gie "x" + "y"
+    }
+    gie first(xs, n - 1)
+}
+dae run() {
+    ken xs = ["a" + "b"]
+    blether xs[0] + first(xs, 3)
+    blether xs[0]
+}
+run()
+"#;
+    assert_exact_run(src, "abxy\ncd\n");
+}
+
+#[test]
+fn rc7_a6_a_method_preserves_the_callers_borrowed_field() {
+    let src = r#"
+kin Box {
+    dae init() { masel.text = "a" + "b" }
+    dae overwrite() {
+        masel.text = "c" + "d"
+        gie "x" + "y"
+    }
+}
+dae run() {
+    ken box = Box()
+    blether box.text + box.overwrite()
+    blether box.text
+}
+run()
+"#;
+    assert_exact_run(src, "abxy\ncd\n");
+}
+
+#[test]
+fn rc7_a7_a_late_bound_mutator_preserves_a_borrowed_element() {
+    let src = r#"
+dae wrapper(xs) { gie later(xs) }
+dae later(xs) {
+    xs[0] = "c" + "d"
+    gie "x" + "y"
+}
+dae run() {
+    ken xs = ["a" + "b"]
+    blether xs[0] + wrapper(xs)
+    blether xs[0]
+}
+run()
+"#;
+    assert_exact_run(src, "abxy\ncd\n");
+}
+
+/// A-8 substitutes a logging callback for sort's unavailable comparator argument.
+/// Native code has no log_set_callback builtin: log_init's callback sink installs the
+/// same C callback as __mdh_log_set_callback. The log statement calls __mdh_log, whose
+/// __mdh_call_with_list runs user code (runtime/mdh_runtime.c), rather than just printing.
+#[test]
+fn rc7_a8_a_runtime_callback_preserves_the_callers_old_element() {
+    let src = r#"
+dae logged() {
+    log_blether "mutate"
+    gie "x" + "y"
+}
+dae run() {
+    ken xs = ["a" + "b"]
+    ken overwrite = |record| {
+        xs[0] = "c" + "d"
+    }
+    log_init({"sinks": [{"kind": "callback", "fn": overwrite}]})
+    blether xs[0] + logged()
+    blether xs[0]
+    log_init()
+}
+run()
+"#;
+    assert_exact_run(src, "abxy\ncd\n");
+}
+
+#[test]
+fn rc7_a9_a_captured_cell_write_preserves_its_old_value() {
+    let src = r#"
+dae run() {
+    ken text = "a" + "b"
+    ken overwrite = || {
+        text = "c" + "d"
+        gie "x" + "y"
+    }
+    blether text + overwrite()
+    blether text
+}
+run()
+"#;
+    assert_exact_run(src, "abxy\ncd\n");
+}
+
+const RC7_CLOSURE_FN: &str = r#"
+dae adder(n) { gie |x| x + n }
+dae run() {
+    ken fs = []
+    ken i = 0
+    whiles i < 10 {
+        shove(fs, adder(i))
+        i = i + 1
+    }
+    ken s = 0
+    ken r = 0
+    whiles r < 100 {
+        ken f = fs[r % 10]
+        s = s + f(r)
+        r = r + 1
+    }
+    gie s
+}
+blether run()
+"#;
+
+const RC7_A_CLEAN_CALL: &str = r#"
+dae callee(xs) { gie "xy" }
+dae run() {
+    ken xs = ["a" + "b"]
+    blether xs[0] + callee(xs)
+    blether xs[0]
+}
+run()
+"#;
+
+/// The first element is used after callee returns. Its own retain and temp park
+/// must agree: without the park its statement-end release sees only nil and folds.
+fn assert_rc7_element_pair(src: &str, retained: bool) {
+    let ir = LLVMCompiler::new()
+        .with_refcounting(true)
+        .compile_to_ir(&parse(src).expect("parse"))
+        .expect("IR");
+    let body = ir
+        .split("\ndefine ")
+        .find(|body| {
+            body.lines()
+                .next()
+                .is_some_and(|line| line.contains("@__mdh_fn_run("))
+        })
+        .expect("run body");
+    assert!(
+        body.contains("%elem_val_fast = load"),
+        "the borrowed element must exist"
+    );
+    assert!(
+        body.contains("call { i8, i64 } @__mdh_fn_callee("),
+        "the direct call must exist"
+    );
+    assert_eq!(
+        body.contains("call void @__mdh_retain_fast({ i8, i64 } %elem_val_fast)"),
+        retained,
+        "the element's retain must reflect the callee's heap-drop summary"
+    );
+    assert_eq!(
+        body.contains("store { i8, i64 } %elem_val_fast,"),
+        retained,
+        "only a retained element may be parked for statement-end release"
+    );
+}
+
+#[test]
+fn rc7_a_clean_direct_call_elides_the_element_pair() {
+    // Baseline: retain(elem_val_fast), park it, release the park after concat.
+    // A: the clean direct callee cannot drop xs[0]'s holder; retain and park go.
+    assert_rc7_element_pair(RC7_A_CLEAN_CALL, false);
+    assert_exact_run(RC7_A_CLEAN_CALL, "abxy\nab\n");
+}
+
+#[test]
+fn rc7_a_destructive_direct_call_keeps_the_element_pair() {
+    let src = RC7_A_CLEAN_CALL.replace("gie \"xy\"", "xs[0] = \"c\" + \"d\"\n gie \"xy\"");
+    assert_rc7_element_pair(&src, true);
+    assert_exact_run(&src, "abxy\ncd\n");
+}
+
+#[test]
+fn rc7_a10_a_spawn_reached_through_a_helper_keeps_borrows_owned() {
+    let threaded_clean = format!(
+        "{}\ndae worker() {{ gie 7 }}\ndae start() {{ gie thread_join(thread_spawn(worker, [])) }}\nblether start()\n",
+        RC7_A_CLEAN_CALL
+    );
+    assert_rc7_element_pair(&threaded_clean, true);
+    assert_exact_run(&threaded_clean, "abxy\nab\n7\n");
+    let src = format!(
+        "{}\ndae worker() {{ gie 7 }}\ndae start() {{ gie thread_join(thread_spawn(worker, [])) }}\nblether start()\n",
+        RC7_CLOSURE_FN
+    );
+    assert!(
+        retains_in(&src, "run") > 0,
+        "a helper's spawn must disable borrow elision"
+    );
+    assert_exact_run(&src, "5400\n7\n");
+}

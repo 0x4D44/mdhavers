@@ -461,6 +461,19 @@ mod tests {
     use crate::llvm::codegen::CodeGen;
     use inkwell::context::Context;
 
+    /// Exact source-audited rows whose names trip the destructive-operation lint.
+    const AUDITED_BORROWING_REMOVALS: &[(&str, &str, Ret)] = &[
+        ("__mdh_env_set", "bb", Ret::None), // releases only __mdh_to_string's retained/fresh temporary
+        ("__mdh_file_delete", "b", Ret::None), // reads path; failure hurls a fresh message
+        ("__mdh_is_subset", "bb", Ret::None), // scans membership and returns only booleans
+        ("__mdh_is_superset", "bb", Ret::None), // delegates with borrowed operands swapped
+        ("__mdh_log_set_filter", "b", Ret::None), // validates then copies spec bytes into raw buffer
+        ("__mdh_set_args", "--", Ret::None),      // stores argc and raw argv pointer, not MdhValues
+        ("__mdh_set_contains", "bb", Ret::None),  // searches entries and returns a boolean
+        ("__mdh_set_log_level", "b", Ret::None),  // stores only parsed scalar level in a global
+        ("__mdh_try_pop", "", Ret::None), // decrements depth of the raw jmp_buf pointer stack
+    ];
+
     /// RC borrowing treats a runtime function with a row as borrowing its arguments: it
     /// never drops the caller's reference to an argument object. A function that does
     /// (by name: consume, take, drop, destroy, ...) needs a new arg code, not a row. The
@@ -477,6 +490,38 @@ mod tests {
                 "{name} looks like it consumes an argument: RC borrowing assumes rows borrow"
             );
         }
+    }
+
+    /// Name lint for RC7 summaries: a destructive-sounding operation must declare
+    /// mutation/storage, or return a copy while borrowing every argument.
+    #[test]
+    fn no_borrowing_row_removes() {
+        let removing = [
+            "remove", "pop", "set", "insert", "clear", "delete", "heave", "toss", "drain", "swap",
+            "replace",
+        ];
+        for row in AUDITED_BORROWING_REMOVALS {
+            assert!(
+                RUNTIME_OWNERSHIP.contains(row),
+                "stale audited row: {} ({}, {:?})",
+                row.0,
+                row.1,
+                row.2
+            );
+        }
+        let problems: Vec<_> = RUNTIME_OWNERSHIP
+            .iter()
+            .filter(|(name, args, ret)| {
+                removing.iter().any(|word| name.contains(word))
+                    && !args.contains(['m', 's'])
+                    && !(*ret == Ret::Fresh && args.chars().all(|arg| arg == 'b'))
+                    && !AUDITED_BORROWING_REMOVALS.contains(&(*name, *args, *ret))
+            })
+            .map(|(name, args, ret)| {
+                format!("{name} ({args}, {ret:?}) looks destructive but only borrows")
+            })
+            .collect();
+        assert!(problems.is_empty(), "{}", problems.join("\n"));
     }
 
     /// Uses the runtime helpers codegen declares only on first use: division (by

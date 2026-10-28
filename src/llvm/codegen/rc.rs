@@ -204,6 +204,233 @@ fn value_id(v: impl AsValueRef) -> usize {
     v.as_value_ref() as usize
 }
 
+fn rc_call_effect<'ctx>(module: &Module<'ctx>, inst: InstructionValue<'ctx>) -> RcCallEffect {
+    use inkwell::llvm_sys::core::{LLVMGetCalledValue, LLVMIsAFunction, LLVMIsAInlineAsm};
+    match inst.get_opcode() {
+        InstructionOpcode::Call => {}
+        InstructionOpcode::Invoke | InstructionOpcode::CallBr => return RcCallEffect::RunsCode,
+        _ => return RcCallEffect::None,
+    }
+    // SAFETY: type queries on the called operand of a live call instruction.
+    let callee = unsafe { LLVMGetCalledValue(inst.as_value_ref()) };
+    if !unsafe { LLVMIsAInlineAsm(callee) }.is_null() {
+        return RcCallEffect::None;
+    }
+    if unsafe { LLVMIsAFunction(callee) }.is_null() {
+        return RcCallEffect::RunsCode;
+    }
+    // SAFETY: checked to be a function.
+    let Some(f) = (unsafe { FunctionValue::new(callee) }) else {
+        return RcCallEffect::RunsCode;
+    };
+    if f.count_basic_blocks() > 0 {
+        return RcCallEffect::RunsCode;
+    }
+    let name = f.get_name().to_string_lossy();
+    if name.starts_with("llvm.") {
+        return RcCallEffect::None;
+    }
+    if !name.starts_with("__mdh_") {
+        return match name.as_ref() {
+            "free" | "realloc" => RcCallEffect::Drops,
+            n if RC_HARMLESS_EXTERNALS.contains(&n) => RcCallEffect::None,
+            _ => RcCallEffect::RunsCode,
+        };
+    }
+    // `__mdh_list_push` drops no count, but it may move the list's items buffer: a
+    // pointer into `items` loaded before it is stale after it (values read out are not).
+    if matches!(
+        name.as_ref(),
+        RC_BORROW_MARKER
+            | "__mdh_retain"
+            | "__mdh_rc_retain_obj"
+            | "__mdh_rc_check"
+            | "__mdh_list_push"
+    ) {
+        return RcCallEffect::None;
+    }
+    // Without a native object (none of the functions that make one is used), a
+    // native call only raises a type error.
+    if name.starts_with("__mdh_native_") && !rc_natives_possible(module) {
+        return RcCallEffect::Drops;
+    }
+    if RC_CODE_FAMILIES.iter().any(|fam| name.contains(fam)) {
+        return RcCallEffect::RunsCode;
+    }
+    if RC_DROP_FAMILIES.iter().any(|fam| name.contains(fam)) {
+        return RcCallEffect::Drops;
+    }
+    match ownership_of(&name) {
+        Some((args, _)) if args.contains(['m', 's']) => RcCallEffect::Drops,
+        Some(_) => RcCallEffect::None,
+        None => RcCallEffect::RunsCode,
+    }
+}
+
+/// The program can make a native object (a 3D object or a log span): only the
+/// runtime functions named here return one that compiled code can get hold of.
+fn rc_natives_possible(module: &Module<'_>) -> bool {
+    [
+        "__mdh_tri_module",
+        "__mdh_log_span_begin",
+        "__mdh_log_span_current",
+    ]
+    .iter()
+    .any(|n| {
+        module.get_function(n).is_some_and(|f| {
+            f.as_global_value()
+                .as_pointer_value()
+                .get_first_use()
+                .is_some()
+        })
+    })
+}
+
+/// The explicit +1 return contract shared with `rc_call_roots`. A body alone does
+/// not establish ownership (an IR helper may simply return an argument).
+fn rc_compiled_return_is_owned<'ctx>(
+    callee: FunctionValue<'ctx>,
+    owned_return_fns: &HashSet<FunctionValue<'ctx>>,
+) -> bool {
+    let name = callee.get_name().to_string_lossy();
+    ["__mdh_fn_", "__lambda_", "__mdh_late_call_"]
+        .iter()
+        .any(|prefix| name.starts_with(prefix))
+        || owned_return_fns.contains(&callee)
+}
+
+/// Whether a release drops only a reference owned by this frame (RC7 I-own).
+/// C candidates must be excluded from `owning_allocas` before computing this fact.
+fn rc_release_is_own<'ctx>(
+    value: BasicValueEnum<'ctx>,
+    function: FunctionValue<'ctx>,
+    owning_allocas: &HashSet<usize>,
+    owned_return_fns: &HashSet<FunctionValue<'ctx>>,
+) -> bool {
+    let mut work = vec![value];
+    let mut seen = HashSet::new();
+    let mut rooted = false;
+    while let Some(value) = work.pop() {
+        if !seen.insert(value_id(value)) {
+            continue;
+        }
+        if seen.len() > 4096 {
+            return false;
+        }
+        let Some(inst) = value.as_instruction_value() else {
+            return false;
+        };
+        match inst.get_opcode() {
+            InstructionOpcode::ExtractValue => {
+                let Some(aggregate) = CodeGen::rc_operand(inst, 0) else {
+                    return false;
+                };
+                work.push(aggregate);
+            }
+            InstructionOpcode::Phi => {
+                for i in 0..inst.get_num_operands() {
+                    let Some(incoming) = CodeGen::rc_operand(inst, i) else {
+                        return false;
+                    };
+                    work.push(incoming);
+                }
+            }
+            InstructionOpcode::Load => {
+                let Some(slot) = CodeGen::rc_operand(inst, 0) else {
+                    return false;
+                };
+                let own = owning_allocas.contains(&value_id(slot))
+                    && slot.as_instruction_value().is_some_and(|alloca| {
+                        alloca.get_opcode() == InstructionOpcode::Alloca
+                            && alloca.get_parent().and_then(|bb| bb.get_parent()) == Some(function)
+                    });
+                if !own {
+                    return false;
+                }
+                rooted = true;
+            }
+            InstructionOpcode::Call => {
+                let fresh = CodeGen::rc_callee(inst).is_some_and(|callee| {
+                    let name = callee.get_name().to_string_lossy();
+                    ownership_of(&name).map_or_else(
+                        || rc_compiled_return_is_owned(callee, owned_return_fns),
+                        |(_, ret)| ret == Ret::Fresh,
+                    ) || matches!(
+                        name.as_ref(),
+                        "__mdh_obj_alloc"
+                            | "__mdh_obj_alloc_checked"
+                            | "__mdh_obj_strdup"
+                            | "__mdh_obj_strdup_checked"
+                    )
+                });
+                if !fresh {
+                    return false;
+                }
+                rooted = true;
+            }
+            _ => return false,
+        }
+    }
+    rooted
+}
+
+/// Functions that may drop a reference held outside their frame, including through
+/// direct callees. This is independent of CodeGen state so IR unit tests exercise the
+/// same summary used by borrowing. All facts are computed before any marker is erased.
+pub(crate) fn rc_drops_heap<'ctx>(
+    module: &Module<'ctx>,
+    owning_allocas: &HashSet<usize>,
+    owned_return_fns: &HashSet<FunctionValue<'ctx>>,
+) -> HashSet<FunctionValue<'ctx>> {
+    let mut drops = HashSet::new();
+    let mut callers: HashMap<FunctionValue<'ctx>, Vec<FunctionValue<'ctx>>> = HashMap::new();
+    for function in module.get_functions() {
+        for bb in function.get_basic_blocks() {
+            let mut next = bb.get_first_instruction();
+            while let Some(inst) = next {
+                next = inst.get_next_instruction();
+                let effect = rc_call_effect(module, inst);
+                if effect == RcCallEffect::None {
+                    continue;
+                }
+                if let Some(callee) = CodeGen::rc_callee(inst) {
+                    if callee.count_basic_blocks() > 0 {
+                        callers.entry(callee).or_default().push(function);
+                        continue;
+                    }
+                    if matches!(
+                        callee.get_name().to_bytes(),
+                        b"__mdh_release" | b"__mdh_rc_release_obj"
+                    ) {
+                        if !CodeGen::rc_operand(inst, 0).is_some_and(|v| {
+                            rc_release_is_own(v, function, owning_allocas, owned_return_fns)
+                        }) {
+                            drops.insert(function);
+                        }
+                        continue;
+                    }
+                }
+                // Non-release Drops (m/s rows, free/realloc, shared_store), and
+                // RunsCode without a visible compiled body, may drop heap holders.
+                drops.insert(function);
+            }
+        }
+    }
+    // The same caller worklist fixpoint as rc_global_writers, including recursion
+    // and late-call dispatchers. An ordering-dependent single pass is insufficient.
+    let mut work: Vec<_> = drops.iter().copied().collect();
+    while let Some(callee) = work.pop() {
+        if let Some(cs) = callers.get(&callee) {
+            for caller in cs {
+                if drops.insert(*caller) {
+                    work.push(*caller);
+                }
+            }
+        }
+    }
+    drops
+}
+
 impl<'ctx> CodeGen<'ctx> {
     /// True for an `MdhValue` (the only values that can hold a counted object).
     pub(super) fn rc_is_value(&self, v: BasicValueEnum<'ctx>) -> bool {
@@ -417,10 +644,7 @@ impl<'ctx> CodeGen<'ctx> {
         // Compiled mdhavers functions, methods, struct constructors, lambdas and late
         // dispatchers return +1. By symbol too, since a call can be compiled before its
         // callee's body.
-        let compiled = ["__mdh_fn_", "__lambda_", "__mdh_late_call_"]
-            .iter()
-            .any(|p| name.starts_with(p));
-        if compiled || self.rc_owned_return_fns.contains(&callee) {
+        if rc_compiled_return_is_owned(callee, &self.rc_owned_return_fns) {
             self.rc_fresh_root(value_id(inst), roots)
         } else {
             RcClass::Borrowed
@@ -1584,12 +1808,17 @@ impl<'ctx> CodeGen<'ctx> {
         } else {
             self.rc_global_writers()
         };
+        let drops_heap = if threaded {
+            HashSet::new()
+        } else {
+            rc_drops_heap(&self.module, &holders, &self.rc_owned_return_fns)
+        };
         let b = self.context.create_builder();
         for rec in borrows {
             let elide = !threaded
                 && !rec.keep
                 && rec.park.is_some()
-                && self.rc_borrow_is_safe(&rec, &holders, &global_writers, &mut preds);
+                && self.rc_borrow_is_safe(&rec, &holders, &global_writers, &drops_heap, &mut preds);
             if elide && rec.owned_edges && !self.rc_park_fresh_edges(&rec) {
                 for m in &rec.markers {
                     self.rc_marker_to_retain(*m, &b);
@@ -1704,6 +1933,7 @@ impl<'ctx> CodeGen<'ctx> {
         rec: &RcBorrow<'ctx>,
         holders: &HashSet<usize>,
         global_writers: &HashSet<FunctionValue<'ctx>>,
+        drops_heap: &HashSet<FunctionValue<'ctx>>,
         preds: &mut RcPredMaps<'ctx>,
     ) -> bool {
         use inkwell::llvm_sys::core::{
@@ -1836,6 +2066,7 @@ impl<'ctx> CodeGen<'ctx> {
                 def_block,
                 rec.holder_slot,
                 global_writers,
+                drops_heap,
                 &uses,
                 &escapes,
                 &use_blocks,
@@ -1854,6 +2085,7 @@ impl<'ctx> CodeGen<'ctx> {
         def_block: Option<BasicBlock<'ctx>>,
         holder_slot: Option<PointerValue<'ctx>>,
         global_writers: &HashSet<FunctionValue<'ctx>>,
+        drops_heap: &HashSet<FunctionValue<'ctx>>,
         uses: &HashSet<usize>,
         escapes: &HashSet<usize>,
         use_blocks: &HashSet<BasicBlock<'ctx>>,
@@ -1933,7 +2165,11 @@ impl<'ctx> CodeGen<'ctx> {
                         Some(_) => !Self::rc_callee(inst).is_some_and(|f| {
                             f.count_basic_blocks() > 0 && !global_writers.contains(&f)
                         }),
-                        None => true,
+                        None => !Self::rc_callee(inst).is_some_and(|f| {
+                            f.count_basic_blocks() > 0
+                                && !drops_heap.contains(&f)
+                                && !global_writers.contains(&f)
+                        }),
                     };
                 let unsafe_here = escapes.contains(&value_id(inst))
                     || code_unsafe
@@ -2121,66 +2357,7 @@ impl<'ctx> CodeGen<'ctx> {
     /// any compiled code (a compiled function, an indirect call, a runtime function that
     /// calls back). Unknown callees count as running code.
     fn rc_call_effect(&self, inst: InstructionValue<'ctx>) -> RcCallEffect {
-        use inkwell::llvm_sys::core::{LLVMGetCalledValue, LLVMIsAFunction, LLVMIsAInlineAsm};
-        match inst.get_opcode() {
-            InstructionOpcode::Call => {}
-            InstructionOpcode::Invoke | InstructionOpcode::CallBr => return RcCallEffect::RunsCode,
-            _ => return RcCallEffect::None,
-        }
-        // SAFETY: type queries on the called operand of a live call instruction.
-        let callee = unsafe { LLVMGetCalledValue(inst.as_value_ref()) };
-        if !unsafe { LLVMIsAInlineAsm(callee) }.is_null() {
-            return RcCallEffect::None;
-        }
-        if unsafe { LLVMIsAFunction(callee) }.is_null() {
-            return RcCallEffect::RunsCode;
-        }
-        // SAFETY: checked to be a function.
-        let Some(f) = (unsafe { FunctionValue::new(callee) }) else {
-            return RcCallEffect::RunsCode;
-        };
-        if f.count_basic_blocks() > 0 {
-            return RcCallEffect::RunsCode;
-        }
-        let name = f.get_name().to_string_lossy();
-        if name.starts_with("llvm.") {
-            return RcCallEffect::None;
-        }
-        if !name.starts_with("__mdh_") {
-            return match name.as_ref() {
-                "free" | "realloc" => RcCallEffect::Drops,
-                n if RC_HARMLESS_EXTERNALS.contains(&n) => RcCallEffect::None,
-                _ => RcCallEffect::RunsCode,
-            };
-        }
-        // `__mdh_list_push` drops no count, but it may move the list's items buffer: a
-        // pointer into `items` loaded before it is stale after it (values read out are not).
-        if matches!(
-            name.as_ref(),
-            RC_BORROW_MARKER
-                | "__mdh_retain"
-                | "__mdh_rc_retain_obj"
-                | "__mdh_rc_check"
-                | "__mdh_list_push"
-        ) {
-            return RcCallEffect::None;
-        }
-        // Without a native object (none of the functions that make one is used), a
-        // native call only raises a type error.
-        if name.starts_with("__mdh_native_") && !self.rc_natives_possible() {
-            return RcCallEffect::Drops;
-        }
-        if RC_CODE_FAMILIES.iter().any(|fam| name.contains(fam)) {
-            return RcCallEffect::RunsCode;
-        }
-        if RC_DROP_FAMILIES.iter().any(|fam| name.contains(fam)) {
-            return RcCallEffect::Drops;
-        }
-        match ownership_of(&name) {
-            Some((args, _)) if args.contains(['m', 's']) => RcCallEffect::Drops,
-            Some(_) => RcCallEffect::None,
-            None => RcCallEffect::RunsCode,
-        }
+        rc_call_effect(&self.module, inst)
     }
 
     /// The loads of alloca `p` when it is only ever loaded from and stored to (a call's
@@ -2209,25 +2386,6 @@ impl<'ctx> CodeGen<'ctx> {
             }
         }
         Some(loads)
-    }
-
-    /// The program can make a native object (a 3D object or a log span): only the
-    /// runtime functions named here return one that compiled code can get hold of.
-    fn rc_natives_possible(&self) -> bool {
-        [
-            "__mdh_tri_module",
-            "__mdh_log_span_begin",
-            "__mdh_log_span_current",
-        ]
-        .iter()
-        .any(|n| {
-            self.module.get_function(n).is_some_and(|f| {
-                f.as_global_value()
-                    .as_pointer_value()
-                    .get_first_use()
-                    .is_some()
-            })
-        })
     }
 
     /// `inst` writes the variable slot `slot`, passes its address to a call, or passes a
@@ -2920,5 +3078,288 @@ m:
 }
 "#,
         );
+    }
+}
+
+#[cfg(test)]
+mod rc7_summary_tests {
+    use super::{rc_drops_heap, value_id};
+    use inkwell::{context::Context, memory_buffer::MemoryBuffer, values::InstructionOpcode};
+    use std::collections::HashSet;
+
+    fn summary(ir: &str) -> HashSet<String> {
+        summary_with_owned_returns(ir, &[])
+    }
+
+    fn summary_with_owned_returns(ir: &str, owned_names: &[&str]) -> HashSet<String> {
+        let context = Context::create();
+        let module = context
+            .create_module_from_ir(MemoryBuffer::create_from_memory_range_copy(
+                ir.as_bytes(),
+                "summary",
+            ))
+            .expect("parse hand-written IR");
+        module.verify().expect("summary input verifies");
+        let mut own = HashSet::new();
+        for function in module.get_functions() {
+            for bb in function.get_basic_blocks() {
+                let mut next = bb.get_first_instruction();
+                while let Some(inst) = next {
+                    next = inst.get_next_instruction();
+                    if inst.get_opcode() == InstructionOpcode::Alloca
+                        && inst
+                            .get_name()
+                            .is_some_and(|n| n.to_bytes().starts_with(b"own"))
+                    {
+                        own.insert(value_id(inst));
+                    }
+                }
+            }
+        }
+        let owned_returns = owned_names
+            .iter()
+            .map(|name| {
+                module
+                    .get_function(name)
+                    .expect("registered return function")
+            })
+            .collect();
+        rc_drops_heap(&module, &own, &owned_returns)
+            .iter()
+            .map(|f| f.get_name().to_string_lossy().into_owned())
+            .collect()
+    }
+
+    #[test]
+    fn only_the_explicit_return_contract_makes_call_results_owned() {
+        let drops = summary_with_owned_returns(
+            r#"
+declare void @__mdh_release({i8, i64})
+declare {i8, i64} @__mdh_fn_forward()
+define {i8, i64} @alias({i8, i64} %arg) {
+  ret {i8, i64} %arg
+}
+define {i8, i64} @registered() {
+  ret {i8, i64} zeroinitializer
+}
+define void @releases_alias({i8, i64} %arg) {
+  %v = call {i8, i64} @alias({i8, i64} %arg)
+  call void @__mdh_release({i8, i64} %v)
+  ret void
+}
+define void @releases_compiled() {
+  %v = call {i8, i64} @__mdh_fn_forward()
+  call void @__mdh_release({i8, i64} %v)
+  ret void
+}
+define void @releases_registered() {
+  %v = call {i8, i64} @registered()
+  call void @__mdh_release({i8, i64} %v)
+  ret void
+}
+"#,
+            &["registered"],
+        );
+        assert!(
+            drops.contains("releases_alias"),
+            "a body is not a +1 contract"
+        );
+        // The declaration itself remains RunsCode; the return contract only makes
+        // its result owned. A registered body can be proved clean end to end.
+        assert!(!drops.contains("releases_registered"));
+        assert!(drops.contains("releases_compiled"));
+    }
+
+    #[test]
+    fn own_slot_releases_are_clean_but_element_releases_propagate() {
+        let drops = summary(
+            r#"
+declare void @__mdh_release({i8, i64})
+define void @own_only() {
+  %own = alloca {i8, i64}
+  store {i8, i64} zeroinitializer, ptr %own
+  %v = load {i8, i64}, ptr %own
+  call void @__mdh_release({i8, i64} %v)
+  ret void
+}
+define void @element(ptr %slot) {
+  %old = load {i8, i64}, ptr %slot
+  store {i8, i64} zeroinitializer, ptr %slot
+  call void @__mdh_release({i8, i64} %old)
+  ret void
+}
+define void @calls_own() {
+  call void @own_only()
+  ret void
+}
+define void @calls_element(ptr %slot) {
+  call void @element(ptr %slot)
+  ret void
+}
+"#,
+        );
+        assert!(
+            !drops.contains("own_only"),
+            "an owning slot's release is local"
+        );
+        assert!(
+            !drops.contains("calls_own"),
+            "a clean direct call remains clean"
+        );
+        assert!(
+            drops.contains("element"),
+            "an element's old-value release drops a heap holder"
+        );
+        assert!(
+            drops.contains("calls_element"),
+            "heap drops must reach callers"
+        );
+    }
+
+    #[test]
+    fn fresh_results_extracts_and_phis_are_traced_but_scratch_is_not_owned() {
+        let drops = summary(
+            r#"
+declare {i8, i64} @__mdh_empty_dict()
+declare void @__mdh_rc_release_obj(i64)
+declare void @__mdh_release({i8, i64})
+define void @fresh_or_own(i1 %c) {
+entry:
+  %own = alloca {i8, i64}
+  store {i8, i64} zeroinitializer, ptr %own
+  br i1 %c, label %left, label %right
+left:
+  %fresh = call {i8, i64} @__mdh_empty_dict()
+  br label %merge
+right:
+  %loaded = load {i8, i64}, ptr %own
+  br label %merge
+merge:
+  %v = phi {i8, i64} [%fresh, %left], [%loaded, %right]
+  %data = extractvalue {i8, i64} %v, 1
+  call void @__mdh_rc_release_obj(i64 %data)
+  ret void
+}
+define void @scratch({i8, i64} %arg) {
+  %binding = alloca {i8, i64}
+  store {i8, i64} %arg, ptr %binding
+  %v = load {i8, i64}, ptr %binding
+  call void @__mdh_release({i8, i64} %v)
+  ret void
+}
+define void @mixed(i1 %c, {i8, i64} %heap) {
+entry:
+  %fresh = call {i8, i64} @__mdh_empty_dict()
+  br i1 %c, label %left, label %right
+left:
+  br label %merge
+right:
+  br label %merge
+merge:
+  %v = phi {i8, i64} [%fresh, %left], [%heap, %right]
+  call void @__mdh_release({i8, i64} %v)
+  ret void
+}
+"#,
+        );
+        assert!(
+            !drops.contains("fresh_or_own"),
+            "all phi roots carry frame-owned references"
+        );
+        assert!(
+            drops.contains("scratch"),
+            "an unregistered scratch binding is not owning"
+        );
+        assert!(
+            drops.contains("mixed"),
+            "every phi incoming must be traceable"
+        );
+    }
+
+    #[test]
+    fn heap_drops_reach_the_whole_recursive_caller_fixpoint() {
+        let drops = summary(
+            r#"
+declare void @__mdh_release({i8, i64})
+define void @first(ptr %slot) {
+  call void @bridge(ptr %slot)
+  ret void
+}
+define void @bridge(ptr %slot) {
+  call void @second(ptr %slot)
+  ret void
+}
+define void @second(ptr %slot) {
+  %old = load {i8, i64}, ptr %slot
+  store {i8, i64} zeroinitializer, ptr %slot
+  call void @__mdh_release({i8, i64} %old)
+  call void @first(ptr %slot)
+  ret void
+}
+define void @outer(ptr %slot) {
+  call void @first(ptr %slot)
+  ret void
+}
+"#,
+        );
+        for name in ["first", "bridge", "second", "outer"] {
+            assert!(drops.contains(name), "fixpoint must reach {name}");
+        }
+    }
+
+    #[test]
+    fn runtime_drops_callbacks_and_unknown_calls_are_conservative() {
+        let drops = summary(
+            r#"
+declare void @__mdh_shared_store(ptr, {i8, i64})
+declare {i8, i64} @__mdh_dict_set({i8, i64}, {i8, i64}, {i8, i64})
+declare void @__mdh_log()
+declare void @free(ptr)
+declare ptr @realloc(ptr, i64)
+declare i32 @setjmp(ptr)
+declare void @unknown_external()
+define void @shared(ptr %slot) {
+  call void @__mdh_shared_store(ptr %slot, {i8, i64} zeroinitializer)
+  ret void
+}
+define void @mutating({i8, i64} %dict) {
+  %v = call {i8, i64} @__mdh_dict_set({i8, i64} %dict, {i8, i64} zeroinitializer, {i8, i64} zeroinitializer)
+  ret void
+}
+define void @callback() {
+  call void @__mdh_log()
+  ret void
+}
+define void @freeing(ptr %p) {
+  call void @free(ptr %p)
+  ret void
+}
+define void @moving(ptr %p) {
+  %v = call ptr @realloc(ptr %p, i64 32)
+  ret void
+}
+define void @nonlocal(ptr %p) {
+  %v = call i32 @setjmp(ptr %p)
+  ret void
+}
+define void @external() {
+  call void @unknown_external()
+  ret void
+}
+define void @indirect(ptr %f) {
+  call void %f()
+  ret void
+}
+"#,
+        );
+        for name in [
+            "shared", "mutating", "callback", "freeing", "moving", "nonlocal", "external",
+            "indirect",
+        ] {
+            assert!(
+                drops.contains(name),
+                "{name} can drop a heap holder or run unknown code"
+            );
+        }
     }
 }
