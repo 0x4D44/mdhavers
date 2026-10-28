@@ -1,26 +1,25 @@
 # MDH-BUG-FLU-00209 — cfg(coverage) test build has 12 non-network failures (EOF input cases, LLVM wrong-arity tests)
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** tests
 - **Raised:** 2026-10-28T15:23:04Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261028T174303Z-8078ac19
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00209-run-fix-20261028T174303Z-8078ac19
-- **Owner base:** deaaf42dc332b173eb766c076ea2862f3c39d321
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-28T17:43:03Z
-- **Owner until:** 2026-10-28T21:43:03Z
-- **Owner session:** flux/2a9090d7-08f7-48c7-bee8-7b7d1d963ab2 (run fix-20261028T174303Z-8078ac19)
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-28T15:23:04Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-28T15:23:04Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-28T19:37:02Z, deltic:auto role=fix run=fix-20261028T174303Z-8078ac19 branch=task/bug-MDH-BUG-FLU-00209-run-fix-20261028T174303Z-8078ac19 code=5b71ba5 gate=manual)
 
 ## Observation
 
