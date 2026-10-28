@@ -1,26 +1,25 @@
 # MDH-BUG-FLU-00211 — Native: dynamic operator-overload dispatch nil-fills a missing required argument
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** llvm
 - **Raised:** 2026-10-28T19:36:25Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261028T233531Z-384b4985
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00211-run-verify-20261028T233531Z-384b4985
-- **Owner base:** 100776508aa38e9511ddab0cb1b02914ab0364c5
-- **Owner fingerprint:** sha256:20f9d6913ba9597744fc179f6fc538548ef51489923b1c15016036a39b7839d0
-- **Owner since:** 2026-10-28T23:35:31Z
-- **Owner until:** 2026-10-29T03:35:31Z
-- **Owner session:** flux/2a9090d7-08f7-48c7-bee8-7b7d1d963ab2 (run verify-20261028T233531Z-384b4985)
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-28T19:36:25Z, raised via `deltic bugs new --land`) -> Fixed (2026-10-28T22:59:00Z, deltic:auto role=fix run=fix-20261028T214658Z-62353abf branch=task/bug-MDH-BUG-FLU-00211-run-fix-20261028T214658Z-62353abf code=96d07e4 gate=manual)
+- **State history:** Open (2026-10-28T19:36:25Z, raised via `deltic bugs new --land`) -> Fixed (2026-10-28T22:59:00Z, deltic:auto role=fix run=fix-20261028T214658Z-62353abf branch=task/bug-MDH-BUG-FLU-00211-run-fix-20261028T214658Z-62353abf code=96d07e4 gate=manual) -> Closed (2026-10-28T23:59:43Z, deltic:manual role=verify run=verify-20261028T233531Z-384b4985 verified_fix_run=fix-20261028T214658Z-62353abf verdict=close)
 
 ## Observation
 
@@ -55,5 +54,9 @@ Evidence fingerprint: `manual:v1:native-dynamic-operator-overload-dispatch-nil-f
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-28T23:59:43Z, deltic:manual run=verify-20261028T233531Z-384b4985 verified_fix_run=fix-20261028T214658Z-62353abf verdict=close)
+
+Verifier note: Manual verify: Independent Sol verifier on d36dafb: both backends raise the arity error at line 4, exit 1; bypassing validation fails 22 stdout assertions + 2 compile assertions; caught / < == and dispatch probes match.
 
 ## Notes
