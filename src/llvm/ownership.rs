@@ -449,20 +449,15 @@ mod tests {
 
     /// RC borrowing treats a runtime function with a row as borrowing its arguments: it
     /// never drops the caller's reference to an argument object. A function that does
-    /// (by name: consume, take, drop, free, ...) needs a new arg code, not a row; the
-    /// release functions are caught by name in `rc_touches_slot` (release/free/realloc).
+    /// (by name: consume, take, drop, destroy, ...) needs a new arg code, not a row. The
+    /// release functions (release/free/realloc) have rows but are caught by name in
+    /// `rc_touches_slot`, and none of their names contains a word below.
     #[test]
     fn no_row_consumes_its_argument() {
         let consuming = [
             "owned", "destroy", "drop", "kill", "dispose", "take", "consume",
         ];
         for (name, _, _) in RUNTIME_OWNERSHIP {
-            if ["release", "free", "realloc"]
-                .iter()
-                .any(|r| name.contains(r))
-            {
-                continue;
-            }
             assert!(
                 !consuming.iter().any(|w| name.contains(w)),
                 "{name} looks like it consumes an argument: RC borrowing assumes rows borrow"
