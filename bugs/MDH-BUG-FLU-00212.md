@@ -6,15 +6,16 @@
 - **Area:** tooling
 - **Raised:** 2026-10-28T21:34:47Z
 - **Discovery source:** Agent
-- **Owner:** -
-- **Owner role:** -
-- **Owner run:** -
-- **Owner host:** -
-- **Owner branch:** -
-- **Owner base:** -
+- **Owner:** deltic:manual
+- **Owner role:** fix
+- **Owner run:** fix-20261028T214559Z-4c457540
+- **Owner host:** flux
+- **Owner branch:** task/bug-MDH-BUG-FLU-00212-run-fix-20261028T214559Z-4c457540
+- **Owner base:** 756080545d330baca4212db4a98e00e1078c1728
 - **Owner fingerprint:** -
-- **Owner since:** -
-- **Owner until:** -
+- **Owner since:** 2026-10-28T21:45:59Z
+- **Owner until:** 2026-10-29T01:45:59Z
+- **Owner session:** flux/2a9090d7-08f7-48c7-bee8-7b7d1d963ab2 (run fix-20261028T214559Z-4c457540)
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
