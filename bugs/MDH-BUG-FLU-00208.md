@@ -1,26 +1,25 @@
 # MDH-BUG-FLU-00208 — Native: field write on an aliased module then calling its function gives a type error
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** native
 - **Raised:** 2026-10-28T15:22:59Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261028T174254Z-b3b95c5b
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00208-run-fix-20261028T174254Z-b3b95c5b
-- **Owner base:** 3af35a3cbef9fff953b06683d95c320d7a9f483a
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-28T17:42:54Z
-- **Owner until:** 2026-10-28T21:42:54Z
-- **Owner session:** flux/2a9090d7-08f7-48c7-bee8-7b7d1d963ab2 (run fix-20261028T174254Z-b3b95c5b)
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-28T15:22:59Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-28T15:22:59Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-28T19:17:23Z, deltic:auto role=fix run=fix-20261028T174254Z-b3b95c5b branch=task/bug-MDH-BUG-FLU-00208-run-fix-20261028T174254Z-b3b95c5b code=f51f4ee gate=manual)
 
 ## Observation
 
