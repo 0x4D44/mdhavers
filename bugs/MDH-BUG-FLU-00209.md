@@ -1,26 +1,25 @@
 # MDH-BUG-FLU-00209 — cfg(coverage) test build has 12 non-network failures (EOF input cases, LLVM wrong-arity tests)
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** tests
 - **Raised:** 2026-10-28T15:23:04Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261028T233519Z-47db1313
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00209-run-verify-20261028T233519Z-47db1313
-- **Owner base:** 80924430c416b771057459e0158f78d664715125
-- **Owner fingerprint:** sha256:717707d44b59aa68d77fc7bb5972c755fd8eddd3757f532d79bda1ffadf77e44
-- **Owner since:** 2026-10-28T23:35:19Z
-- **Owner until:** 2026-10-29T03:35:19Z
-- **Owner session:** flux/2a9090d7-08f7-48c7-bee8-7b7d1d963ab2 (run verify-20261028T233519Z-47db1313)
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-28T15:23:04Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-28T19:37:02Z, deltic:auto role=fix run=fix-20261028T174303Z-8078ac19 branch=task/bug-MDH-BUG-FLU-00209-run-fix-20261028T174303Z-8078ac19 code=5b71ba5 gate=manual)
+- **State history:** Open (2026-10-28T15:23:04Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-28T19:37:02Z, deltic:auto role=fix run=fix-20261028T174303Z-8078ac19 branch=task/bug-MDH-BUG-FLU-00209-run-fix-20261028T174303Z-8078ac19 code=5b71ba5 gate=manual) -> Closed (2026-10-28T23:59:24Z, deltic:manual role=verify run=verify-20261028T233519Z-47db1313 verified_fix_run=fix-20261028T174303Z-8078ac19 verdict=close)
 
 ## Observation
 
@@ -42,5 +41,9 @@ Evidence fingerprint: `manual:v1:cfg-coverage-test-build-has-12-non-network-fail
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-28T23:59:24Z, deltic:manual run=verify-20261028T233519Z-47db1313 verified_fix_run=fix-20261028T174303Z-8078ac19 verdict=close)
+
+Verifier note: Manual verify: Independent Sol verifier on d36dafb: all 12 original coverage cases pass; reversals reproduce 5 input, 7 LLVM fixture and the placeholder failures; 94/94 focused coverage targets. Broad coverage run's 2 non-network failures are a new regression from 96d07e4 (raised separately), not 209.
 
 ## Notes
