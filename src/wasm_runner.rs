@@ -4,7 +4,10 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::rc::Rc;
 
-use wasmtime::{Caller, Engine, FuncType, Linker, Memory, MemoryType, Module, Store, Val, ValType};
+use wasmtime::{
+    Caller, Engine, FuncType, Global, GlobalType, Linker, Memory, MemoryType, Module, Mutability,
+    Store, Val, ValType,
+};
 
 use crate::error::{HaversError, HaversResult};
 use crate::interpreter::Interpreter;
@@ -28,8 +31,8 @@ enum HostValue {
     Dict(DictEntries),
     /// A creel: each member's identity key and its handle (like dict entries, minus values).
     Set(DictEntries),
-    /// A byte buffer (`bytes_new` an' friends), copied tae an' fae the interpreter's.
-    Bytes(Vec<u8>),
+    /// The authoritative payload lives in the imported linear memory.
+    Bytes(LinearBytes),
     NativeObject(TriObject),
     NativeCtor(String),
     /// A guest function value: its `__mdh_fns` table slot, arity, how many arguments
@@ -62,6 +65,29 @@ enum HostValue {
         recv: Handle,
         method: Method,
     },
+}
+
+/// A byte buffer's allocation. The descriptor table exposes only pointer and length;
+/// capacity stays with the host so native mutations can reuse their allocation.
+#[derive(Debug, Clone, Copy, Default)]
+struct LinearBytes {
+    ptr: u32,
+    len: u32,
+    capacity: u32,
+}
+
+impl LinearBytes {
+    fn len(self) -> usize {
+        self.len as usize
+    }
+
+    fn is_empty(self) -> bool {
+        self.len == 0
+    }
+
+    fn data(self, memory: &[u8]) -> Option<&[u8]> {
+        memory.get(self.ptr as usize..self.ptr as usize + self.len as usize)
+    }
 }
 
 /// A class method: a guest function in `__mdh_fns` taking `(env, masel, params.., argc)`.
@@ -141,6 +167,8 @@ struct HostStore {
     /// Out-of-range ints and floats, interned by value so repeats share one slot.
     wide_ints: HashMap<i64, Handle>,
     wide_floats: HashMap<u64, Handle>,
+    bytes_free: Vec<(u32, u32)>,
+    bytes_dirty: Vec<usize>,
 }
 
 // Reclamation (MDH-BUG-FLU-00092). The compiler wraps every guest statement in a host
@@ -193,6 +221,8 @@ impl HostStore {
             young: Vec::new(),
             wide_ints: HashMap::new(),
             wide_floats: HashMap::new(),
+            bytes_free: Vec::new(),
+            bytes_dirty: Vec::new(),
         }
     }
 
@@ -418,10 +448,39 @@ impl HostStore {
             HostValue::Float(f) if self.wide_floats.get(&f.to_bits()) == Some(&(idx as Handle)) => {
                 self.wide_floats.remove(&f.to_bits());
             }
+            HostValue::Bytes(bytes) => {
+                self.free_bytes(bytes.ptr, bytes.capacity);
+                self.bytes_dirty.push(idx);
+            }
             _ => {}
         }
         self.births[idx] = FREED;
         self.free.push(idx);
+    }
+
+    fn free_bytes(&mut self, mut ptr: u32, mut capacity: u32) {
+        if capacity == 0 {
+            return;
+        }
+        // Coalesce adjacent spans, including old descriptor tables, so varying
+        // native buffer sizes cannot permanently fragment the linear arena.
+        let mut i = 0;
+        while i < self.bytes_free.len() {
+            let (other, size) = self.bytes_free[i];
+            if other as u64 + size as u64 == ptr as u64 {
+                ptr = other;
+                capacity += size;
+                self.bytes_free.swap_remove(i);
+                i = 0;
+            } else if ptr as u64 + capacity as u64 == other as u64 {
+                capacity += size;
+                self.bytes_free.swap_remove(i);
+                i = 0;
+            } else {
+                i += 1;
+            }
+        }
+        self.bytes_free.push((ptr, capacity));
     }
 
     fn key_for(&self, handle: Handle) -> Option<ValueKey> {
@@ -617,12 +676,15 @@ const ERR_INVALID: &str = "That's pure mince! Type error: invalid value";
 /// back as its ain handle. Arguments are borrowed: after the call, ony container the
 /// builtin changed is written back through `get_mut`, the reclamation write barrier.
 #[derive(Default)]
-struct ValueBridge {
+struct ValueBridge<'a> {
+    memory: &'a [u8],
+    /// Temporary native snapshots, flushed before returning to guest code.
+    bytes_updates: Vec<(Handle, Vec<u8>)>,
     by_handle: HashMap<Handle, Value>,
     by_ptr: HashMap<usize, Handle>,
 }
 
-impl ValueBridge {
+impl ValueBridge<'_> {
     fn remember(&mut self, handle: Handle, value: &Value) {
         if let Some(ptr) = container_ptr(value) {
             self.by_ptr.insert(ptr, handle);
@@ -630,7 +692,7 @@ impl ValueBridge {
         self.by_handle.insert(handle, value.clone());
     }
 
-    fn to_value(&mut self, store: &HostStore, handle: Handle) -> Result<Value, String> {
+    fn read_value(&mut self, store: &HostStore, handle: Handle) -> Result<Value, String> {
         if let Some(value) = self.by_handle.get(&handle) {
             return Ok(value.clone());
         }
@@ -647,7 +709,7 @@ impl ValueBridge {
                 self.remember(handle, &value);
                 let mut out = Vec::with_capacity(items.len());
                 for item in items {
-                    out.push(self.to_value(store, *item)?);
+                    out.push(self.read_value(store, *item)?);
                 }
                 *rc.borrow_mut() = out;
                 Ok(value)
@@ -658,7 +720,7 @@ impl ValueBridge {
                 self.remember(handle, &value);
                 for (key, item) in entries {
                     let key = self.key_to_value(store, key)?;
-                    let item = self.to_value(store, *item)?;
+                    let item = self.read_value(store, *item)?;
                     rc.borrow_mut().set(key, item);
                 }
                 Ok(value)
@@ -668,13 +730,15 @@ impl ValueBridge {
                 let value = Value::Set(rc.clone());
                 self.remember(handle, &value);
                 for (_, item) in members {
-                    let item = self.to_value(store, *item)?;
+                    let item = self.read_value(store, *item)?;
                     rc.borrow_mut().insert(item);
                 }
                 Ok(value)
             }
             HostValue::Bytes(bytes) => {
-                let value = Value::Bytes(Rc::new(RefCell::new(bytes.clone())));
+                let value = Value::Bytes(Rc::new(RefCell::new(
+                    bytes.data(self.memory).ok_or(ERR_INVALID)?.to_vec(),
+                )));
                 self.remember(handle, &value);
                 Ok(value)
             }
@@ -687,7 +751,7 @@ impl ValueBridge {
             }
             HostValue::Cell(_) => Err(ERR_INVALID.to_string()),
             // A function, builtin, class, bound method or tri value rides through as an
-            // opaque `HostOpaque`, an' `to_handle` gies back its ain handle.
+            // opaque `HostOpaque`, an' `intern_value` gies back its ain handle.
             other => {
                 let value = Value::NativeObject(Rc::new(HostOpaque {
                     handle,
@@ -714,13 +778,13 @@ impl ValueBridge {
             | ValueKey::NativeObject(h)
             | ValueKey::NativeCtor(h)
             | ValueKey::Function(h)
-            | ValueKey::Object(h) => self.to_value(store, *h)?,
+            | ValueKey::Object(h) => self.read_value(store, *h)?,
         })
     }
 
     /// A value fae the builtin as a handle: a container that wis passed in keeps its
     /// handle, anything else is a fresh allocation in the current scope.
-    fn to_handle(&mut self, store: &mut HostStore, value: &Value) -> Result<Handle, String> {
+    fn intern_value(&mut self, store: &mut HostStore, value: &Value) -> Result<Handle, String> {
         if let Some(handle) = container_ptr(value).and_then(|ptr| self.by_ptr.get(&ptr)) {
             return Ok(*handle);
         }
@@ -758,29 +822,35 @@ impl ValueBridge {
             Value::List(rc) => {
                 let mut items = Vec::new();
                 for item in rc.borrow().iter() {
-                    items.push(self.to_handle(store, item)?);
+                    items.push(self.intern_value(store, item)?);
                 }
                 HostValue::List(items)
             }
             Value::Dict(rc) => {
                 let mut entries = Vec::new();
                 for (key, item) in rc.borrow().iter() {
-                    let key = self.to_handle(store, key)?;
+                    let key = self.intern_value(store, key)?;
                     let key = store.key_for(key).ok_or_else(|| ERR_INVALID.to_string())?;
-                    entries.push((key, self.to_handle(store, item)?));
+                    entries.push((key, self.intern_value(store, item)?));
                 }
                 HostValue::Dict(entries)
             }
             Value::Set(rc) => {
                 let mut members = Vec::new();
                 for item in rc.borrow().iter() {
-                    let item = self.to_handle(store, item)?;
+                    let item = self.intern_value(store, item)?;
                     let key = store.key_for(item).ok_or_else(|| ERR_INVALID.to_string())?;
                     dict_put(&mut members, key, item);
                 }
                 HostValue::Set(members)
             }
-            Value::Bytes(rc) => HostValue::Bytes(rc.borrow().clone()),
+            Value::Bytes(rc) => {
+                self.bytes_updates.push((handle, rc.borrow().clone()));
+                HostValue::Bytes(match store.get(handle) {
+                    Some(HostValue::Bytes(held)) => *held,
+                    _ => LinearBytes::default(),
+                })
+            }
             _ => return Err(ERR_INVALID.to_string()),
         };
         if let Some(slot) = store.get_mut(handle) {
@@ -821,7 +891,9 @@ impl ValueBridge {
                         self.same_key(store, key, k) && self.same_slot(store, *h, v)
                     })
             }
-            (Some(HostValue::Bytes(held)), Value::Bytes(rc)) => *held == *rc.borrow(),
+            (Some(HostValue::Bytes(held)), Value::Bytes(rc)) => {
+                held.data(self.memory) == Some(rc.borrow().as_slice())
+            }
             // A builtin cannae change an instance's fields, nor a carried host value.
             (Some(HostValue::Instance { .. }), Value::Instance(_)) => true,
             (Some(_), Value::NativeObject(_)) => true,
@@ -959,14 +1031,26 @@ fn builtin_shortcut(store: &mut HostStore, name: &str, args: &[Handle]) -> Optio
 /// Run one o' the interpreter's natives on borrowed argument handles; the result is a
 /// fresh handle in the current scope (or a passed-in container's ain handle). Anything
 /// the native writes tae stdout joins the runner's capture, in order.
+#[cfg(test)]
 fn call_builtin(
     state: &mut HostState,
     name: &str,
     args: &[Handle],
     line: i32,
 ) -> Result<Handle, String> {
+    call_builtin_memory(state, name, args, line, &[], &mut Vec::new())
+}
+
+fn call_builtin_memory(
+    state: &mut HostState,
+    name: &str,
+    args: &[Handle],
+    line: i32,
+    memory: &[u8],
+    updates: &mut Vec<(Handle, Vec<u8>)>,
+) -> Result<Handle, String> {
     crate::logging::begin_stdout_capture();
-    let result = call_builtin_inner(state, name, args, line);
+    let result = call_builtin_inner(state, name, args, line, memory, updates);
     let printed = crate::logging::end_stdout_capture();
     match state.captured.as_mut() {
         Some(buffer) => buffer.push_str(&printed),
@@ -980,6 +1064,8 @@ fn call_builtin_inner(
     name: &str,
     args: &[Handle],
     line: i32,
+    memory: &[u8],
+    updates: &mut Vec<(Handle, Vec<u8>)>,
 ) -> Result<Handle, String> {
     let natives = state
         .natives
@@ -1003,17 +1089,22 @@ fn call_builtin_inner(
     if let Some(handle) = builtin_shortcut(store, name, args) {
         return Ok(handle);
     }
-    let mut bridge = ValueBridge::default();
+    let mut bridge = ValueBridge {
+        memory,
+        ..ValueBridge::default()
+    };
     let mut values = Vec::with_capacity(args.len());
     for arg in args {
-        values.push(bridge.to_value(store, *arg)?);
+        values.push(bridge.read_value(store, *arg)?);
     }
     let result = (native.func)(values).map_err(|m| HaversError::InternalError(m).to_string())?;
     // Scalar arguments and read-only natives cannae change a host container.
     if !args.iter().all(|a| is_inline_scalar(*a)) && !READ_ONLY_NATIVES.contains(&name) {
         bridge.write_back(store)?;
     }
-    bridge.to_handle(store, &result)
+    let handle = bridge.intern_value(store, &result)?;
+    updates.extend(bridge.bytes_updates);
+    Ok(handle)
 }
 
 /// `__mdh_builtin0` ..= `__mdh_builtin{MAX_BUILTIN_ARGS}`: (name_ptr, name_len, args...) -> handle.
@@ -1021,7 +1112,7 @@ fn add_builtin_imports(linker: &mut Linker<HostState>, memory: Memory) -> Result
     for argc in 0..=MAX_BUILTIN_ARGS {
         let params = [ValType::I32, ValType::I32]
             .into_iter()
-            .chain(std::iter::repeat(ValType::I64).take(argc));
+            .chain(std::iter::repeat_n(ValType::I64, argc));
         let ty = FuncType::new(params, [ValType::I64]);
         linker
             .func_new(
@@ -1299,7 +1390,19 @@ fn call_builtin_value(
     if HOF_BUILTINS.iter().any(|(hof, _)| *hof == name) {
         return call_hof(caller, name, args, line);
     }
-    let result = call_builtin(caller.data_mut(), name, args, line);
+    let memory = caller.data().memory.expect("runner memory");
+    let mut updates = Vec::new();
+    let result = {
+        let (data, state) = memory.data_and_store_mut(&mut *caller);
+        call_builtin_memory(state, name, args, line, data, &mut updates)
+    };
+    // Native byte values are snapshots for this call only. Reborrow memory after
+    // any growth, then publish their writes and descriptors before guest execution.
+    if !updates.is_empty() {
+        if let Err(message) = flush_bytes(caller, memory, updates) {
+            return finish(caller, Err(message));
+        }
+    }
     finish(caller, result)
 }
 
@@ -2230,6 +2333,11 @@ fn add_statement_imports(linker: &mut Linker<HostState>, memory: Memory) -> Resu
 #[derive(Debug)]
 struct HostState {
     store: HostStore,
+    memory: Option<Memory>,
+    bytes_globals: Option<(Global, Global)>,
+    bytes_base: u32,
+    bytes_capacity: u32,
+    heap_next: u64,
     tri_modules: HashSet<Handle>,
     /// The interpreter's natives, built on the first builtin call.
     natives: Option<HashMap<String, Rc<NativeFunction>>>,
@@ -2247,6 +2355,12 @@ impl HostState {
     fn new(capture: bool) -> Self {
         HostState {
             store: HostStore::new(),
+            memory: None,
+            bytes_globals: None,
+            bytes_base: 0,
+            bytes_capacity: 0,
+            // Compiler constants and spilled roots occupy page zero permanently.
+            heap_next: 65536,
             tri_modules: HashSet::new(),
             natives: None,
             captured: if capture { Some(String::new()) } else { None },
@@ -2255,6 +2369,155 @@ impl HostState {
             pending: None,
         }
     }
+}
+
+/// Reserve an aligned span after page zero, reusing reclaimed payloads/tables.
+/// No borrowed view or raw pointer is kept across `Memory::grow`.
+fn alloc_linear(
+    caller: &mut Caller<'_, HostState>,
+    memory: Memory,
+    size: usize,
+) -> Result<(u32, u32), String> {
+    let capacity = size
+        .checked_add(7)
+        .and_then(|n| u32::try_from(n & !7).ok())
+        .ok_or("Byte buffer is too muckle fer WASM memory")?;
+    if capacity == 0 {
+        return Ok((0, 0));
+    }
+    let state = caller.data_mut();
+    if let Some(i) = state
+        .store
+        .bytes_free
+        .iter()
+        .position(|(_, n)| *n >= capacity)
+    {
+        let (ptr, available) = state.store.bytes_free.swap_remove(i);
+        if available > capacity {
+            state
+                .store
+                .bytes_free
+                .push((ptr + capacity, available - capacity));
+        }
+        return Ok((ptr, capacity));
+    }
+    let ptr = state.heap_next;
+    let end = ptr
+        .checked_add(capacity as u64)
+        .filter(|end| *end <= u32::MAX as u64)
+        .ok_or("Byte buffer is too muckle fer WASM memory")?;
+    let required_pages = end.div_ceil(65536);
+    let pages = memory.size(&*caller);
+    if required_pages > pages {
+        memory
+            .grow(&mut *caller, required_pages - pages)
+            .map_err(|e| e.to_string())?;
+    }
+    caller.data_mut().heap_next = end;
+    Ok((ptr as u32, capacity))
+}
+
+fn flush_bytes(
+    caller: &mut Caller<'_, HostState>,
+    memory: Memory,
+    updates: Vec<(Handle, Vec<u8>)>,
+) -> Result<(), String> {
+    for (handle, data) in updates {
+        let old = match caller.data().store.get(handle) {
+            Some(HostValue::Bytes(bytes)) => *bytes,
+            _ => return Err(ERR_INVALID.to_string()),
+        };
+        let len =
+            u32::try_from(data.len()).map_err(|_| "Byte buffer is too muckle fer WASM memory")?;
+        let (ptr, capacity) = if len <= old.capacity {
+            (old.ptr, old.capacity)
+        } else {
+            alloc_linear(caller, memory, data.len())?
+        };
+        memory
+            .write(&mut *caller, ptr as usize, &data)
+            .map_err(|e| e.to_string())?;
+        let state = caller.data_mut();
+        if ptr != old.ptr {
+            state.store.free_bytes(old.ptr, old.capacity);
+        }
+        *state.store.get_mut(handle).ok_or(ERR_INVALID)? =
+            HostValue::Bytes(LinearBytes { ptr, len, capacity });
+        state.store.bytes_dirty.push(handle as usize);
+    }
+    sync_bytes_table(caller, memory)
+}
+
+/// Descriptors are indexed by ordinary positive host handles. Globals publish the
+/// current table because it can move as the store grows. Reclaimed slots get tag
+/// zero before guest code can reuse them for another type.
+fn sync_bytes_table(caller: &mut Caller<'_, HostState>, memory: Memory) -> Result<(), String> {
+    if caller.data().store.bytes_dirty.is_empty() {
+        return Ok(());
+    }
+    let required = caller
+        .data()
+        .store
+        .bytes_dirty
+        .iter()
+        .copied()
+        .filter(|i| {
+            matches!(
+                caller.data().store.values.get(*i),
+                Some(HostValue::Bytes(_))
+            )
+        })
+        .max()
+        .map_or(0, |i| i + 1);
+    let old_capacity = caller.data().bytes_capacity;
+    let relocated = required > old_capacity as usize;
+    if relocated {
+        let capacity = required
+            .max(64)
+            .checked_next_power_of_two()
+            .and_then(|n| u32::try_from(n).ok())
+            .ok_or("Byte descriptor table is too muckle fer WASM memory")?;
+        let size = (capacity as usize)
+            .checked_mul(16)
+            .ok_or("Byte descriptor table is too muckle fer WASM memory")?;
+        let (base, _) = alloc_linear(caller, memory, size)?;
+        // Reused spans need clearing: an old payload must never become a tag.
+        memory.data_mut(&mut *caller)[base as usize..base as usize + size].fill(0);
+        let state = caller.data_mut();
+        let old_base = state.bytes_base;
+        state.store.free_bytes(old_base, old_capacity * 16);
+        state.bytes_base = base;
+        state.bytes_capacity = capacity;
+        let (base_global, capacity_global) = state.bytes_globals.ok_or(ERR_INVALID)?;
+        base_global
+            .set(&mut *caller, Val::I32(base as i32))
+            .map_err(|e| e.to_string())?;
+        capacity_global
+            .set(&mut *caller, Val::I32(capacity as i32))
+            .map_err(|e| e.to_string())?;
+    }
+    let (data, state) = memory.data_and_store_mut(&mut *caller);
+    let base = state.bytes_base as usize;
+    let capacity = state.bytes_capacity as usize;
+    let dirty = std::mem::take(&mut state.store.bytes_dirty);
+    let indices = if relocated {
+        (0..state.store.values.len()).collect()
+    } else {
+        dirty
+    };
+    for i in indices {
+        if i >= capacity {
+            continue;
+        }
+        let descriptor = &mut data[base + i * 16..base + (i + 1) * 16];
+        descriptor.fill(0);
+        if let Some(HostValue::Bytes(bytes)) = state.store.values.get(i) {
+            descriptor[..4].copy_from_slice(&bytes.ptr.to_le_bytes());
+            descriptor[4..8].copy_from_slice(&bytes.len.to_le_bytes());
+            descriptor[8..12].copy_from_slice(&1u32.to_le_bytes());
+        }
+    }
+    Ok(())
 }
 
 /// Record a runtime error (so the caller can report it cleanly) and turn it into a trap.
@@ -2683,7 +2946,7 @@ fn add_arith(
 fn add_cmp(
     linker: &mut Linker<HostState>,
     name: &'static str,
-    op: fn(&HostStore, i64, i64) -> Result<bool, String>,
+    op: fn(&HostStore, &[u8], i64, i64) -> Result<bool, String>,
 ) -> Result<(), String> {
     linker
         .func_wrap(
@@ -2696,8 +2959,9 @@ fn add_cmp(
                 if let Some(result) = operator_overload(&mut caller, name, a, b)? {
                     return Ok(result);
                 }
-                let store = &mut caller.data_mut().store;
-                let result = op(store, a, b).map(|v| alloc_bool(store, v));
+                let memory = caller.data().memory.expect("runner memory");
+                let (data, state) = memory.data_and_store_mut(&mut caller);
+                let result = op(&state.store, data, a, b).map(|v| alloc_bool(&mut state.store, v));
                 let result = match result {
                     Err(message) => Err(locate_error(message, guest_line(&mut caller))),
                     ok => ok,
@@ -2902,14 +3166,15 @@ fn order_values(
 }
 
 /// Mirrors `impl PartialEq for Value`: lists an' dicts compare structurally.
-fn eq_values(store: &HostStore, a: Handle, b: Handle) -> bool {
-    eq_values_on_path(store, a, b, &mut Vec::new())
+fn eq_values(store: &HostStore, memory: &[u8], a: Handle, b: Handle) -> bool {
+    eq_values_on_path(store, memory, a, b, &mut Vec::new())
 }
 
 /// `path` holds the container pairs being compared right now; meeting one
 /// again counts as equal, so self-referential containers finish.
 fn eq_values_on_path(
     store: &HostStore,
+    memory: &[u8],
     a: Handle,
     b: Handle,
     path: &mut Vec<(Handle, Handle)>,
@@ -2931,12 +3196,13 @@ fn eq_values_on_path(
                 x.len() == y.len()
                     && x.iter()
                         .zip(y.iter())
-                        .all(|(p, q)| eq_values_on_path(store, *p, *q, path))
+                        .all(|(p, q)| eq_values_on_path(store, memory, *p, *q, path))
             }
             (Some(HostValue::Dict(x)), Some(HostValue::Dict(y))) => {
                 x.len() == y.len()
                     && x.iter().all(|(key, p)| {
-                        dict_get(y, key).is_some_and(|q| eq_values_on_path(store, *p, q, path))
+                        dict_get(y, key)
+                            .is_some_and(|q| eq_values_on_path(store, memory, *p, q, path))
                     })
             }
             // Creels compare by their members (decision F1).
@@ -2956,7 +3222,10 @@ fn eq_values_on_path(
         (Some(HostValue::Int(x)), Some(HostValue::Float(y))) => (*x as f64) == *y,
         (Some(HostValue::Float(x)), Some(HostValue::Int(y))) => *x == (*y as f64),
         (Some(HostValue::String(x)), Some(HostValue::String(y))) => x == y,
-        (Some(HostValue::Bytes(x)), Some(HostValue::Bytes(y))) => x == y,
+        (Some(HostValue::Bytes(x)), Some(HostValue::Bytes(y))) => x
+            .data(memory)
+            .zip(y.data(memory))
+            .is_some_and(|(x, y)| x == y),
         _ => a == b,
     }
 }
@@ -2971,6 +3240,8 @@ pub struct WasmRunOutput {
     pub store_size: usize,
     /// The most slots ever live at once (freed slots are reused before the store grows).
     pub peak_store_size: usize,
+    /// Guest-to-host calls (counted for captured runs or with MDH_WASM_HOST_CALLS set).
+    pub host_calls: u64,
 }
 
 pub fn run_wasm_file(path: &Path) -> Result<(), String> {
@@ -3055,7 +3326,7 @@ fn guest_scope_exit(
     }
     let store = &state.store;
     state.tri_modules.retain(|h| store.is_live(*h));
-    Ok(())
+    sync_bytes_table(caller, memory).map_err(wasmtime::Error::msg)
 }
 
 /// `obj.prop` on a dict, a tri object or the tri module (nil when absent).
@@ -3086,11 +3357,43 @@ fn prop_get(state: &mut HostState, obj: Handle, prop: Handle) -> Handle {
 
 fn run_module(engine: &Engine, module: &Module, capture: bool) -> Result<WasmRunOutput, String> {
     let mut store = Store::new(engine, HostState::new(capture));
+    let count_calls = capture || std::env::var_os("MDH_WASM_HOST_CALLS").is_some();
+    let host_calls = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+    if count_calls {
+        let counter = host_calls.clone();
+        store.call_hook(move |_, event| {
+            if matches!(event, wasmtime::CallHook::CallingHost) {
+                counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            }
+            Ok(())
+        });
+    }
     let memory = Memory::new(&mut store, MemoryType::new(1, None)).map_err(|e| e.to_string())?;
+    let bytes_base = Global::new(
+        &mut store,
+        GlobalType::new(ValType::I32, Mutability::Var),
+        Val::I32(0),
+    )
+    .map_err(|e| e.to_string())?;
+    let bytes_capacity = Global::new(
+        &mut store,
+        GlobalType::new(ValType::I32, Mutability::Var),
+        Val::I32(0),
+    )
+    .map_err(|e| e.to_string())?;
+    store.data_mut().memory = Some(memory);
+    store.data_mut().bytes_globals = Some((bytes_base, bytes_capacity));
 
     let mut linker = Linker::new(engine);
     linker
         .define(&mut store, "env", "memory", memory)
+        .map_err(|e| e.to_string())?;
+
+    linker
+        .define(&mut store, "env", "__mdh_bytes_base", bytes_base)
+        .map_err(|e| e.to_string())?;
+    linker
+        .define(&mut store, "env", "__mdh_bytes_capacity", bytes_capacity)
         .map_err(|e| e.to_string())?;
 
     // Value constructors
@@ -3174,22 +3477,22 @@ fn run_module(engine: &Engine, module: &Module, capture: bool) -> Result<WasmRun
     add_arith(&mut linker, "__mdh_div", ArithOp::Div)?;
     add_arith(&mut linker, "__mdh_mod", ArithOp::Mod)?;
 
-    add_cmp(&mut linker, "__mdh_eq", |store, a, b| {
-        Ok(eq_values(store, a, b))
+    add_cmp(&mut linker, "__mdh_eq", |store, memory, a, b| {
+        Ok(eq_values(store, memory, a, b))
     })?;
-    add_cmp(&mut linker, "__mdh_ne", |store, a, b| {
-        Ok(!eq_values(store, a, b))
+    add_cmp(&mut linker, "__mdh_ne", |store, memory, a, b| {
+        Ok(!eq_values(store, memory, a, b))
     })?;
-    add_cmp(&mut linker, "__mdh_lt", |store, a, b| {
+    add_cmp(&mut linker, "__mdh_lt", |store, _memory, a, b| {
         order_values(store, a, b, |o| o.is_lt())
     })?;
-    add_cmp(&mut linker, "__mdh_le", |store, a, b| {
+    add_cmp(&mut linker, "__mdh_le", |store, _memory, a, b| {
         order_values(store, a, b, |o| o.is_le())
     })?;
-    add_cmp(&mut linker, "__mdh_gt", |store, a, b| {
+    add_cmp(&mut linker, "__mdh_gt", |store, _memory, a, b| {
         order_values(store, a, b, |o| o.is_gt())
     })?;
-    add_cmp(&mut linker, "__mdh_ge", |store, a, b| {
+    add_cmp(&mut linker, "__mdh_ge", |store, _memory, a, b| {
         order_values(store, a, b, |o| o.is_ge())
     })?;
 
@@ -3215,6 +3518,8 @@ fn run_module(engine: &Engine, module: &Module, capture: bool) -> Result<WasmRun
                     )),
                     None => Err("That's pure mince! Type error: invalid value".to_string()),
                 };
+                let result =
+                    result.map_err(|message| locate_error(message, guest_line(&mut caller)));
                 finish(&mut caller, result)
             },
         )
@@ -3335,7 +3640,7 @@ fn run_module(engine: &Engine, module: &Module, capture: bool) -> Result<WasmRun
                 state.store.scope_collect(&roots);
                 let store = &state.store;
                 state.tri_modules.retain(|h| store.is_live(*h));
-                Ok(())
+                sync_bytes_table(&mut caller, memory).map_err(wasmtime::Error::msg)
             },
         )
         .map_err(|e| e.to_string())?;
@@ -3486,11 +3791,16 @@ fn run_module(engine: &Engine, module: &Module, capture: bool) -> Result<WasmRun
             .take()
             .unwrap_or_else(|| format!("{:#}", e))
     });
+    let host_calls = host_calls.load(std::sync::atomic::Ordering::Relaxed);
+    if std::env::var_os("MDH_WASM_HOST_CALLS").is_some() {
+        eprintln!("WASM host calls: {host_calls}");
+    }
     Ok(WasmRunOutput {
         stdout,
         error,
         store_size,
         peak_store_size,
+        host_calls,
     })
 }
 

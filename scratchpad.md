@@ -1,5 +1,8 @@
 # Scratchpad
 
+- [ ] 2026-10-28 src/wasm_runner.rs:1102 a native that mutates a bytes argument and then returns a value WASM cannot hold loses the mutation (`intern_value(...)?` fails before `updates.extend(bridge.bytes_updates)`); under `hae_a_bash` the program carries on with the old bytes. No such native today (stage 8b review, suspected).
+- [ ] 2026-10-28 src/wasm_runner.rs:2420 if `flush_bytes` fails part-way ("too muckle"), earlier handles may already point at new spans while `sync_bytes_table` never runs; a caught error then inline reads could see a freed span. Needs a >4 GiB allocation (stage 8b review, suspected).
+- [ ] 2026-10-28 src/wasm_compiler.rs:1581 top-level dae bodies with loops compile twice (`slow$`/`numeric$`), so nested lambdas/daes/classes get two table slots each; valid but larger output (stage 8b review).
 - [ ] 2026-10-28 runtime/platform/screen_macos.c:mdh_scr_grab the mouse stays decoupled and hidden after Cmd-Tab while grabbed; release the grab on focus loss and restore it on return (Bogle stage 1 review).
 - [ ] 2026-10-28 runtime/platform/screen_macos.c:mdh_scr_open sets contents on AppKit's own backing layer; a bridge-owned layer (setLayer: or a sublayer) would rule out AppKit redrawing over it. Also finishLaunching runs again on every reopen (probably harmless). Bogle stage 1 review.
 - [ ] 2026-10-28 runtime/platform/screen_none.c:8 under MSVC a static .CRT$XCU pointer can be dropped by the optimiser, leaving the main-thread id 0 so every bridge call hurls; use /include or a non-static symbol when the Windows bridge (stage 6) lands.

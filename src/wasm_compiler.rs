@@ -693,6 +693,8 @@ pub struct WasmCompiler {
     scope_preopened: bool,
     /// Locals o' the current function that only ever hold numbers.
     numeric_locals: HashSet<String>,
+    fast_bytes: BTreeSet<String>,
+    numeric_param_seeds: HashSet<String>,
     /// Locals o' the current function that haud a cell (a variable shared wi' a closure).
     cells: HashSet<String>,
     /// Closures met in the current function, compiled efter it.
@@ -890,11 +892,10 @@ impl<'a> Validator<'a> {
 
     fn stmt(&mut self, stmt: &Stmt) -> HaversResult<()> {
         match stmt {
-            Stmt::VarDecl { initializer, .. } => {
-                if let Some(expr) = initializer {
-                    self.expr(expr)?;
-                }
-            }
+            Stmt::VarDecl {
+                initializer: Some(expr),
+                ..
+            } => self.expr(expr)?,
             Stmt::Expression { expr, .. } => self.expr(expr)?,
             Stmt::Block { statements, .. } => self.stmts(statements)?,
             Stmt::If {
@@ -918,11 +919,9 @@ impl<'a> Validator<'a> {
                 self.loop_depth -= 1;
                 result?;
             }
-            Stmt::Return { value, .. } => {
-                if let Some(expr) = value {
-                    self.expr(expr)?;
-                }
-            }
+            Stmt::Return {
+                value: Some(expr), ..
+            } => self.expr(expr)?,
             Stmt::Print { value, .. } => self.expr(value)?,
             Stmt::For { iterable, body, .. } => {
                 self.expr(iterable)?;
@@ -992,13 +991,11 @@ impl<'a> Validator<'a> {
                     ));
                 }
             }
-            Stmt::Continue { span } => {
-                if self.loop_depth == 0 {
-                    return Err(compile_err(
-                        span.line,
-                        "'haud' can only be used inside a loop".to_string(),
-                    ));
-                }
+            Stmt::Continue { span } if self.loop_depth == 0 => {
+                return Err(compile_err(
+                    span.line,
+                    "'haud' can only be used inside a loop".to_string(),
+                ));
             }
             // Anything else is reported by the code generator as unsupported.
             _ => {}
@@ -1263,6 +1260,8 @@ impl WasmCompiler {
             cur_line: 0,
             stmt_line: 0,
             numeric_locals: HashSet::new(),
+            fast_bytes: BTreeSet::new(),
+            numeric_param_seeds: HashSet::new(),
             raw_locals: Vec::new(),
             hidden_ids: HashMap::new(),
             error_checks: false,
@@ -1290,6 +1289,8 @@ impl WasmCompiler {
     pub fn compile(&mut self, program: &Program) -> HaversResult<String> {
         validate_program(program)?;
         self.output.clear();
+        self.fast_bytes.clear();
+        self.numeric_param_seeds.clear();
         self.indent = 0;
         self.string_data.clear();
         self.max_root_bytes = 0;
@@ -1317,6 +1318,10 @@ impl WasmCompiler {
         self.emit("(module");
         self.indent += 1;
 
+        self.emit_line("(import \"env\" \"__mdh_bytes_base\" (global $bytes_base (mut i32)))");
+        self.emit_line(
+            "(import \"env\" \"__mdh_bytes_capacity\" (global $bytes_capacity (mut i32)))",
+        );
         // Import memory and print functions from the host
         self.emit_line("");
         self.emit_line(";; Imports fae the host environment");
@@ -1512,6 +1517,8 @@ impl WasmCompiler {
         self.output
             .insert_str(call_imports_at, &(call_imports + &globals));
 
+        self.emit_fast_helpers();
+
         // Export the main function
         self.emit_line("");
         self.emit_line("(export \"main\" (func $main))");
@@ -1568,14 +1575,48 @@ impl WasmCompiler {
                     names.push(ARGC_PARAM.to_string());
                     params.iter().map(|p| p.default.clone()).collect()
                 });
-            self.emit_function(
-                &function_id(name),
-                false,
-                &names,
-                &[],
-                body,
-                defaults.as_deref(),
-            )?;
+            // A numeric entry guard permits scope-free arithmetic on parameters.
+            // Preserve a conservative body for other values, including future web
+            // exports and indirect calls. Only loop-bearing functions benefit.
+            let seeds = if defaults.is_none() && statements_have_loop(body) {
+                let mut seeds: HashSet<String> = names.iter().cloned().collect();
+                exclude_byte_objects(body, &mut seeds);
+                seeds
+            } else {
+                HashSet::new()
+            };
+            let id = function_id(name);
+            if seeds.is_empty() {
+                self.emit_function(&id, false, &names, &[], body, defaults.as_deref())?;
+            } else {
+                self.emit_function(&format!("slow${id}"), false, &names, &[], body, None)?;
+                self.numeric_param_seeds = seeds.clone();
+                let fast =
+                    self.emit_function(&format!("numeric${id}"), false, &names, &[], body, None);
+                self.numeric_param_seeds.clear();
+                fast?;
+                let params = names
+                    .iter()
+                    .map(|p| format!("(param ${p} i64)"))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                let args = names
+                    .iter()
+                    .map(|p| format!("(local.get ${p})"))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                self.emit_line(&format!("(func ${id} {params} (result i64)"));
+                self.indent += 1;
+                let mut guard = "(i32.const 1)".to_string();
+                for param in &names {
+                    if seeds.contains(param) {
+                        guard = format!("(i32.and {guard} (i32.or (i64.lt_s (local.get ${param}) (i64.const 0)) (i64.ge_u (local.get ${param}) (i64.const 4611686018427387904))))");
+                    }
+                }
+                self.emit_line(&format!("(if (result i64) {guard} (then (call $numeric${id} {args})) (else (call $slow${id} {args})))"));
+                self.indent -= 1;
+                self.emit_line(")");
+            }
         }
         Ok(())
     }
@@ -2459,11 +2500,18 @@ impl WasmCompiler {
         }
     }
 
-    /// An expression that allocates nothing but (at most) wide numbers.
+    /// An expression that creates no new heap objects beyond numeric boxes. Byte
+    /// reads/lengths return scalars and writes return the original buffer. Unknown
+    /// calls, including calls hidden in their arguments, remain conservative.
     fn expr_is_cheap(&self, expr: &Expr) -> bool {
         match expr {
             Expr::Literal { value, .. } => !matches!(value, Literal::String(_)),
             Expr::Variable { .. } => true,
+            Expr::Call {
+                callee, arguments, ..
+            } if self.fast_bytes_builtin(callee, arguments.len()).is_some() => {
+                arguments.iter().all(|arg| self.expr_is_cheap(arg))
+            }
             Expr::Grouping { expr, .. } => self.expr_is_cheap(expr),
             Expr::Assign { value, .. } => self.expr_is_cheap(value),
             Expr::Unary {
@@ -2491,6 +2539,15 @@ impl WasmCompiler {
             Expr::Literal { value, .. } => {
                 matches!(value, Literal::Integer(_) | Literal::Float(_))
             }
+            Expr::Call {
+                callee, arguments, ..
+            } if matches!(
+                self.fast_bytes_builtin(callee, arguments.len()),
+                Some("bytes_get" | "bytes_len")
+            ) =>
+            {
+                arguments.iter().all(|arg| self.expr_is_cheap(arg))
+            }
             Expr::Variable { name, .. } => numeric.contains(name),
             Expr::Grouping { expr, .. } => self.expr_is_numeric(expr, numeric),
             Expr::Assign { value, .. } => self.expr_is_numeric(value, numeric),
@@ -2515,8 +2572,8 @@ impl WasmCompiler {
 
     /// The function's locals that only ever hold numbers: every assignment tae them
     /// is a numeric expression (a fixed point, since they can feed each other).
-    /// Parameters are never included; an unassigned local is nil, and nil arithmetic
-    /// traps rather than allocating.
+    /// Parameters enter this set only in a body protected by a numeric entry guard.
+    /// An unassigned local is nil; nil arithmetic traps rather than allocating.
     fn infer_numeric_locals(&mut self, stmts: &[&Stmt]) {
         let mut assigns: Vec<(&str, Option<&Expr>)> = Vec::new();
         for stmt in stmts {
@@ -2527,6 +2584,7 @@ impl WasmCompiler {
             .iter()
             .filter(|name| !name.starts_with("__mdh$"))
             .cloned()
+            .chain(self.numeric_param_seeds.iter().cloned())
             .collect();
         loop {
             let demote: Vec<String> = assigns
@@ -2556,10 +2614,16 @@ impl WasmCompiler {
     }
 
     fn emit_nil(&mut self) {
-        self.emit_line("(call $mdh_make_nil)");
+        self.emit_line("(i64.const 0)");
     }
 
     fn intern_string(&mut self, s: &str) -> usize {
+        if let Some(index) = self.string_data.iter().position(|value| value == s) {
+            return self.string_data[..index]
+                .iter()
+                .map(|value| value.len() + 1)
+                .sum();
+        }
         let offset = self.string_data.iter().map(|v| v.len() + 1).sum::<usize>();
         self.string_data.push(s.to_string());
         offset
@@ -2680,7 +2744,7 @@ impl WasmCompiler {
             } => {
                 // Compile condition
                 self.compile_expr(condition)?;
-                self.emit_line("(call $mdh_truthy)");
+                self.emit_line("(call $fast_truthy)");
 
                 self.emit_line("(if");
                 self.indent += 1;
@@ -2725,7 +2789,7 @@ impl WasmCompiler {
                 let cond = self.compile_expr(condition);
                 self.scope_depth -= usize::from(cond_scope);
                 cond?;
-                self.emit_line("(call $mdh_truthy)");
+                self.emit_line("(call $fast_truthy)");
                 if cond_scope {
                     self.emit_scope_exit(1);
                 }
@@ -2854,7 +2918,7 @@ impl WasmCompiler {
                 span,
             } => {
                 self.compile_expr(condition)?;
-                self.emit_line("(call $mdh_truthy)");
+                self.emit_line("(call $fast_truthy)");
                 self.emit_line("(i32.eqz)");
                 self.emit_line("(if");
                 self.indent += 1;
@@ -3142,7 +3206,7 @@ impl WasmCompiler {
                     self.emit_line(&format!("(local.get ${})", subject));
                     self.compile_literal(lit);
                     self.emit_line("(call $mdh_eq)");
-                    self.emit_line("(call $mdh_truthy)");
+                    self.emit_line("(call $fast_truthy)");
                     self.emit_line("(i32.eqz)");
                     self.emit_line(&format!("(br_if ${})", next));
                 }
@@ -3183,16 +3247,19 @@ impl WasmCompiler {
     fn compile_literal(&mut self, value: &Literal) {
         match value {
             Literal::Integer(n) => {
-                self.emit_line(&format!("(i64.const {})", n));
-                self.emit_line("(call $mdh_make_int)");
+                if (-(1_i64 << 61)..(1_i64 << 61)).contains(n) {
+                    self.emit_line(&format!("(i64.const {})", int_handle(*n)));
+                } else {
+                    self.emit_line(&format!("(i64.const {})", n));
+                    self.emit_line("(call $mdh_make_int)");
+                }
             }
             Literal::Float(f) => {
                 self.emit_line(&format!("(f64.const {})", f));
                 self.emit_line("(call $mdh_make_float)");
             }
             Literal::Bool(b) => {
-                self.emit_line(&format!("(i32.const {})", if *b { 1 } else { 0 }));
-                self.emit_line("(call $mdh_make_bool)");
+                self.emit_line(&format!("(i64.const {})", if *b { 2 } else { 1 }));
             }
             Literal::Nil => self.emit_nil(),
             Literal::String(s) => self.emit_string_handle(s),
@@ -3336,18 +3403,18 @@ impl WasmCompiler {
                 self.compile_expr(right)?;
 
                 match operator {
-                    BinaryOp::Add => self.emit_fallible_call("mdh_add"),
-                    BinaryOp::Subtract => self.emit_fallible_call("mdh_sub"),
-                    BinaryOp::Multiply => self.emit_fallible_call("mdh_mul"),
-                    BinaryOp::Divide => self.emit_fallible_call("mdh_div"),
-                    BinaryOp::Modulo => self.emit_fallible_call("mdh_mod"),
+                    BinaryOp::Add => self.emit_fast_call("fast_add"),
+                    BinaryOp::Subtract => self.emit_fast_call("fast_sub"),
+                    BinaryOp::Multiply => self.emit_fast_call("fast_mul"),
+                    BinaryOp::Divide => self.emit_fast_call("fast_div"),
+                    BinaryOp::Modulo => self.emit_fast_call("fast_mod"),
                     // An instance's `__same_as__` overload can raise.
-                    BinaryOp::Equal => self.emit_fallible_call("mdh_eq"),
-                    BinaryOp::NotEqual => self.emit_fallible_call("mdh_ne"),
-                    BinaryOp::Less => self.emit_fallible_call("mdh_lt"),
-                    BinaryOp::LessEqual => self.emit_fallible_call("mdh_le"),
-                    BinaryOp::Greater => self.emit_fallible_call("mdh_gt"),
-                    BinaryOp::GreaterEqual => self.emit_fallible_call("mdh_ge"),
+                    BinaryOp::Equal => self.emit_fast_call("fast_eq"),
+                    BinaryOp::NotEqual => self.emit_fast_call("fast_ne"),
+                    BinaryOp::Less => self.emit_fast_call("fast_lt"),
+                    BinaryOp::LessEqual => self.emit_fast_call("fast_le"),
+                    BinaryOp::Greater => self.emit_fast_call("fast_gt"),
+                    BinaryOp::GreaterEqual => self.emit_fast_call("fast_ge"),
                 }
             }
 
@@ -3356,11 +3423,15 @@ impl WasmCompiler {
             } => match operator {
                 UnaryOp::Negate => {
                     self.compile_expr(operand)?;
-                    self.emit_fallible_call("mdh_neg");
+                    self.emit_fast_call("fast_neg");
                 }
                 UnaryOp::Not => {
                     self.compile_expr(operand)?;
-                    self.emit_line("(call $mdh_not)");
+                    self.emit_line("(call $fast_truthy)");
+                    self.emit_line("(i32.eqz)");
+                    self.emit_line("(i64.extend_i32_u)");
+                    self.emit_line("(i64.const 1)");
+                    self.emit_line("(i64.add)");
                 }
             },
 
@@ -3373,7 +3444,7 @@ impl WasmCompiler {
                 LogicalOp::And => {
                     self.compile_expr(left)?;
                     self.emit_line(&format!("(local.tee ${})", TMP_LOGIC));
-                    self.emit_line("(call $mdh_truthy)");
+                    self.emit_line("(call $fast_truthy)");
                     self.emit_line("(if (result i64)");
                     self.indent += 1;
                     self.emit_line("(then");
@@ -3388,7 +3459,7 @@ impl WasmCompiler {
                 LogicalOp::Or => {
                     self.compile_expr(left)?;
                     self.emit_line(&format!("(local.tee ${})", TMP_LOGIC));
-                    self.emit_line("(call $mdh_truthy)");
+                    self.emit_line("(call $fast_truthy)");
                     self.emit_line("(if (result i64)");
                     self.indent += 1;
                     self.emit_line(&format!("(then (local.get ${}))", TMP_LOGIC));
@@ -3523,7 +3594,7 @@ impl WasmCompiler {
                         FStringPart::Text(text) => self.emit_string_handle(text),
                         FStringPart::Expr(expr) => self.compile_expr(expr)?,
                     }
-                    self.emit_fallible_call("mdh_add");
+                    self.emit_fast_call("fast_add");
                 }
             }
 
@@ -3534,7 +3605,7 @@ impl WasmCompiler {
                 ..
             } => {
                 self.compile_expr(condition)?;
-                self.emit_line("(call $mdh_truthy)");
+                self.emit_line("(call $fast_truthy)");
                 self.emit_line("(if (result i64)");
                 self.indent += 1;
                 self.emit_line("(then");
@@ -3606,6 +3677,17 @@ impl WasmCompiler {
                 && !AUDIO_IMPORTS.iter().any(|(import, _)| import == name)
                 && builtin_arity(name).is_some()
             {
+                if matches!(
+                    (name.as_str(), arguments.len()),
+                    ("bytes_len", 1) | ("bytes_get", 2) | ("bytes_set", 3)
+                ) {
+                    self.fast_bytes.insert(name.clone());
+                    for arg in arguments {
+                        self.compile_expr(arg)?;
+                    }
+                    self.emit_fast_call(&format!("fast_{}", name));
+                    return Ok(());
+                }
                 // Interpreter builtin: the host runs it on borrowed arguments
                 // an' hands back a fresh handle in the current scope.
                 let offset = self.intern_string(name);
@@ -3660,6 +3742,145 @@ impl WasmCompiler {
         Ok(())
     }
 
+    /// Only an unshadowed interpreter builtin has the byte-buffer ABI.
+    fn fast_bytes_builtin<'a>(&self, callee: &'a Expr, argc: usize) -> Option<&'a str> {
+        let Expr::Variable { name, .. } = callee else {
+            return None;
+        };
+        let id = self.use_id(callee, name);
+        if self.is_local_or_param(&id) || self.is_global(&id) || self.functions.contains_key(name) {
+            return None;
+        }
+        match (name.as_str(), argc) {
+            ("bytes_len", 1) | ("bytes_get", 2) | ("bytes_set", 3) => Some(name),
+            _ => None,
+        }
+    }
+
+    /// Fast helpers return the value followed by whether they called the host.
+    /// Successful guest arithmetic never polls the host, even inside a try block.
+    fn emit_fast_call(&mut self, name: &str) {
+        self.emit_line(&format!("(call ${name})"));
+        if self.error_checks && (self.in_function || !self.try_labels.is_empty()) {
+            self.emit_line("(if (then");
+            self.indent += 1;
+            self.emit_error_check();
+            self.indent -= 1;
+            self.emit_line("))");
+        } else {
+            self.emit_line("(drop)");
+        }
+    }
+
+    fn emit_fast_helpers(&mut self) {
+        self.emit_line(
+            r#"(func $fast_truthy (param $a i64) (result i32)
+            (if (i64.lt_s (local.get $a) (i64.const 0))
+                (then (return (i64.ne (local.get $a) (i64.const -4611686018427387904)))))
+            (if (i64.le_u (local.get $a) (i64.const 2))
+                (then (return (i64.eq (local.get $a) (i64.const 2)))))
+            (call $mdh_truthy (local.get $a)))"#,
+        );
+        // Signed ordering is preserved by the integer bias. Other types use the host.
+        for (name, op) in [
+            ("eq", "eq"),
+            ("ne", "ne"),
+            ("lt", "lt_s"),
+            ("le", "le_s"),
+            ("gt", "gt_s"),
+            ("ge", "ge_s"),
+        ] {
+            self.emit_line(&format!(r#"(func $fast_{name} (param $a i64) (param $b i64) (result i64 i32)
+                (if (i32.and (i64.lt_s (local.get $a) (i64.const 0)) (i64.lt_s (local.get $b) (i64.const 0)))
+                    (then (return (i64.add (i64.extend_i32_u (i64.{op} (local.get $a) (local.get $b))) (i64.const 1)) (i32.const 0))))
+                (call $mdh_{name} (local.get $a) (local.get $b)) (i32.const 1))"#));
+        }
+        for (name, op) in [
+            ("add", "add"),
+            ("sub", "sub"),
+            ("mul", "mul"),
+            ("div", "div_s"),
+            ("mod", "rem_s"),
+        ] {
+            self.emit_line(&format!(r#"(func $fast_{name} (param $a i64) (param $b i64) (result i64 i32)
+                (local $x i64) (local $y i64) (local $r i64) (local $ax i64) (local $ay i64)
+                (block $slow
+                    (br_if $slow (i32.or (i64.ge_s (local.get $a) (i64.const 0)) (i64.ge_s (local.get $b) (i64.const 0))))
+                    (local.set $x (i64.add (local.get $a) (i64.const 4611686018427387904)))
+                    (local.set $y (i64.add (local.get $b) (i64.const 4611686018427387904)))"#));
+            if name == "div" || name == "mod" {
+                self.emit_line("(br_if $slow (i64.eqz (local.get $y)))");
+            }
+            if name == "mul" {
+                // Absolute inline operands fit i64, including -2^61. Divide the
+                // allowed magnitude first: multiplication itself can overflow i64.
+                self.emit_line(r#"(if (i32.or (i64.eqz (local.get $x)) (i64.eqz (local.get $y)))
+                    (then (return (i64.const -4611686018427387904) (i32.const 0))))
+                    (local.set $ax (select (i64.sub (i64.const 0) (local.get $x)) (local.get $x) (i64.lt_s (local.get $x) (i64.const 0))))
+                    (local.set $ay (select (i64.sub (i64.const 0) (local.get $y)) (local.get $y) (i64.lt_s (local.get $y) (i64.const 0))))
+                    (br_if $slow (i64.gt_u (local.get $ax)
+                        (i64.div_u (select (i64.const 2305843009213693952) (i64.const 2305843009213693951)
+                            (i64.lt_s (i64.xor (local.get $x) (local.get $y)) (i64.const 0))) (local.get $ay))))"#);
+            }
+            self.emit_line(&format!(
+                r#"(local.set $r (i64.{op} (local.get $x) (local.get $y)))
+                (br_if $slow (i32.or (i64.lt_s (local.get $r) (i64.const -2305843009213693952))
+                    (i64.ge_s (local.get $r) (i64.const 2305843009213693952))))
+                (return (i64.sub (local.get $r) (i64.const 4611686018427387904)) (i32.const 0)))
+                (call $mdh_{name} (local.get $a) (local.get $b)) (i32.const 1))"#
+            ));
+        }
+        self.emit_line(r#"(func $fast_neg (param $a i64) (result i64 i32)
+            (if (i32.and (i64.lt_s (local.get $a) (i64.const 0)) (i64.ne (local.get $a) (i64.const -6917529027641081856)))
+                (then (return (i64.sub (i64.const -9223372036854775808) (local.get $a)) (i32.const 0))))
+            (call $mdh_neg (local.get $a)) (i32.const 1))"#);
+        for name in self.fast_bytes.clone() {
+            let argc = match name.as_str() {
+                "bytes_len" => 1,
+                "bytes_get" => 2,
+                _ => 3,
+            };
+            let offset = self.intern_string(&name);
+            let params = match argc {
+                1 => "",
+                2 => "(param $index i64)",
+                _ => "(param $index i64) (param $value i64)",
+            };
+            self.emit_line(&format!(r#"(func $fast_{name} (param $a i64) {params} (result i64 i32)
+                (local $d i32) (local $len i64) (local $i i64) (local $v i64)
+                (block $slow
+                    (br_if $slow (i32.or (i64.le_u (local.get $a) (i64.const 2))
+                        (i64.ge_u (local.get $a) (i64.extend_i32_u (global.get $bytes_capacity)))))
+                    (local.set $d (i32.add (global.get $bytes_base) (i32.shl (i32.wrap_i64 (local.get $a)) (i32.const 4))))
+                    (br_if $slow (i32.ne (i32.load offset=8 (local.get $d)) (i32.const 1)))
+                    (local.set $len (i64.extend_i32_u (i32.load offset=4 (local.get $d))))"#));
+            if argc == 1 {
+                self.emit_line("(return (i64.sub (local.get $len) (i64.const 4611686018427387904)) (i32.const 0)))");
+            } else {
+                self.emit_line(r#"(br_if $slow (i64.ge_s (local.get $index) (i64.const 0)))
+                    (local.set $i (i64.add (local.get $index) (i64.const 4611686018427387904)))
+                    (if (i64.lt_s (local.get $i) (i64.const 0)) (then (local.set $i (i64.add (local.get $i) (local.get $len)))))
+                    (br_if $slow (i64.ge_u (local.get $i) (local.get $len)))"#);
+                if argc == 2 {
+                    self.emit_line(r#"(return (i64.sub (i64.extend_i32_u (i32.load8_u (i32.add (i32.load (local.get $d)) (i32.wrap_i64 (local.get $i)))))
+                        (i64.const 4611686018427387904)) (i32.const 0)))"#);
+                } else {
+                    self.emit_line(r#"(br_if $slow (i64.ge_s (local.get $value) (i64.const 0)))
+                        (local.set $v (i64.add (local.get $value) (i64.const 4611686018427387904)))
+                        (br_if $slow (i64.gt_u (local.get $v) (i64.const 255)))
+                        (i32.store8 (i32.add (i32.load (local.get $d)) (i32.wrap_i64 (local.get $i))) (i32.wrap_i64 (local.get $v)))
+                        (return (local.get $a) (i32.const 0)))"#);
+                }
+            }
+            let args = match argc {
+                1 => "",
+                2 => "(local.get $index)",
+                _ => "(local.get $index) (local.get $value)",
+            };
+            self.emit_line(&format!("(call $mdh_builtin{argc} (i32.const {offset}) (i32.const {}) (local.get $a) {args}) (i32.const 1))", name.len()));
+        }
+    }
+
     /// Call `$func`, then (in a program wi' a `hae_a_bash`) unwind if it left a
     /// pending error: tae the innermost catch, or oot o' the function.
     fn emit_fallible_call(&mut self, func: &str) {
@@ -3694,6 +3915,66 @@ impl WasmCompiler {
     fn emit_line(&mut self, s: &str) {
         self.emit(s);
         self.output.push('\n');
+    }
+}
+
+/// Statements nested in the same function (nested daes have separate entry guards).
+fn same_function_children(stmt: &Stmt) -> Vec<&Stmt> {
+    match stmt {
+        Stmt::Block { statements, .. } => statements.iter().collect(),
+        Stmt::If {
+            then_branch,
+            else_branch,
+            ..
+        } => std::iter::once(&**then_branch)
+            .chain(else_branch.as_deref())
+            .collect(),
+        Stmt::While { body, .. } | Stmt::For { body, .. } => vec![body],
+        Stmt::TryCatch {
+            try_block,
+            catch_block,
+            ..
+        } => vec![try_block, catch_block],
+        Stmt::Match { arms, .. } => arms.iter().map(|arm| &arm.body).collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn statements_have_loop(stmts: &[Stmt]) -> bool {
+    fn has_loop(stmt: &Stmt) -> bool {
+        matches!(stmt, Stmt::While { .. } | Stmt::For { .. })
+            || same_function_children(stmt).iter().any(|s| has_loop(s))
+    }
+    stmts.iter().any(has_loop)
+}
+
+fn exclude_byte_objects(stmts: &[Stmt], params: &mut HashSet<String>) {
+    fn expr(e: &Expr, params: &mut HashSet<String>) {
+        if let Expr::Call {
+            callee, arguments, ..
+        } = e
+        {
+            if matches!(&**callee, Expr::Variable { name, .. } if matches!(name.as_str(), "bytes_get" | "bytes_set" | "bytes_len"))
+            {
+                if let Some(Expr::Variable { name, .. }) = arguments.first() {
+                    params.remove(name);
+                }
+            }
+        }
+        for child in expr_children(e) {
+            expr(child, params);
+        }
+    }
+    fn stmt(s: &Stmt, params: &mut HashSet<String>) {
+        for e in stmt_exprs(s) {
+            expr(e, params);
+        }
+        for child in same_function_children(s) {
+            stmt(child, params);
+        }
+    }
+    for s in stmts {
+        stmt(s, params);
     }
 }
 
@@ -3776,6 +4057,18 @@ fn collect_assignments_stmt<'a>(stmt: &'a Stmt, out: &mut Vec<(&'a str, Option<&
                 collect_assignments_expr(init, out);
             }
         }
+        // These binding forms can replace a numeric parameter in its own scope.
+        Stmt::Function { name, .. } | Stmt::Class { name, .. } => out.push((name, None)),
+        Stmt::Destructure {
+            patterns, value, ..
+        } => {
+            for pattern in patterns {
+                if let DestructPattern::Variable(name) | DestructPattern::Rest(name) = pattern {
+                    out.push((name, None));
+                }
+            }
+            collect_assignments_expr(value, out);
+        }
         Stmt::Expression { expr, .. } | Stmt::Print { value: expr, .. } => {
             collect_assignments_expr(expr, out)
         }
@@ -3831,6 +4124,10 @@ fn collect_assignments_stmt<'a>(stmt: &'a Stmt, out: &mut Vec<(&'a str, Option<&
                 if let Pattern::Identifier(name) = &arm.pattern {
                     out.push((name, None));
                 }
+                if let Pattern::Range { start, end, .. } = &arm.pattern {
+                    collect_assignments_expr(start, out);
+                    collect_assignments_expr(end, out);
+                }
                 collect_assignments_stmt(&arm.body, out);
             }
         }
@@ -3840,6 +4137,14 @@ fn collect_assignments_stmt<'a>(stmt: &'a Stmt, out: &mut Vec<(&'a str, Option<&
             collect_assignments_expr(condition, out);
             if let Some(message) = message {
                 collect_assignments_expr(message, out);
+            }
+        }
+        Stmt::Log {
+            message, extras, ..
+        } => {
+            collect_assignments_expr(message, out);
+            for extra in extras {
+                collect_assignments_expr(extra, out);
             }
         }
         Stmt::Hurl { message, .. } => collect_assignments_expr(message, out),
@@ -3856,10 +4161,18 @@ fn collect_assignments_expr<'a>(expr: &'a Expr, out: &mut Vec<(&'a str, Option<&
             out.push((name, Some(value)));
             collect_assignments_expr(value, out);
         }
-        Expr::Binary { left, right, .. } | Expr::Logical { left, right, .. } => {
+        Expr::Binary { left, right, .. }
+        | Expr::Logical { left, right, .. }
+        | Expr::Pipe { left, right, .. } => {
             collect_assignments_expr(left, out);
             collect_assignments_expr(right, out);
         }
+        Expr::BlockExpr { statements, .. } => {
+            for stmt in statements {
+                collect_assignments_stmt(stmt, out);
+            }
+        }
+        Expr::Input { prompt, .. } => collect_assignments_expr(prompt, out),
         Expr::Unary { operand, .. } => collect_assignments_expr(operand, out),
         Expr::Grouping { expr, .. } => collect_assignments_expr(expr, out),
         Expr::Call {
@@ -3934,7 +4247,8 @@ fn collect_assignments_expr<'a>(expr: &'a Expr, out: &mut Vec<(&'a str, Option<&
             collect_assignments_expr(start, out);
             collect_assignments_expr(end, out);
         }
-        // Anything else is rejected by the code generator.
+        // A closure's writes are handled by captured-cell analysis. Its body does
+        // not execute here; literals and variable reads cannot assign anything.
         _ => {}
     }
 }
@@ -4140,7 +4454,7 @@ mod tests {
         assert!(result.is_ok());
         let wat = result.unwrap();
         assert!(wat.contains("(module"));
-        assert!(wat.contains("i64.const 42"));
+        assert!(wat.contains(&format!("i64.const {}", int_handle(42))));
     }
 
     #[test]
@@ -4149,7 +4463,7 @@ mod tests {
         let result = compile_to_wat(source);
         assert!(result.is_ok());
         let wat = result.unwrap();
-        assert!(wat.contains("call $mdh_add"));
+        assert!(wat.contains("(call $fast_add)"));
     }
 
     #[test]
@@ -4231,28 +4545,28 @@ mod tests {
     fn test_subtraction_wasm() {
         let source = "ken x = 50 - 8";
         let result = compile_to_wat(source).unwrap();
-        assert!(result.contains("call $mdh_sub"));
+        assert!(result.contains("(call $fast_sub)"));
     }
 
     #[test]
     fn test_multiplication_wasm() {
         let source = "ken x = 6 * 7";
         let result = compile_to_wat(source).unwrap();
-        assert!(result.contains("call $mdh_mul"));
+        assert!(result.contains("(call $fast_mul)"));
     }
 
     #[test]
     fn test_division_wasm() {
         let source = "ken x = 84 / 2";
         let result = compile_to_wat(source).unwrap();
-        assert!(result.contains("call $mdh_div"));
+        assert!(result.contains("(call $fast_div)"));
     }
 
     #[test]
     fn test_modulo_wasm() {
         let source = "ken x = 10 % 3";
         let result = compile_to_wat(source).unwrap();
-        assert!(result.contains("call $mdh_mod"));
+        assert!(result.contains("(call $fast_mod)"));
     }
 
     // ==================== Comparison Operations ====================
@@ -4261,42 +4575,42 @@ mod tests {
     fn test_greater_than_wasm() {
         let source = "ken b = 5 > 3";
         let result = compile_to_wat(source).unwrap();
-        assert!(result.contains("call $mdh_gt"));
+        assert!(result.contains("(call $fast_gt)"));
     }
 
     #[test]
     fn test_less_than_wasm() {
         let source = "ken b = 3 < 5";
         let result = compile_to_wat(source).unwrap();
-        assert!(result.contains("call $mdh_lt"));
+        assert!(result.contains("(call $fast_lt)"));
     }
 
     #[test]
     fn test_greater_equal_wasm() {
         let source = "ken b = 5 >= 5";
         let result = compile_to_wat(source).unwrap();
-        assert!(result.contains("call $mdh_ge"));
+        assert!(result.contains("(call $fast_ge)"));
     }
 
     #[test]
     fn test_less_equal_wasm() {
         let source = "ken b = 3 <= 5";
         let result = compile_to_wat(source).unwrap();
-        assert!(result.contains("call $mdh_le"));
+        assert!(result.contains("(call $fast_le)"));
     }
 
     #[test]
     fn test_equal_wasm() {
         let source = "ken b = 5 == 5";
         let result = compile_to_wat(source).unwrap();
-        assert!(result.contains("call $mdh_eq"));
+        assert!(result.contains("(call $fast_eq)"));
     }
 
     #[test]
     fn test_not_equal_wasm() {
         let source = "ken b = 5 != 3";
         let result = compile_to_wat(source).unwrap();
-        assert!(result.contains("call $mdh_ne"));
+        assert!(result.contains("(call $fast_ne)"));
     }
 
     // ==================== Logical Operations ====================
@@ -4319,7 +4633,8 @@ mod tests {
     fn test_logical_not_wasm() {
         let source = "ken b = nae aye";
         let result = compile_to_wat(source).unwrap();
-        assert!(result.contains("(call $mdh_not)"));
+        assert!(result.contains("(call $fast_truthy)"));
+        assert!(result.contains("(i32.eqz)"));
     }
 
     // ==================== Unary Operations ====================
@@ -4328,7 +4643,7 @@ mod tests {
     fn test_negate_wasm() {
         let source = "ken x = -42";
         let result = compile_to_wat(source).unwrap();
-        assert!(result.contains("(call $mdh_neg)"));
+        assert!(result.contains("(call $fast_neg)"));
     }
 
     // ==================== Control Flow ====================
@@ -4390,21 +4705,21 @@ mod tests {
     fn test_boolean_true_wasm() {
         let source = "ken b = aye";
         let result = compile_to_wat(source).unwrap();
-        assert!(result.contains("(call $mdh_make_bool)"));
+        assert!(result.contains("(i64.const 2)"));
     }
 
     #[test]
     fn test_boolean_false_wasm() {
         let source = "ken b = nae";
         let result = compile_to_wat(source).unwrap();
-        assert!(result.contains("(call $mdh_make_bool)"));
+        assert!(result.contains("(i64.const 1)"));
     }
 
     #[test]
     fn test_nil_wasm() {
         let source = "ken n = naething";
         let result = compile_to_wat(source).unwrap();
-        assert!(result.contains("(call $mdh_make_nil)"));
+        assert!(result.contains("(i64.const 0)"));
     }
 
     #[test]
@@ -4560,7 +4875,7 @@ mod tests {
         "#;
         let wat = compile_to_wat(source).unwrap();
         assert!(wat.contains("(local.set $x)"));
-        assert!(wat.contains("call $mdh_make_nil"));
+        assert!(wat.contains("(i64.const 0)"));
     }
 
     #[test]
@@ -4598,7 +4913,7 @@ mod tests {
     fn test_grouping_expr_wasm() {
         let source = r#"blether (1 + 2)"#;
         let wat = compile_to_wat(source).unwrap();
-        assert!(wat.contains("call $mdh_add"));
+        assert!(wat.contains("(call $fast_add)"));
     }
 
     #[test]
