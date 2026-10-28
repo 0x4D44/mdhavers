@@ -890,6 +890,53 @@ blether d["ab"] + d["cd"]
     }
 }
 
+/// R6: after the optimiser, each tag read of a merged value gets its own phi of the
+/// incoming tags (`rc_split_tag_phis`), so heap tests fold where every path is a number.
+/// Values that are a number on some paths and a fresh string or list on others must still
+/// be released exactly once, on the paths that made them.
+#[test]
+fn values_that_are_numbers_on_some_paths_release_the_rest_exactly() {
+    let src = r#"
+dae mix(n) {
+    ken acc = 0
+    ken s = 0.5
+    ken i = 0
+    whiles i < n {
+        ken a = i * 2
+        ken b = a - s
+        gin i % 7 == 3 {
+            a = "k" + tae_string(i)
+        }
+        gin i % 11 == 5 {
+            a = [i, "z" + tae_string(i)]
+        }
+        ken c = a + a
+        gin i % 7 == 3 {
+            acc = acc + len(c)
+        } ither gin i % 11 == 5 {
+            acc = acc + len(c) + len(c[1])
+        } ither {
+            acc = acc + c + b
+        }
+        i = i + 1
+    }
+    gie acc
+}
+blether mix(200)
+"#;
+    for envs in [
+        &[("MDH_RC_REPORT", "1")][..],
+        &[("MDH_RC_REPORT", "1"), ("MDH_RC_NOFREE", "1")][..],
+    ] {
+        let run = run_native(src, envs);
+        assert_eq!(run.code, Some(0), "{}", run.stderr);
+        assert_eq!(run.stdout, "93483\n", "{}", run.stderr);
+        for kind in ["string", "list"] {
+            assert_eq!(reported_live(&run.stderr, kind), 0, "{}", run.stderr);
+        }
+    }
+}
+
 /// R5 list-buffer cache: item buffers of dead lists are reused for new lists of the same
 /// capacity; lists that grow, shrink and nest keep their contents and counts exact.
 #[test]

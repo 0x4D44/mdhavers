@@ -37,6 +37,7 @@ use crate::ast::{
 use crate::error::HaversError;
 
 mod rc;
+pub(crate) use rc::{rc_split_tag_phis, RC_TAG_CLEANUP};
 
 use super::types::{
     MdhTypes, ObjKind, ValueTag, IMMORTAL_REFCOUNT, OBJ_FLAG_IMMORTAL, OBJ_FLAG_MAGIC,

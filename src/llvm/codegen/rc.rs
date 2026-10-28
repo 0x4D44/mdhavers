@@ -2689,3 +2689,149 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 }
+
+/// After the optimiser (counting on, -O1 and up): give every tag read of an `MdhValue` phi
+/// its own `i8` phi. InstCombine merges the values a numeric operator builds on each path
+/// (`{ i8 2, x }`, `{ i8 3, y }`) into one phi of aggregates, and cannot see through a
+/// multi-use phi of aggregates to the constant tags, so the heap tests on the result (a
+/// temp's release, a slot store's retain and release) stay as run-time tests. With the
+/// tag as a phi of constants, the passes run next (`RC_TAG_CLEANUP`) fold the tests or
+/// thread them per path. A pure rewrite: each new phi takes, on each edge, the tag of the
+/// value the old phi took there. Returns true if anything changed.
+pub(crate) fn rc_split_tag_phis(module: &Module<'_>) -> bool {
+    use inkwell::llvm_sys::core::{
+        LLVMAddIncoming, LLVMBuildExtractValue, LLVMBuildPhi, LLVMCountIncoming,
+        LLVMCountStructElementTypes, LLVMCreateBuilderInContext, LLVMDisposeBuilder,
+        LLVMGetAggregateElement, LLVMGetBasicBlockTerminator, LLVMGetIncomingBlock,
+        LLVMGetIncomingValue, LLVMGetIndices, LLVMGetInstructionOpcode, LLVMGetModuleContext,
+        LLVMGetNumIndices, LLVMGetOperand, LLVMGetTypeKind, LLVMInstructionEraseFromParent,
+        LLVMIsAConstant, LLVMIsAInstruction, LLVMIsAPHINode, LLVMPositionBuilderBefore,
+        LLVMReplaceAllUsesWith, LLVMStructGetTypeAtIndex, LLVMTypeOf,
+    };
+    use inkwell::llvm_sys::prelude::{LLVMBasicBlockRef, LLVMBuilderRef, LLVMValueRef};
+    use inkwell::llvm_sys::{LLVMOpcode, LLVMTypeKind};
+
+    /// The single index of an `extractvalue`/`insertvalue`, if it has one.
+    unsafe fn single_index(inst: LLVMValueRef) -> Option<u32> {
+        if LLVMGetNumIndices(inst) != 1 {
+            return None;
+        }
+        Some(*LLVMGetIndices(inst))
+    }
+
+    /// A tagged-value aggregate: `{ i8, ... }`.
+    unsafe fn is_tagged(v: LLVMValueRef) -> bool {
+        let ty = LLVMTypeOf(v);
+        LLVMGetTypeKind(ty) == LLVMTypeKind::LLVMStructTypeKind
+            && LLVMCountStructElementTypes(ty) == 2
+            && LLVMGetTypeKind(LLVMStructGetTypeAtIndex(ty, 0)) == LLVMTypeKind::LLVMIntegerTypeKind
+    }
+
+    struct Split {
+        builder: LLVMBuilderRef,
+        done: HashMap<usize, LLVMValueRef>,
+    }
+
+    impl Split {
+        /// The tag of `v`, as available at the end of `bb` (where `v` is available).
+        unsafe fn tag_of(&mut self, v: LLVMValueRef, bb: LLVMBasicBlockRef) -> LLVMValueRef {
+            if !LLVMIsAConstant(v).is_null() {
+                let t = LLVMGetAggregateElement(v, 0);
+                if !t.is_null() {
+                    return t;
+                }
+            }
+            if !LLVMIsAInstruction(v).is_null() {
+                match LLVMGetInstructionOpcode(v) {
+                    LLVMOpcode::LLVMInsertValue => match single_index(v) {
+                        Some(0) => return LLVMGetOperand(v, 1),
+                        Some(_) => return self.tag_of(LLVMGetOperand(v, 0), bb),
+                        None => {}
+                    },
+                    LLVMOpcode::LLVMPHI => return self.phi_tag(v),
+                    _ => {}
+                }
+            }
+            LLVMPositionBuilderBefore(self.builder, LLVMGetBasicBlockTerminator(bb));
+            LLVMBuildExtractValue(self.builder, v, 0, c"rc_tag_in".as_ptr())
+        }
+
+        /// The `i8` phi of `phi`'s tags (made once; loops reach it again while it fills).
+        unsafe fn phi_tag(&mut self, phi: LLVMValueRef) -> LLVMValueRef {
+            if let Some(t) = self.done.get(&(phi as usize)) {
+                return *t;
+            }
+            let ty = LLVMStructGetTypeAtIndex(LLVMTypeOf(phi), 0);
+            LLVMPositionBuilderBefore(self.builder, phi);
+            let tag = LLVMBuildPhi(self.builder, ty, c"rc_tag_phi".as_ptr());
+            self.done.insert(phi as usize, tag);
+            for i in 0..LLVMCountIncoming(phi) {
+                let mut bb = LLVMGetIncomingBlock(phi, i);
+                let mut t = self.tag_of(LLVMGetIncomingValue(phi, i), bb);
+                LLVMAddIncoming(tag, &mut t, &mut bb, 1);
+            }
+            tag
+        }
+    }
+
+    let mut extracts: Vec<LLVMValueRef> = Vec::new();
+    for f in module.get_functions() {
+        // An incoming value made by its edge's terminator (an invoke's result) has no
+        // place for the extract; codegen emits none, but stay clear of them.
+        let has_invoke = f.get_basic_blocks().iter().any(|bb| {
+            bb.get_terminator().is_some_and(|t| {
+                matches!(
+                    t.get_opcode(),
+                    InstructionOpcode::Invoke | InstructionOpcode::CallBr
+                )
+            })
+        });
+        if has_invoke {
+            continue;
+        }
+        for bb in f.get_basic_blocks() {
+            let mut i = bb.get_first_instruction();
+            while let Some(inst) = i {
+                i = inst.get_next_instruction();
+                if inst.get_opcode() != InstructionOpcode::ExtractValue {
+                    continue;
+                }
+                let raw = inst.as_value_ref();
+                // SAFETY: queries on a live instruction of this module.
+                unsafe {
+                    let agg = LLVMGetOperand(raw, 0);
+                    if single_index(raw) == Some(0)
+                        && !LLVMIsAPHINode(agg).is_null()
+                        && is_tagged(agg)
+                    {
+                        extracts.push(raw);
+                    }
+                }
+            }
+        }
+    }
+    if extracts.is_empty() {
+        return false;
+    }
+    // SAFETY: every value handled is a live instruction or constant of this module; each
+    // extract is replaced by a value of its own type, then erased once.
+    unsafe {
+        let ctx = LLVMGetModuleContext(module.as_mut_ptr());
+        let mut split = Split {
+            builder: LLVMCreateBuilderInContext(ctx),
+            done: HashMap::new(),
+        };
+        for e in extracts {
+            let tag = split.phi_tag(LLVMGetOperand(e, 0));
+            LLVMReplaceAllUsesWith(e, tag);
+            LLVMInstructionEraseFromParent(e);
+        }
+        LLVMDisposeBuilder(split.builder);
+    }
+    true
+}
+
+/// The passes run after `rc_split_tag_phis`: fold the heap tests the new tag phis decide
+/// (value ranges, then per-predecessor threading), and tidy up.
+pub(crate) const RC_TAG_CLEANUP: &str =
+    "function(instcombine<no-verify-fixpoint>,correlated-propagation,jump-threading,simplifycfg,instcombine<no-verify-fixpoint>)";

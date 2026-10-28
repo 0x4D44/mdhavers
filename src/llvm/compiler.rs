@@ -727,14 +727,26 @@ impl LLVMCompiler {
         options.set_loop_interleaving(at_least_o2);
         options.set_loop_slp_vectorization(at_least_o2);
 
+        let failed = |e: inkwell::support::LLVMString| {
+            HaversError::CompileError(format!(
+                "LLVM optimisation passes failed: {}",
+                e.to_string()
+            ))
+        };
         module
             .run_passes(pipeline, target_machine, options)
-            .map_err(|e| {
-                HaversError::CompileError(format!(
-                    "LLVM optimisation passes failed: {}",
-                    e.to_string()
-                ))
-            })
+            .map_err(failed)?;
+        // Counting on: let the heap tests see the constant tags (`rc_split_tag_phis`).
+        if self.refcounting && crate::llvm::codegen::rc_split_tag_phis(module) {
+            module
+                .run_passes(
+                    crate::llvm::codegen::RC_TAG_CLEANUP,
+                    target_machine,
+                    PassBuilderOptions::create(),
+                )
+                .map_err(failed)?;
+        }
+        Ok(())
     }
 }
 
