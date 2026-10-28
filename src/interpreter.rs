@@ -10888,6 +10888,16 @@ impl Interpreter {
     /// Resolve a module path relative tae the current directory
     #[cfg(not(target_arch = "wasm32"))]
     fn resolve_module_path(&self, path: &str) -> HaversResult<PathBuf> {
+        Self::resolve_module_path_from(&self.current_dir, path)
+    }
+
+    /// Shared by the interpreter and file-aware JS compiler, including stdlib
+    /// and installed-library search order. Successful paths identify cache keys.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn resolve_module_path_from(
+        current_dir: &std::path::Path,
+        path: &str,
+    ) -> HaversResult<PathBuf> {
         let mut module_path = PathBuf::from(path);
 
         // Add .braw extension if not present
@@ -10905,15 +10915,15 @@ impl Interpreter {
         }
 
         let mut candidates = Vec::new();
-        candidates.push(self.current_dir.join(&module_path));
+        candidates.push(current_dir.join(&module_path));
         candidates.push(PathBuf::from(&module_path));
-        candidates.push(self.current_dir.join("stdlib").join(&module_path));
+        candidates.push(current_dir.join("stdlib").join(&module_path));
         if let Ok(stripped) = module_path.strip_prefix("lib") {
-            candidates.push(self.current_dir.join("stdlib").join(stripped));
+            candidates.push(current_dir.join("stdlib").join(stripped));
         }
 
         // Try searching up the directory tree (helps with stdlib/lib paths)
-        for ancestor in self.current_dir.ancestors() {
+        for ancestor in current_dir.ancestors() {
             candidates.push(ancestor.join(&module_path));
             candidates.push(ancestor.join("stdlib").join(&module_path));
             if let Ok(stripped) = module_path.strip_prefix("lib") {

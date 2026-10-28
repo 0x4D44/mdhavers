@@ -1,6 +1,8 @@
 use crate::ast::*;
 use crate::error::{HaversError, HaversResult};
 use std::collections::{HashMap, HashSet};
+#[cfg(not(target_arch = "wasm32"))]
+use std::path::{Path, PathBuf};
 
 /// Higher-order builtins whose calls pass their line tae `__havers.hof` (MDH-BUG-FLU-00113).
 const HOF_BUILTINS: &[&str] = &[
@@ -650,6 +652,29 @@ pub struct Compiler {
     fn_contexts: Vec<FnContext>,
     /// Counter fer namin' the `gie` sentinels.
     gie_counter: usize,
+    /// File-aware compilation keeps runtime environments for shared module cells.
+    bundle: Option<Bundle>,
+}
+
+#[derive(Default)]
+struct Bundle {
+    #[cfg(not(target_arch = "wasm32"))]
+    directories: Vec<PathBuf>,
+    #[cfg(not(target_arch = "wasm32"))]
+    modules: Vec<(PathBuf, Program)>,
+    #[cfg(not(target_arch = "wasm32"))]
+    ids: HashMap<PathBuf, usize>,
+    #[cfg(not(target_arch = "wasm32"))]
+    imports: Vec<BundleImport>,
+    scopes: Vec<(String, bool)>,
+    next_scope: usize,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+struct BundleImport {
+    path: String,
+    span: Span,
+    targets: HashMap<PathBuf, String>,
 }
 
 /// Where a `gie` is, relative tae the JS function it returns frae.
@@ -676,6 +701,7 @@ impl Compiler {
             static_classes: HashSet::new(),
             fn_contexts: vec![FnContext::default()],
             gie_counter: 0,
+            bundle: None,
         }
     }
 
@@ -726,6 +752,204 @@ impl Compiler {
         self.emit_line("}");
 
         Ok(self.output.clone())
+    }
+
+    /// Generate module bodies before the runtime, discovering every import even
+    /// inside a function or block expression. Factories execute only at `fetch`.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn compile_bundle(&mut self, program: &Program, path: &Path) -> HaversResult<String> {
+        let directory = path
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+        self.bundle = Some(Bundle {
+            directories: vec![directory.clone()],
+            ..Bundle::default()
+        });
+        let mut needs_tri = false;
+        self.compile_bundle_body(program, &mut needs_tri)?;
+        if self.bundle.as_ref().unwrap().imports.is_empty() {
+            self.bundle = None;
+            return self.compile(program);
+        }
+        let entry = std::mem::take(&mut self.output);
+        let mut factories = String::new();
+        let mut index = 0;
+        loop {
+            let resolved = self.resolve_bundle_imports();
+            while index < self.bundle.as_ref().unwrap().modules.len() {
+                let (path, program) = self.bundle.as_ref().unwrap().modules[index].clone();
+                self.compile_bundle_body(&program, &mut needs_tri)?;
+                factories.push_str(&format!(
+                    "__mdh_paths[{0}] = {1};\n__mdh_directories[{0}] = {2};\n__mdh_factories[{0}] = function(__mdh_env_0) {{\n{3} }};\n",
+                    index,
+                    js_string(&path.to_string_lossy()),
+                    js_string(&path.parent().unwrap().to_string_lossy()),
+                    self.output
+                ));
+                self.output.clear();
+                index += 1;
+            }
+            if resolved == 0 {
+                break;
+            }
+        }
+        self.indent = 0;
+        self.emit_runtime(needs_tri);
+        self.output
+            .push_str(include_str!("../runtime/js/module_runtime.js"));
+        for name in RUNTIME_BINDINGS {
+            self.emit_line(&format!(
+                "__mdh_builtins.define({0}, __havers[{0}]);",
+                js_string(name)
+            ));
+        }
+        self.output.push_str(&factories);
+        for (index, import) in self.bundle.as_ref().unwrap().imports.iter().enumerate() {
+            self.output.push_str(&format!(
+                "__mdh_imports[{}] = Object.create(null);\n",
+                index
+            ));
+            // Stable output despite the lookup table's randomized hash order.
+            for directory in &self.bundle.as_ref().unwrap().directories {
+                self.output.push_str(&format!(
+                    "__mdh_imports[{}][{}] = (scope, alias) => {{ {} }};\n",
+                    index,
+                    js_string(&directory.to_string_lossy()),
+                    import.targets[directory]
+                ));
+            }
+        }
+        self.output.push_str(&format!(
+            "__mdh_current_dir = {};\n",
+            js_string(&directory.to_string_lossy())
+        ));
+        self.output.push_str("(function(__mdh_env_0) {\n");
+        self.output.push_str(&entry);
+        self.output.push_str("})(__mdh_globals);\n");
+        Ok(self.output.clone())
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn compile_bundle_body(&mut self, program: &Program, needs_tri: &mut bool) -> HaversResult<()> {
+        self.scopes = vec![HashMap::new()];
+        self.bundle.as_mut().unwrap().scopes = vec![("__mdh_env_0".to_string(), true)];
+        self.fn_contexts = vec![FnContext::default()];
+        // Module/import bindings can change at runtime, so class calls go through
+        // the same callable wrappers as every other dynamically bound name.
+        self.static_classes.clear();
+        self.indent = 1;
+        for stmt in &program.statements {
+            Self::scan_stmt_for_runtime_requirements(stmt, needs_tri)?;
+            self.compile_stmt(stmt);
+        }
+        Ok(())
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn compile_bundle_import(&mut self, _path: &str, _alias: Option<&str>, _span: Span) -> bool {
+        false
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn compile_bundle_import(&mut self, path: &str, alias: Option<&str>, span: Span) -> bool {
+        let bundle = self.bundle.as_mut().unwrap();
+        let site = bundle.imports.len();
+        bundle.imports.push(BundleImport {
+            path: path.to_string(),
+            span,
+            targets: HashMap::new(),
+        });
+        let env = self.bundle_env().unwrap().to_string();
+        let alias = alias.map(js_string).unwrap_or_else(|| "null".to_string());
+        self.emit_line(&format!(
+            "__mdh_imports[{}][__mdh_current_dir]({}, {});",
+            site, env, alias
+        ));
+        true
+    }
+
+    /// The interpreter changes its import directory only while evaluating a
+    /// module. An exported function called later therefore uses its caller's
+    /// active directory. Resolve every possible context with the same resolver,
+    /// so the finished JS needs neither source files nor a filesystem loader.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn resolve_bundle_imports(&mut self) -> usize {
+        let bundle = self.bundle.as_ref().unwrap();
+        let mut pending = Vec::new();
+        for (index, import) in bundle.imports.iter().enumerate() {
+            for directory in &bundle.directories {
+                if !import.targets.contains_key(directory) {
+                    pending.push((index, import.path.clone(), import.span, directory.clone()));
+                }
+            }
+        }
+        let count = pending.len();
+        for (index, path, span, directory) in pending {
+            let target = self.resolve_bundle_target(&directory, &path, span);
+            self.bundle.as_mut().unwrap().imports[index]
+                .targets
+                .insert(directory, target);
+        }
+        count
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn resolve_bundle_target(&mut self, directory: &Path, path: &str, span: Span) -> String {
+        let resolved = crate::interpreter::Interpreter::resolve_module_path_from(directory, path);
+        let module_path = match resolved {
+            Ok(module_path)
+                if Path::new(path)
+                    .extension()
+                    .map_or(true, |extension| extension == "braw") =>
+            {
+                module_path
+            }
+            _ if Path::new(path).extension().is_some_and(|ext| ext == "braw") => {
+                let error = HaversError::ModuleNotFound {
+                    name: path.to_string(),
+                };
+                return format!("throw __havers.fail({});", js_string(&error.to_string()));
+            }
+            _ => {
+                return format!(
+                    "scope.define(alias === null ? {} : alias, __havers.foreign(require({})));",
+                    js_string(&module_binding_name(path)),
+                    js_string(path)
+                )
+            }
+        };
+        let id = if let Some(id) = self.bundle.as_ref().unwrap().ids.get(&module_path) {
+            *id
+        } else {
+            let program = std::fs::read_to_string(&module_path)
+                .map_err(|_| HaversError::ModuleNotFound {
+                    name: path.to_string(),
+                })
+                .and_then(|source| {
+                    crate::parser::parse(&source).map_err(|error| HaversError::ParseError {
+                        message: format!("Error in module '{}': {}", path, error),
+                        line: span.line,
+                    })
+                });
+            let program = match program {
+                Ok(program) => program,
+                Err(error) => {
+                    return format!("throw __havers.fail({});", js_string(&error.to_string()));
+                }
+            };
+            let bundle = self.bundle.as_mut().unwrap();
+            let id = bundle.modules.len();
+            bundle.ids.insert(module_path.clone(), id);
+            let directory = module_path.parent().unwrap().to_path_buf();
+            if !bundle.directories.contains(&directory) {
+                bundle.directories.push(directory);
+            }
+            bundle.modules.push((module_path, program));
+            id
+        };
+        format!("__mdh_fetch({}, scope, alias);", id)
     }
 
     /// Record every name bound by a `kin`/`thing` declaration, an' every name bound
@@ -986,10 +1210,59 @@ impl Compiler {
 
     fn push_scope(&mut self) {
         self.scopes.push(HashMap::new());
+        if let Some(bundle) = &mut self.bundle {
+            bundle.next_scope += 1;
+            bundle
+                .scopes
+                .push((format!("__mdh_env_{}", bundle.next_scope), false));
+        }
+    }
+
+    /// Enter a JS block after its opening brace (parameters are evaluated first).
+    fn emit_bundle_scope(&mut self) {
+        let Some(bundle) = &mut self.bundle else {
+            return;
+        };
+        let parent = bundle
+            .scopes
+            .iter()
+            .rev()
+            .skip(1)
+            .find(|(_, ready)| *ready)
+            .map(|(name, _)| name.clone())
+            .unwrap();
+        let (name, ready) = bundle.scopes.last_mut().unwrap();
+        *ready = true;
+        let name = name.clone();
+        let parameters = self
+            .scopes
+            .last_mut()
+            .unwrap()
+            .drain()
+            .map(|(name, js)| format!("[{}, {}]", js_string(&name), js))
+            .collect::<Vec<_>>()
+            .join(", ");
+        self.emit_line(&format!(
+            "const {} = __mdh_scope({}, [{}]);",
+            name, parent, parameters
+        ));
+    }
+
+    fn bundle_env(&self) -> Option<&str> {
+        self.bundle
+            .as_ref()?
+            .scopes
+            .iter()
+            .rev()
+            .find(|(_, ready)| *ready)
+            .map(|(name, _)| name.as_str())
     }
 
     fn pop_scope(&mut self) {
         self.scopes.pop();
+        if let Some(bundle) = &mut self.bundle {
+            bundle.scopes.pop();
+        }
         if self.scopes.is_empty() {
             self.scopes.push(HashMap::new());
         }
@@ -1001,6 +1274,9 @@ impl Compiler {
             if let Some(js) = scope.get(name) {
                 return js.clone();
             }
+        }
+        if let Some(env) = self.bundle_env() {
+            return format!("{}.get[{}]", env, js_string(name));
         }
         js_ident(name)
     }
@@ -1020,6 +1296,10 @@ impl Compiler {
     /// gets a unique JS name, so uses o' the outer name earlier in this block (or
     /// in its ain initialiser) never hit JS's temporal dead zone.
     fn declare(&mut self, name: &str) -> (String, bool) {
+        if let Some(env) = self.bundle_env() {
+            // The setter runs after the RHS, so `ken x = x` reads the old binding.
+            return (format!("{}.def[{}]", env, js_string(name)), false);
+        }
         if let Some(js) = self.scopes.last().and_then(|scope| scope.get(name)) {
             return (js.clone(), false);
         }
@@ -1475,6 +1755,7 @@ impl Compiler {
                 self.emit_line("{");
                 self.indent += 1;
                 self.push_scope();
+                self.emit_bundle_scope();
                 for stmt in statements {
                     self.compile_stmt(stmt);
                 }
@@ -1519,6 +1800,24 @@ impl Compiler {
                 span,
             } => {
                 let iter_js = self.expr_to_string(iterable);
+                if self.bundle.is_some() {
+                    self.rename_counter += 1;
+                    let item = format!("__mdh_item_{}", self.rename_counter);
+                    self.emit_line(&format!(
+                        "for (let {} of __havers.iter({}, {})) {{",
+                        item, iter_js, span.line
+                    ));
+                    self.indent += 1;
+                    self.push_scope();
+                    self.emit_bundle_scope();
+                    let (binding, _) = self.declare(variable);
+                    self.emit_line(&format!("{} = {};", binding, item));
+                    self.compile_stmt(body);
+                    self.pop_scope();
+                    self.indent -= 1;
+                    self.emit_line("}");
+                    return;
+                }
                 self.push_scope();
                 let (js, _) = self.declare(variable);
                 self.emit_indent();
@@ -1542,7 +1841,13 @@ impl Compiler {
                     self.output.push('\n');
                 } else {
                     // Redefinin' a name in the same block: rebind it, like the interpreter.
-                    self.output.push_str(&format!("{} = function {}(", js, js));
+                    let function_name = if self.bundle.is_some() {
+                        js_ident(name)
+                    } else {
+                        js.clone()
+                    };
+                    self.output
+                        .push_str(&format!("{} = function {}(", js, function_name));
                     self.compile_callable(params, body);
                     self.output.push_str(";\n");
                 }
@@ -1667,7 +1972,13 @@ impl Compiler {
                 self.emit_line("}, true);");
             }
 
-            Stmt::Import { path, alias, .. } => {
+            Stmt::Import { path, alias, span } => {
+                if self.bundle.is_some()
+                    && !Self::is_tri_import_path(path)
+                    && self.compile_bundle_import(path, alias.as_deref(), *span)
+                {
+                    return;
+                }
                 if Self::is_tri_import_path(path) {
                     let (js, fresh) = self.declare(alias.as_deref().unwrap_or("tri"));
                     let keyword = if fresh { "let " } else { "" };
@@ -1700,12 +2011,14 @@ impl Compiler {
                 self.output.push_str(" catch (__err) {\n");
                 self.indent += 1;
                 self.push_scope();
-                let (js, _) = self.declare(error_name);
+                self.emit_bundle_scope();
+                let (js, fresh) = self.declare(error_name);
                 if let Some(sentinel) = self.current_fn().sentinel.clone() {
                     // A `gie` frae a block expression is no' an error.
                     self.emit_line(&format!("if (__err === {}) throw __err;", sentinel));
                 }
-                self.emit_line(&format!("let {} = __havers.caught(__err);", js));
+                let keyword = if fresh { "let " } else { "" };
+                self.emit_line(&format!("{}{} = __havers.caught(__err);", keyword, js));
                 self.compile_block_body(catch_block);
                 self.pop_scope();
                 self.indent -= 1;
@@ -1735,11 +2048,13 @@ impl Compiler {
                     self.output.push_str(") {\n");
                     self.indent += 1;
                     self.push_scope();
+                    self.emit_bundle_scope();
 
                     // Bind pattern variable if identifier
                     if let Pattern::Identifier(name) = &arm.pattern {
-                        let (js, _) = self.declare(name);
-                        self.emit_line(&format!("let {} = {};", js, match_var));
+                        let (js, fresh) = self.declare(name);
+                        let keyword = if fresh { "let " } else { "" };
+                        self.emit_line(&format!("{}{} = {};", keyword, js, match_var));
                     }
 
                     // Compile the body - unwrap block to avoid double braces
@@ -1914,6 +2229,7 @@ impl Compiler {
         self.output.push_str("{\n");
         self.indent += 1;
         self.push_scope();
+        self.emit_bundle_scope();
         self.compile_block_body(stmt);
         self.pop_scope();
         self.indent -= 1;
@@ -1935,6 +2251,10 @@ impl Compiler {
 
     /// Emit `params) { body }` fer a function or method, in its ain scope.
     fn compile_callable(&mut self, params: &[Param], body: &[Stmt]) {
+        if self.bundle.is_some() {
+            self.compile_bundle_callable(params, body);
+            return;
+        }
         self.push_scope();
         self.fn_contexts.push(FnContext::default());
         let is_method = std::mem::take(&mut self.compiling_method);
@@ -1963,6 +2283,7 @@ impl Compiler {
             self.emit_line("try {");
             self.emit_line(&format!("return (({}) => {{", params_str));
             self.indent += 1;
+            self.emit_bundle_scope();
             for stmt in body {
                 self.compile_stmt(stmt);
             }
@@ -1989,7 +2310,64 @@ impl Compiler {
             // A nested function declaration has its ain `this`: it reads `masel` here.
             self.emit_line("const __masel = this;");
         }
+        self.emit_bundle_scope();
         let body_start = self.output.len();
+        for stmt in body {
+            self.compile_stmt(stmt);
+        }
+        if let Some(sentinel) = self.fn_contexts.pop().and_then(|ctx| ctx.sentinel) {
+            let body_js = self.output.split_off(body_start);
+            self.emit_line(&format!("const {} = {{}};", sentinel));
+            self.emit_line("try {");
+            self.output.push_str(&body_js);
+            self.emit_line(&Self::block_return_catch(&sentinel));
+        }
+        self.indent -= 1;
+        self.emit_indent();
+        self.output.push('}');
+        if is_method {
+            self.method_depth -= 1;
+        }
+        if is_nested {
+            self.nested_fn_depth -= 1;
+        }
+        self.pop_scope();
+    }
+
+    /// Defaults run inside the function environment, left tae right. A closure
+    /// made by a default must retain the same cells the body subsequently writes.
+    fn compile_bundle_callable(&mut self, params: &[Param], body: &[Stmt]) {
+        self.push_scope();
+        self.fn_contexts.push(FnContext::default());
+        let is_method = std::mem::take(&mut self.compiling_method);
+        let is_nested = !is_method && self.method_depth > 0;
+        if is_nested {
+            self.nested_fn_depth += 1;
+        }
+        if is_method {
+            self.method_depth += 1;
+        }
+        self.rename_counter += 1;
+        let args = format!("__mdh_args_{}", self.rename_counter);
+        self.output.push_str(&format!("...{}) {{\n", args));
+        self.indent += 1;
+        if is_method {
+            self.emit_line("const __masel = this;");
+        }
+        self.emit_bundle_scope();
+        let body_start = self.output.len();
+        for (index, param) in params.iter().enumerate() {
+            let default = param
+                .default
+                .as_ref()
+                .map(|expr| self.expr_to_string(expr))
+                .unwrap_or_else(|| "undefined".to_string());
+            let (binding, _) = self.declare(&param.name);
+            self.emit_line(&format!(
+                "{} = {}[{}] === undefined ? {} : {}[{}];",
+                binding, args, index, default, args, index
+            ));
+        }
         for stmt in body {
             self.compile_stmt(stmt);
         }
@@ -2048,6 +2426,7 @@ impl Compiler {
         self.output.push_str("(() => {\n");
         self.indent += 1;
         self.push_scope();
+        self.emit_bundle_scope();
         if in_block {
             self.fn_contexts
                 .last_mut()
@@ -2503,6 +2882,9 @@ impl Compiler {
                 self.output.push_str(&js_params.join(", "));
                 self.output.push_str(") => ");
                 self.fn_contexts.push(FnContext::default());
+                let scope_start = self.output.len();
+                self.emit_bundle_scope();
+                let scope_js = self.output.split_off(scope_start);
                 let body_start = self.output.len();
                 if let Expr::BlockExpr { statements, .. } = &**body {
                     self.compile_block_expr(statements, false);
@@ -2521,6 +2903,17 @@ impl Compiler {
                         body_js,
                         Self::block_return_catch(&sentinel)
                     ));
+                }
+                if self.bundle.is_some() {
+                    let body_js = self.output.split_off(body_start);
+                    // The sentinel branch already emitted a braced function body.
+                    if body_js.starts_with("{ const __gie_") {
+                        self.output
+                            .push_str(&format!("{{ {} return (() => {})(); }}", scope_js, body_js));
+                    } else {
+                        self.output
+                            .push_str(&format!("{{ {} return {}; }}", scope_js, body_js));
+                    }
                 }
                 self.pop_scope();
             }
@@ -2622,6 +3015,14 @@ impl Default for Compiler {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Compile a file and its reachable `.braw` modules into one JavaScript bundle.
+/// Source-only callers (including the playground) continue to use `compile`.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn compile_with_path(source: &str, path: &Path) -> HaversResult<String> {
+    let program = crate::parser::parse(source)?;
+    Compiler::new().compile_bundle(&program, path)
 }
 
 /// Compile mdhavers source tae JavaScript

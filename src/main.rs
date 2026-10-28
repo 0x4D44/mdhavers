@@ -9,7 +9,7 @@ use rustyline::error::ReadlineError;
 #[cfg(not(test))]
 use rustyline::DefaultEditor;
 
-use mdhavers::compiler::compile;
+use mdhavers::compiler::compile_with_path;
 use mdhavers::error::format_error_context;
 #[cfg(not(test))]
 use mdhavers::error::random_scots_exclamation;
@@ -428,7 +428,7 @@ fn truncate_for_display(value: &str) -> String {
 
 fn compile_file(path: &PathBuf, output: Option<PathBuf>) -> Result<(), String> {
     let source = read_file(path)?;
-    let js_code = match compile(&source) {
+    let js_code = match compile_with_path(&source, path) {
         Ok(js) => js,
         Err(e) => return Err(format_parse_error(&source, e)),
     };
