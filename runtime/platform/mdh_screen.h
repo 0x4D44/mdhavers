@@ -14,7 +14,7 @@ typedef struct {
     bool down[MDH_KEY_COUNT], pressed[MDH_KEY_COUNT];
     bool buttons[3], should_close;
     int64_t x, y;
-    double dx, dy; /* Keep subpixel motion until the frame boundary. */
+    double dx, dy; /* Subpixel motion carries over the frame boundary. */
 } MdhScreenInput;
 
 bool mdh_scr_is_main_thread(void);

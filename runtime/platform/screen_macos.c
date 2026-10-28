@@ -18,8 +18,13 @@ static bool close_requested, grabbed;
 static int64_t logical_width, logical_height;
 
 static id string(const char *s) {
-    return ((id (*)(id, SEL, const char *))objc_msgSend)(
+    id result = ((id (*)(id, SEL, const char *))objc_msgSend)(
         (id)objc_getClass("NSString"), sel_registerName("stringWithUTF8String:"), s);
+    /* Invalid UTF-8 gives nil, and setTitle:nil would raise through C frames. */
+    if (!result && s[0])
+        result = ((id (*)(id, SEL, const char *))objc_msgSend)(
+            (id)objc_getClass("NSString"), sel_registerName("stringWithUTF8String:"), "");
+    return result;
 }
 static void release(id object) {
     ((void (*)(id, SEL))objc_msgSend)(object, sel_registerName("release"));
@@ -153,6 +158,12 @@ static void key_state(MdhScreenInput *in, int key, bool down) {
     if (down && !in->down[key]) in->pressed[key] = true;
     in->down[key] = down;
 }
+/* After focus loss clears the tables, a modifier still held on return is not a new press. */
+static bool resync_modifiers;
+static void modifier_state(MdhScreenInput *in, int key, bool down) {
+    if (resync_modifiers) in->down[key] = down;
+    else key_state(in, key, down);
+}
 void mdh_scr_pump(MdhScreenInput *in) {
     void *pool = objc_autoreleasePoolPush();
     id past = ((id (*)(id, SEL))objc_msgSend)((id)objc_getClass("NSDate"), sel_registerName("distantPast"));
@@ -163,9 +174,10 @@ void mdh_scr_pump(MdhScreenInput *in) {
         sel_registerName("nextEventMatchingMask:untilDate:inMode:dequeue:"), ~0UL, past, mode, YES))) {
         NSUInteger type = ((NSUInteger (*)(id, SEL))objc_msgSend)(event, sel_registerName("type"));
         NSUInteger flags = ((NSUInteger (*)(id, SEL))objc_msgSend)(event, sel_registerName("modifierFlags"));
-        key_state(in, MDH_KEY_SHIFT, (flags & (1UL << 17)) != 0);
-        key_state(in, MDH_KEY_CTRL, (flags & (1UL << 18)) != 0);
-        key_state(in, MDH_KEY_ALT, (flags & (1UL << 19)) != 0);
+        modifier_state(in, MDH_KEY_SHIFT, (flags & (1UL << 17)) != 0);
+        modifier_state(in, MDH_KEY_CTRL, (flags & (1UL << 18)) != 0);
+        modifier_state(in, MDH_KEY_ALT, (flags & (1UL << 19)) != 0);
+        resync_modifiers = false;
         if (type == 10 || type == 11) { /* keyDown, keyUp: consume, avoiding the system beep */
             unsigned short code = ((unsigned short (*)(id, SEL))objc_msgSend)(event, sel_registerName("keyCode"));
             key_state(in, key_code(code), type == 10);
@@ -199,6 +211,7 @@ void mdh_scr_pump(MdhScreenInput *in) {
     if (!((BOOL (*)(id, SEL))objc_msgSend)(window, sel_registerName("isKeyWindow"))) {
         memset(in->down, 0, sizeof(in->down));
         memset(in->buttons, 0, sizeof(in->buttons));
+        resync_modifiers = true;
     }
     in->should_close = close_requested;
     objc_autoreleasePoolPop(pool);

@@ -97,7 +97,9 @@ MdhValue __mdh_screen_shaw(MdhValue pixels, MdhValue palette) {
     /* Retire the previous frame's edges, then collect this frame's new input.
      * should_close may pump too: those edges remain visible until the next shaw. */
     memset(input.pressed, 0, sizeof(input.pressed));
-    input.dx = input.dy = 0;
+    /* mouse_dx/dy report whole pixels; carry the fraction so slow motion still adds up. */
+    input.dx -= (double)(int64_t)input.dx;
+    input.dy -= (double)(int64_t)input.dy;
     pump();
     return __mdh_make_nil();
 }
