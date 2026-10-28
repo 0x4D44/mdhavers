@@ -1,26 +1,25 @@
 # MDH-BUG-FLU-00205 — fetch: module global written by its own function is shared natively but copied in the interpreter
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** native
 - **Raised:** 2026-10-27T07:32:29Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261028T152314Z-1711ec7f
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00205-run-verify-20261028T152314Z-1711ec7f
-- **Owner base:** c88e1c5950832788cde43a33f5a5e31f8f72d3fa
-- **Owner fingerprint:** sha256:9719ec955986136f3a0bbf6a2f917659a36845d9e5102b41c1761fa653404b58
-- **Owner since:** 2026-10-28T15:23:14Z
-- **Owner until:** 2026-10-28T19:23:14Z
-- **Owner session:** flux/2a9090d7-08f7-48c7-bee8-7b7d1d963ab2 (run verify-20261028T152314Z-1711ec7f)
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-27T07:32:29Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-28T15:22:09Z, deltic:auto role=fix run=fix-20261028T140936Z-debccb08 branch=task/bug-MDH-BUG-FLU-00205-run-fix-20261028T140936Z-debccb08 code=d45cbd5 gate=manual)
+- **State history:** Open (2026-10-27T07:32:29Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-28T15:22:09Z, deltic:auto role=fix run=fix-20261028T140936Z-debccb08 branch=task/bug-MDH-BUG-FLU-00205-run-fix-20261028T140936Z-debccb08 code=d45cbd5 gate=manual) -> Closed (2026-10-28T15:36:21Z, deltic:manual role=verify run=verify-20261028T152314Z-1711ec7f verified_fix_run=fix-20261028T140936Z-debccb08 verdict=close)
 
 ## Observation
 
@@ -47,5 +46,9 @@ Evidence fingerprint: `manual:v1:fetch-module-global-written-by-its-own-function
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-28T15:36:21Z, deltic:manual run=verify-20261028T152314Z-1711ec7f verified_fix_run=fix-20261028T140936Z-debccb08 verdict=close)
+
+Verifier note: Manual verify: Terra 6.1 medium verifier: d45cbd5; 12 fetch_shared_globals_00205 tests + llvm_refcount probe pass; repro mgxy/nh on interpreter and native; copy-injection mutant fails all 6 interpreter tests on output (mgxy/mg vs mgxy/nh). Extra probes: two importers, stdlib resolution, mixed alias+plain, REPL inspection all share; alias keeps snapshot.
 
 ## Notes
