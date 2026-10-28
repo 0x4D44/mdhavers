@@ -738,6 +738,13 @@ impl LLVMCompiler {
             .map_err(failed)?;
         // Counting on: let the heap tests see the constant tags (`rc_split_tag_phis`).
         if self.refcounting && crate::llvm::codegen::rc_split_tag_phis(module) {
+            // A malformed split would otherwise surface far away (or not at all).
+            if let Err(e) = module.verify() {
+                return Err(HaversError::CompileError(format!(
+                    "Module verification failed after the tag split: {}",
+                    e.to_string()
+                )));
+            }
             module
                 .run_passes(
                     crate::llvm::codegen::RC_TAG_CLEANUP,

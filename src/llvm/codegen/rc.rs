@@ -2730,30 +2730,47 @@ pub(crate) fn rc_split_tag_phis(module: &Module<'_>) -> bool {
     struct Split {
         builder: LLVMBuilderRef,
         done: HashMap<usize, LLVMValueRef>,
+        /// The extract made for a value at the end of an edge's block: a phi may list the
+        /// same predecessor more than once (a switch with two cases to one block), and
+        /// every entry for one block must carry the same value.
+        extracted: HashMap<(usize, usize), LLVMValueRef>,
     }
 
     impl Split {
         /// The tag of `v`, as available at the end of `bb` (where `v` is available).
-        unsafe fn tag_of(&mut self, v: LLVMValueRef, bb: LLVMBasicBlockRef) -> LLVMValueRef {
+        /// `depth` bounds the walk down `insertvalue` chains: an unreachable block may hold
+        /// one that feeds itself.
+        unsafe fn tag_of(
+            &mut self,
+            v: LLVMValueRef,
+            bb: LLVMBasicBlockRef,
+            depth: u32,
+        ) -> LLVMValueRef {
             if !LLVMIsAConstant(v).is_null() {
                 let t = LLVMGetAggregateElement(v, 0);
                 if !t.is_null() {
                     return t;
                 }
             }
-            if !LLVMIsAInstruction(v).is_null() {
+            if !LLVMIsAInstruction(v).is_null() && depth < 32 {
                 match LLVMGetInstructionOpcode(v) {
                     LLVMOpcode::LLVMInsertValue => match single_index(v) {
                         Some(0) => return LLVMGetOperand(v, 1),
-                        Some(_) => return self.tag_of(LLVMGetOperand(v, 0), bb),
+                        Some(_) => return self.tag_of(LLVMGetOperand(v, 0), bb, depth + 1),
                         None => {}
                     },
                     LLVMOpcode::LLVMPHI => return self.phi_tag(v),
                     _ => {}
                 }
             }
+            let key = (v as usize, bb as usize);
+            if let Some(t) = self.extracted.get(&key) {
+                return *t;
+            }
             LLVMPositionBuilderBefore(self.builder, LLVMGetBasicBlockTerminator(bb));
-            LLVMBuildExtractValue(self.builder, v, 0, c"rc_tag_in".as_ptr())
+            let t = LLVMBuildExtractValue(self.builder, v, 0, c"rc_tag_in".as_ptr());
+            self.extracted.insert(key, t);
+            t
         }
 
         /// The `i8` phi of `phi`'s tags (made once; loops reach it again while it fills).
@@ -2767,7 +2784,7 @@ pub(crate) fn rc_split_tag_phis(module: &Module<'_>) -> bool {
             self.done.insert(phi as usize, tag);
             for i in 0..LLVMCountIncoming(phi) {
                 let mut bb = LLVMGetIncomingBlock(phi, i);
-                let mut t = self.tag_of(LLVMGetIncomingValue(phi, i), bb);
+                let mut t = self.tag_of(LLVMGetIncomingValue(phi, i), bb, 0);
                 LLVMAddIncoming(tag, &mut t, &mut bb, 1);
             }
             tag
@@ -2820,6 +2837,7 @@ pub(crate) fn rc_split_tag_phis(module: &Module<'_>) -> bool {
         let mut split = Split {
             builder: LLVMCreateBuilderInContext(ctx),
             done: HashMap::new(),
+            extracted: HashMap::new(),
         };
         for e in extracts {
             let tag = split.phi_tag(LLVMGetOperand(e, 0));
@@ -2835,3 +2853,69 @@ pub(crate) fn rc_split_tag_phis(module: &Module<'_>) -> bool {
 /// (value ranges, then per-predecessor threading), and tidy up.
 pub(crate) const RC_TAG_CLEANUP: &str =
     "function(instcombine<no-verify-fixpoint>,correlated-propagation,jump-threading,simplifycfg,instcombine<no-verify-fixpoint>)";
+
+#[cfg(test)]
+mod split_tests {
+    use super::rc_split_tag_phis;
+    use inkwell::context::Context;
+    use inkwell::memory_buffer::MemoryBuffer;
+
+    fn split_and_verify(ir: &str) {
+        let context = Context::create();
+        let buf = MemoryBuffer::create_from_memory_range_copy(ir.as_bytes(), "t");
+        let module = context.create_module_from_ir(buf).expect("parse IR");
+        module.verify().expect("input verifies");
+        assert!(rc_split_tag_phis(&module));
+        if let Err(e) = module.verify() {
+            panic!(
+                "{}\n{}",
+                e.to_string(),
+                module.print_to_string().to_string()
+            );
+        }
+    }
+
+    /// A phi listing one predecessor twice (two switch cases to one block) must get the
+    /// same tag value for both entries.
+    #[test]
+    fn a_predecessor_listed_twice_gets_one_tag() {
+        split_and_verify(
+            r#"
+declare {i8, i64} @g()
+define i8 @f(i32 %c) {
+entry:
+  %v = call {i8, i64} @g()
+  switch i32 %c, label %o [ i32 1, label %m
+                            i32 2, label %m ]
+o:
+  br label %m
+m:
+  %p = phi {i8, i64} [ %v, %entry ], [ %v, %entry ], [ { i8 2, i64 0 }, %o ]
+  %t = extractvalue {i8, i64} %p, 0
+  ret i8 %t
+}
+"#,
+        );
+    }
+
+    /// An unreachable block may hold an `insertvalue` that feeds itself: the walk down
+    /// the chain must stop.
+    #[test]
+    fn a_self_feeding_insertvalue_ends_the_walk() {
+        split_and_verify(
+            r#"
+define i8 @h() {
+entry:
+  ret i8 0
+dead:
+  %a = insertvalue {i8, i64} %a, i64 1, 1
+  br label %m
+m:
+  %p = phi {i8, i64} [ %a, %dead ]
+  %t = extractvalue {i8, i64} %p, 0
+  ret i8 %t
+}
+"#,
+        );
+    }
+}
