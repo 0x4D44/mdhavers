@@ -1,6 +1,6 @@
 # MDH-BUG-FLU-00200 — No gate builds --all-targets or the cfg(coverage) tests, so those builds rot unseen
 
-- **State:** Open
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** build
@@ -19,7 +19,8 @@
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-27T02:47:42Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **Resolution:** wont-fix
+- **State history:** Open (2026-10-27T02:47:42Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Closed (2026-10-28T14:09:20Z, deltic:manual host=flux verdict=close resolution=wont-fix)
 
 ## Observation
 
@@ -39,3 +40,7 @@ Evidence fingerprint: `manual:v1:no-gate-builds-all-targets-or-the-cfg-coverage-
 <unfixed — raised only>
 
 ## Notes
+
+### Close note (2026-10-28T14:09:20Z, deltic:manual host=flux verdict=close resolution=wont-fix)
+
+Close reason: Arthur 2026-10-28 14:08: skip. The gate stays as is; the cost of building --all-targets and the cfg(coverage) tests on every landing isn't worth it. lessons_learnt.md (Makefile:coverage) tells lanes to run the coverage build after semantic or Value-layout changes.
