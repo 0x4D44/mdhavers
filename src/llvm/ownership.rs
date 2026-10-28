@@ -203,7 +203,9 @@ pub const RUNTIME_OWNERSHIP: &[(&str, &str, Ret)] = &[
     ("__mdh_json_parse", "b", Ret::Fresh),
     ("__mdh_json_pretty", "b", Ret::Fresh),
     ("__mdh_json_stringify", "b", Ret::Fresh),
+    ("__mdh_key_down", "b", Ret::None),
     ("__mdh_key_not_found", "b", Ret::None), // hurls fresh message; key only read
+    ("__mdh_key_pressed", "b", Ret::None),
     ("__mdh_last_index_of", "bb", Ret::None),
     ("__mdh_leftpad", "bbb", Ret::Fresh), // R1: +1 on every path
     ("__mdh_lines", "b", Ret::Fresh),
@@ -250,6 +252,11 @@ pub const RUNTIME_OWNERSHIP: &[(&str, &str, Ret)] = &[
     ("__mdh_midi_whaur", "b", Ret::None),  // handle is an int
     ("__mdh_mono_ms", "", Ret::None),
     ("__mdh_mono_ns", "", Ret::None),
+    ("__mdh_mouse_down", "b", Ret::None),
+    ("__mdh_mouse_dx", "", Ret::None),
+    ("__mdh_mouse_dy", "", Ret::None),
+    ("__mdh_mouse_x", "", Ret::None),
+    ("__mdh_mouse_y", "", Ret::None),
     ("__mdh_muckle", "bb", Ret::Fresh), // R1: +1 on every path
     ("__mdh_muisic_gae_on", "b", Ret::None), // handle is an int
     ("__mdh_muisic_haud", "b", Ret::None), // handle is an int
@@ -325,6 +332,13 @@ pub const RUNTIME_OWNERSHIP: &[(&str, &str, Ret)] = &[
     ("__mdh_rtrim", "b", Ret::Fresh),      // R1: +1 on every path
     ("__mdh_sclaff", "b-", Ret::Fresh),    // a new list; list_push retains the items
     ("__mdh_scottify", "b", Ret::Fresh),   // R1: +1 on every path
+    ("__mdh_screen_close", "", Ret::None),
+    ("__mdh_screen_grab_mouse", "b", Ret::None),
+    ("__mdh_screen_height", "", Ret::None),
+    ("__mdh_screen_open", "bbb", Ret::None),
+    ("__mdh_screen_shaw", "bb", Ret::None),
+    ("__mdh_screen_should_close", "", Ret::None),
+    ("__mdh_screen_width", "", Ret::None),
     ("__mdh_scrieve", "bb", Ret::None),
     ("__mdh_scrieve_append", "bb", Ret::None),
     ("__mdh_scunner", "b", Ret::None),
@@ -478,7 +492,7 @@ blether f([1, 2], 1)
 blether join(["a"], ",")
 blether aw([1], |x| x)
 mak_siccar 1 == 1, "one"
-blether screen_width()
+screen_clear("black")
 blether sclaff([[1]])
 blether split("a,b", ",")
 blether assert_equal(1, 1)
@@ -556,6 +570,7 @@ blether Pot().n
     fn every_entry_is_defined_by_a_runtime() {
         let c_runtime = concat!(
             include_str!("../../runtime/mdh_runtime.c"),
+            include_str!("../../runtime/mdh_screen.c"),
             include_str!("../../runtime/gc_stub.c")
         );
         let rust_runtime = [

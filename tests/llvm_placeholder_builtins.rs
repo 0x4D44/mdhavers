@@ -1,6 +1,6 @@
 #![cfg(feature = "llvm")]
 //! Native vs interpreter parity for prelude builtins that native once placeholdered
-//! (MDH-BUG-FLU-00155), the screen/keyboard builtins native cannot support, and `clype`
+//! (MDH-BUG-FLU-00155), the drawing builtins native cannot support, and `clype`
 //! on a class instance (MDH-BUG-FLU-00159).
 
 use std::process::{Command, Stdio};
@@ -22,6 +22,7 @@ fn compile_and_run(source: &str) -> Run {
         .compile_to_native(&program, &exe_path, 2)
         .expect("compile to native");
     let output = Command::new(&exe_path)
+        .env("MDH_SCREEN", "none")
         .stdin(Stdio::null())
         .output()
         .expect("run executable");
@@ -182,7 +183,10 @@ fn native_screen_and_key_builtins_hurl_instead_of_returning_made_up_values() {
     let out = run_ok(
         "hae_a_bash {\n    blether screen_width()\n} gin_it_gangs_wrang e {\n    blether e\n}\n",
     );
-    assert!(out[0].starts_with("Nae windae!"), "{out:?}");
+    assert_eq!(
+        out,
+        ["Jings! Something went awfy wrang: Nae windae! Open the screen first"]
+    );
 }
 
 #[test]
@@ -207,6 +211,21 @@ fn native_graphics_placeholders_hurl_nae_windae_mdh_bug_flu_00161() {
         let run = compile_and_run(&format!(
             "blether \"before\"\nblether {call}\nblether \"after\"\n"
         ));
+        // DEC round 7 replaces these two placeholders with the framebuffer bridge.
+        if call.starts_with("screen_open(") || call == "screen_should_close()" {
+            assert_eq!(run.code, Some(0), "{call}: {}", run.stderr);
+            let value = if call.starts_with("screen_open(") {
+                "naething"
+            } else {
+                "nae"
+            };
+            assert_eq!(
+                run.stdout.trim(),
+                format!("before\n{value}\nafter"),
+                "{call}"
+            );
+            continue;
+        }
         assert_ne!(run.code, Some(0), "{call} must not succeed natively");
         assert_eq!(run.stdout.trim(), "before", "{call}");
         assert!(run.stderr.contains("Nae windae"), "{call}: {}", run.stderr);

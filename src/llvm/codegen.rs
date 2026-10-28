@@ -168,6 +168,21 @@ struct LibcFunctions<'ctx> {
     bytes_write_u32be: FunctionValue<'ctx>,
     mono_ms: FunctionValue<'ctx>,
     mono_ns: FunctionValue<'ctx>,
+    screen_open: FunctionValue<'ctx>,
+    screen_shaw: FunctionValue<'ctx>,
+    screen_should_close: FunctionValue<'ctx>,
+    screen_close: FunctionValue<'ctx>,
+    screen_width: FunctionValue<'ctx>,
+    screen_height: FunctionValue<'ctx>,
+    key_down: FunctionValue<'ctx>,
+    key_pressed: FunctionValue<'ctx>,
+    mouse_x: FunctionValue<'ctx>,
+    mouse_y: FunctionValue<'ctx>,
+    mouse_dx: FunctionValue<'ctx>,
+    mouse_dy: FunctionValue<'ctx>,
+    mouse_down: FunctionValue<'ctx>,
+    screen_grab_mouse: FunctionValue<'ctx>,
+
     // Audio runtime functions
     soond_stairt: FunctionValue<'ctx>,
     soond_steek: FunctionValue<'ctx>,
@@ -607,6 +622,8 @@ pub struct CodeGen<'ctx> {
     builder: Builder<'ctx>,
     types: MdhTypes<'ctx>,
     libc: LibcFunctions<'ctx>,
+    /// Any compiled bridge call requires the separate screen archive at native link.
+    pub(crate) uses_screen: bool,
 
     /// Current function being compiled
     current_function: Option<FunctionValue<'ctx>>,
@@ -898,6 +915,7 @@ impl<'ctx> CodeGen<'ctx> {
             builder,
             types,
             libc,
+            uses_screen: false,
             current_function: None,
             line_slots: HashMap::new(),
             variables: HashMap::new(),
@@ -2448,6 +2466,80 @@ impl<'ctx> CodeGen<'ctx> {
 
         // __mdh_mono_ns() -> MdhValue
         let mono_ns = module.add_function("__mdh_mono_ns", mono_ms_type, Some(Linkage::External));
+        // Framebuffer bridge: MdhValue arguments are borrowed for this call only.
+        let screen_open_type = types.value_type.fn_type(
+            &[
+                types.value_type.into(),
+                types.value_type.into(),
+                types.value_type.into(),
+            ],
+            false,
+        );
+        let screen_open = module.add_function(
+            "__mdh_screen_open",
+            screen_open_type,
+            Some(Linkage::External),
+        );
+        let screen_shaw_type = types
+            .value_type
+            .fn_type(&[types.value_type.into(), types.value_type.into()], false);
+        let screen_shaw = module.add_function(
+            "__mdh_screen_shaw",
+            screen_shaw_type,
+            Some(Linkage::External),
+        );
+        let screen_should_close_type = types.value_type.fn_type(&[], false);
+        let screen_should_close = module.add_function(
+            "__mdh_screen_should_close",
+            screen_should_close_type,
+            Some(Linkage::External),
+        );
+        let screen_close_type = types.value_type.fn_type(&[], false);
+        let screen_close = module.add_function(
+            "__mdh_screen_close",
+            screen_close_type,
+            Some(Linkage::External),
+        );
+        let screen_width_type = types.value_type.fn_type(&[], false);
+        let screen_width = module.add_function(
+            "__mdh_screen_width",
+            screen_width_type,
+            Some(Linkage::External),
+        );
+        let screen_height_type = types.value_type.fn_type(&[], false);
+        let screen_height = module.add_function(
+            "__mdh_screen_height",
+            screen_height_type,
+            Some(Linkage::External),
+        );
+        let key_down_type = types.value_type.fn_type(&[types.value_type.into()], false);
+        let key_down =
+            module.add_function("__mdh_key_down", key_down_type, Some(Linkage::External));
+        let key_pressed_type = types.value_type.fn_type(&[types.value_type.into()], false);
+        let key_pressed = module.add_function(
+            "__mdh_key_pressed",
+            key_pressed_type,
+            Some(Linkage::External),
+        );
+        let mouse_x_type = types.value_type.fn_type(&[], false);
+        let mouse_x = module.add_function("__mdh_mouse_x", mouse_x_type, Some(Linkage::External));
+        let mouse_y_type = types.value_type.fn_type(&[], false);
+        let mouse_y = module.add_function("__mdh_mouse_y", mouse_y_type, Some(Linkage::External));
+        let mouse_dx_type = types.value_type.fn_type(&[], false);
+        let mouse_dx =
+            module.add_function("__mdh_mouse_dx", mouse_dx_type, Some(Linkage::External));
+        let mouse_dy_type = types.value_type.fn_type(&[], false);
+        let mouse_dy =
+            module.add_function("__mdh_mouse_dy", mouse_dy_type, Some(Linkage::External));
+        let mouse_down_type = types.value_type.fn_type(&[types.value_type.into()], false);
+        let mouse_down =
+            module.add_function("__mdh_mouse_down", mouse_down_type, Some(Linkage::External));
+        let screen_grab_mouse_type = types.value_type.fn_type(&[types.value_type.into()], false);
+        let screen_grab_mouse = module.add_function(
+            "__mdh_screen_grab_mouse",
+            screen_grab_mouse_type,
+            Some(Linkage::External),
+        );
 
         // Audio runtime functions (MdhValue ABI)
         let audio_0_type = types.value_type.fn_type(&[], false);
@@ -3986,6 +4078,21 @@ impl<'ctx> CodeGen<'ctx> {
             bytes_write_u32be,
             mono_ms,
             mono_ns,
+            screen_open,
+            screen_shaw,
+            screen_should_close,
+            screen_close,
+            screen_width,
+            screen_height,
+            key_down,
+            key_pressed,
+            mouse_x,
+            mouse_y,
+            mouse_dx,
+            mouse_dy,
+            mouse_down,
+            screen_grab_mouse,
+
             soond_stairt,
             soond_steek,
             soond_wheesht,
@@ -24051,31 +24158,151 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap();
                     return Ok(self.make_int(secs));
                 }
-                "screen_close" => {
-                    // The interpreter's screen_close just drops the window, if any, and
-                    // returns naething, so native keeps it a no-op like screen_end.
-                    for arg in args {
-                        self.compile_expr(arg)?;
-                    }
-                    return Ok(self.make_nil());
+                "screen_open" => {
+                    self.uses_screen = true;
+                    return self.compile_runtime_call_value_with_arity(
+                        self.libc.screen_open,
+                        args,
+                        3,
+                        "screen_open",
+                        "screen_open returned void",
+                    );
                 }
-                "screen_open"
-                | "screen_should_close"
-                | "screen_clear"
-                | "draw_pixel"
-                | "draw_rect"
-                | "draw_circle"
-                | "draw_line"
-                | "draw_text"
-                | "screen_update"
-                | "get_mouse_x"
-                | "get_mouse_y"
-                | "is_mouse_down"
-                | "is_key_pressed"
-                | "screen_fps"
-                | "set_fps" => {
-                    // Needs a raylib window, which native code never opens: hurl rather
-                    // than silently do nothing (MDH-BUG-FLU-00161).
+                "screen_shaw" => {
+                    self.uses_screen = true;
+                    return self.compile_runtime_call_value_with_arity(
+                        self.libc.screen_shaw,
+                        args,
+                        2,
+                        "screen_shaw",
+                        "screen_shaw returned void",
+                    );
+                }
+                "screen_should_close" => {
+                    self.uses_screen = true;
+                    return self.compile_runtime_call_value_with_arity(
+                        self.libc.screen_should_close,
+                        args,
+                        0,
+                        "screen_should_close",
+                        "screen_should_close returned void",
+                    );
+                }
+                "screen_close" => {
+                    self.uses_screen = true;
+                    return self.compile_runtime_call_value_with_arity(
+                        self.libc.screen_close,
+                        args,
+                        0,
+                        "screen_close",
+                        "screen_close returned void",
+                    );
+                }
+                "screen_width" => {
+                    self.uses_screen = true;
+                    return self.compile_runtime_call_value_with_arity(
+                        self.libc.screen_width,
+                        args,
+                        0,
+                        "screen_width",
+                        "screen_width returned void",
+                    );
+                }
+                "screen_height" => {
+                    self.uses_screen = true;
+                    return self.compile_runtime_call_value_with_arity(
+                        self.libc.screen_height,
+                        args,
+                        0,
+                        "screen_height",
+                        "screen_height returned void",
+                    );
+                }
+                "key_down" => {
+                    self.uses_screen = true;
+                    return self.compile_runtime_call_value_with_arity(
+                        self.libc.key_down,
+                        args,
+                        1,
+                        "key_down",
+                        "key_down returned void",
+                    );
+                }
+                "key_pressed" => {
+                    self.uses_screen = true;
+                    return self.compile_runtime_call_value_with_arity(
+                        self.libc.key_pressed,
+                        args,
+                        1,
+                        "key_pressed",
+                        "key_pressed returned void",
+                    );
+                }
+                "mouse_x" => {
+                    self.uses_screen = true;
+                    return self.compile_runtime_call_value_with_arity(
+                        self.libc.mouse_x,
+                        args,
+                        0,
+                        "mouse_x",
+                        "mouse_x returned void",
+                    );
+                }
+                "mouse_y" => {
+                    self.uses_screen = true;
+                    return self.compile_runtime_call_value_with_arity(
+                        self.libc.mouse_y,
+                        args,
+                        0,
+                        "mouse_y",
+                        "mouse_y returned void",
+                    );
+                }
+                "mouse_dx" => {
+                    self.uses_screen = true;
+                    return self.compile_runtime_call_value_with_arity(
+                        self.libc.mouse_dx,
+                        args,
+                        0,
+                        "mouse_dx",
+                        "mouse_dx returned void",
+                    );
+                }
+                "mouse_dy" => {
+                    self.uses_screen = true;
+                    return self.compile_runtime_call_value_with_arity(
+                        self.libc.mouse_dy,
+                        args,
+                        0,
+                        "mouse_dy",
+                        "mouse_dy returned void",
+                    );
+                }
+                "mouse_down" => {
+                    self.uses_screen = true;
+                    return self.compile_runtime_call_value_with_arity(
+                        self.libc.mouse_down,
+                        args,
+                        1,
+                        "mouse_down",
+                        "mouse_down returned void",
+                    );
+                }
+                "screen_grab_mouse" => {
+                    self.uses_screen = true;
+                    return self.compile_runtime_call_value_with_arity(
+                        self.libc.screen_grab_mouse,
+                        args,
+                        1,
+                        "screen_grab_mouse",
+                        "screen_grab_mouse returned void",
+                    );
+                }
+                "screen_clear" | "draw_pixel" | "draw_rect" | "draw_circle" | "draw_line"
+                | "draw_text" | "screen_update" | "get_mouse_x" | "get_mouse_y"
+                | "is_mouse_down" | "is_key_pressed" | "screen_fps" | "set_fps" => {
+                    // Drawing outside the framebuffer bridge still needs raylib:
+                    // hurl rather than silently do nothing (MDH-BUG-FLU-00161).
                     for arg in args {
                         self.compile_expr(arg)?;
                     }
@@ -24988,25 +25215,6 @@ impl<'ctx> CodeGen<'ctx> {
                 "screen_end" => {
                     // The interpreter's screen_end is a no-op returning naething (raylib
                     // swaps buffers itself), even with no window open.
-                    return Ok(self.make_nil());
-                }
-                "screen_width" | "screen_height" | "key_down" | "key_pressed" => {
-                    // Needs a raylib window, which native code never opens: hurl rather
-                    // than return a made-up value (MDH-BUG-FLU-00155).
-                    let want = if name.starts_with("key_") { 1 } else { 0 };
-                    if args.len() != want {
-                        return Err(HaversError::CompileError(format!(
-                            "{} expects {} argument{}",
-                            name,
-                            want,
-                            if want == 1 { "" } else { "s" }
-                        )));
-                    }
-                    for arg in args {
-                        self.compile_expr(arg)?;
-                    }
-                    let f = self.runtime_error_fn("__mdh_no_window", 0);
-                    self.builder.build_call(f, &[], "").unwrap();
                     return Ok(self.make_nil());
                 }
                 "gcd" => {

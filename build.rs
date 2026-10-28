@@ -18,6 +18,14 @@ fn main() {
     println!("cargo:rerun-if-changed=runtime/mdh_runtime.c");
     println!("cargo:rerun-if-changed=runtime/mdh_runtime.h");
     println!("cargo:rerun-if-changed=runtime/gc_stub.c");
+    for file in [
+        "runtime/mdh_screen.c",
+        "runtime/platform/mdh_screen.h",
+        "runtime/platform/screen_macos.c",
+        "runtime/platform/screen_none.c",
+    ] {
+        println!("cargo:rerun-if-changed={file}");
+    }
     println!("cargo:rerun-if-changed=runtime/platform/platform.h");
     println!("cargo:rerun-if-changed=runtime/platform/platform_unix.c");
     println!("cargo:rerun-if-changed=runtime/platform/platform_win32.c");
@@ -81,6 +89,21 @@ fn main() {
 
     build.compile("mdh_runtime");
 
+    // Embed separately: screen-free executables must not acquire OS window libraries.
+    let mut screen = cc::Build::new();
+    screen
+        .file("runtime/mdh_screen.c")
+        .include("runtime")
+        .opt_level(2)
+        .warnings(true)
+        .cargo_metadata(false);
+    if target.contains("apple-darwin") && target.starts_with("aarch64") {
+        screen.file("runtime/platform/screen_macos.c");
+    } else {
+        screen.file("runtime/platform/screen_none.c");
+    }
+    screen.compile("mdh_screen");
+
     // Compile the GC stub. Debug builds get the test-only allocation-failure knob
     // (MDH_TEST_ALLOC_FAIL_OVER and MDH_TEST_BUF_FAIL_OVER, see runtime/gc_stub.c);
     // release builds never do.
@@ -106,6 +129,7 @@ fn main() {
     for (stem, embedded) in [
         ("mdh_runtime", "mdh_runtime_c.a"),
         ("gc_stub", "gc_stub_c.a"),
+        ("mdh_screen", "mdh_screen.a"),
     ] {
         let built = out_dir.join(archive_name(stem));
         let dest = out_dir.join(embedded);

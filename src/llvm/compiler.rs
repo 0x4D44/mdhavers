@@ -16,6 +16,8 @@ static EMBEDDED_RUNTIME_RS: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/md
 /// Embedded GC stub archive - minimal malloc wrappers for standalone builds.
 static EMBEDDED_GC_STUB: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/gc_stub_c.a"));
 
+static EMBEDDED_SCREEN: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/mdh_screen.a"));
+
 use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::passes::PassBuilderOptions;
@@ -126,7 +128,7 @@ pub fn link_native_executable_from_object_for_coverage(
         use_color: false,
         wrote_any: false,
     };
-    link_native_executable_from_object(obj_path, output_path, &mut status)
+    link_native_executable_from_object(obj_path, output_path, &mut status, false)
 }
 
 struct BuildStatus {
@@ -399,6 +401,7 @@ fn link_native_executable_from_object(
     obj_path: &Path,
     output_path: &Path,
     status: &mut BuildStatus,
+    uses_screen: bool,
 ) -> Result<(), HaversError> {
     // Generate unique temp file names using process ID and a counter
     // This avoids race conditions when tests run in parallel
@@ -406,11 +409,13 @@ fn link_native_executable_from_object(
     let runtime_path = std::env::temp_dir().join(format!("mdh_runtime_{}.a", unique_id));
     let runtime_rs_path = std::env::temp_dir().join(format!("mdh_runtime_rs_{}.a", unique_id));
     let gc_stub_path = std::env::temp_dir().join(format!("mdh_gc_stub_{}.a", unique_id));
+    let screen_path = std::env::temp_dir().join(format!("mdh_screen_{}.a", unique_id));
     let _cleanup = TempFileCleanup::new(vec![
         obj_path.to_path_buf(),
         runtime_path.clone(),
         runtime_rs_path.clone(),
         gc_stub_path.clone(),
+        screen_path.clone(),
     ]);
 
     status.update("Preparing runtime", StatusColor::Yellow);
@@ -448,6 +453,11 @@ fn link_native_executable_from_object(
         }
     }
 
+    if uses_screen {
+        std::fs::write(&screen_path, EMBEDDED_SCREEN)
+            .map_err(|err| HaversError::CompileError(err.to_string()))?;
+    }
+
     status.update("Linking native executable", StatusColor::Yellow);
 
     // Link with system linker. The runtime archives call into each other, so
@@ -462,8 +472,22 @@ fn link_native_executable_from_object(
         runtime_rs_path.to_str().unwrap(),
         gc_stub_path.to_str().unwrap(),
     ]);
+    if uses_screen {
+        link_args.push(screen_path.to_str().unwrap());
+    }
     if elf_group {
         link_args.push("-Wl,--end-group");
+    }
+    if uses_screen && cfg!(target_os = "macos") {
+        link_args.extend([
+            "-framework",
+            "AppKit",
+            "-framework",
+            "QuartzCore",
+            "-framework",
+            "CoreGraphics",
+            "-lobjc",
+        ]);
     }
     link_args.extend(["-lm", "-pthread"]); // libm for floor, ceil, etc.
                                            // Apple clang rejects -static-libgcc (there is no libgcc on Darwin).
@@ -563,6 +587,7 @@ impl LLVMCompiler {
         source_path: Option<&Path>,
     ) -> Result<(), HaversError> {
         self.compile_to_object_with_source_status(program, output_path, source_path, None)
+            .map(|_| ())
     }
 
     fn compile_to_object_with_source_status(
@@ -571,7 +596,7 @@ impl LLVMCompiler {
         output_path: &Path,
         source_path: Option<&Path>,
         mut status: Option<&mut BuildStatus>,
-    ) -> Result<(), HaversError> {
+    ) -> Result<bool, HaversError> {
         if let Some(status) = status.as_mut() {
             status.update("Generating LLVM IR", StatusColor::Yellow);
         }
@@ -643,7 +668,7 @@ impl LLVMCompiler {
             return Err(HaversError::CompileError(err));
         }
 
-        Ok(())
+        Ok(codegen.uses_screen)
     }
 
     /// Compile to native executable
@@ -673,17 +698,20 @@ impl LLVMCompiler {
         let compiler = LLVMCompiler::new()
             .with_optimization(opt_level)
             .with_refcounting(self.refcounting);
-        if let Err(err) = compiler.compile_to_object_with_source_status(
+        let uses_screen = match compiler.compile_to_object_with_source_status(
             program,
             &obj_path,
             source_path,
             Some(&mut status),
         ) {
-            status.fail("Native build failed");
-            return Err(err);
-        }
+            Ok(uses_screen) => uses_screen,
+            Err(err) => {
+                status.fail("Native build failed");
+                return Err(err);
+            }
+        };
 
-        link_native_executable_from_object(&obj_path, output_path, &mut status)
+        link_native_executable_from_object(&obj_path, output_path, &mut status, uses_screen)
     }
 
     /// Run LLVM optimization passes

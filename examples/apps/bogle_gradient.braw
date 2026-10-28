@@ -1,0 +1,169 @@
+# Bogle Castle framebuffer bridge demo.
+# Run with: mdhavers run examples/apps/bogle_gradient.braw
+
+ken demo_width = 320
+ken demo_height = 200
+ken demo_pixels = bytes(320 * 200)
+ken demo_palette = bytes(256 * 3)
+ken demo_phase = 0
+ken demo_shift_y = 0
+ken demo_grabbed = nae
+ken demo_mouse_window_x = 640
+ken demo_mouse_window_y = 400
+
+dae demo_wave(turn) {
+    ken pos = turn % 256
+    gin pos < 0 { pos = pos + 256 }
+    gin pos < 64 { gie pos * 4 }
+    gin pos < 128 { gie 256 - (pos - 64) * 4 }
+    gin pos < 192 { gie 0 - (pos - 128) * 4 }
+    gie -256 + (pos - 192) * 4
+}
+
+dae demo_pixel(x, y, ink) {
+    gin x >= 0 an x < demo_width an y >= 0 an y < demo_height {
+        bytes_set(demo_pixels, y * demo_width + x, ink)
+    }
+}
+
+# Draw one small arrow glyph. The four glyphs below show the live arrow-key state.
+dae demo_arrow(cx, cy, direction, active) {
+    ken ink = 64
+    gin active { ink = 250 }
+
+    fer step in 0..4 {
+        gin direction == 0 {
+            demo_pixel(cx - step, cy + step, ink)
+            demo_pixel(cx + step, cy + step, ink)
+        }
+        gin direction == 1 {
+            demo_pixel(cx - step, cy - step, ink)
+            demo_pixel(cx + step, cy - step, ink)
+        }
+        gin direction == 2 {
+            demo_pixel(cx + step, cy - step, ink)
+            demo_pixel(cx + step, cy + step, ink)
+        }
+        gin direction == 3 {
+            demo_pixel(cx - step, cy - step, ink)
+            demo_pixel(cx - step, cy + step, ink)
+        }
+    }
+
+    fer step in 0..5 {
+        gin direction == 0 { demo_pixel(cx, cy + step, ink) }
+        gin direction == 1 { demo_pixel(cx, cy - step, ink) }
+        gin direction == 2 { demo_pixel(cx - step, cy, ink) }
+        gin direction == 3 { demo_pixel(cx + step, cy, ink) }
+    }
+}
+
+dae demo_init(w, h) {
+    demo_width = w
+    demo_height = h
+    demo_pixels = bytes(w * h)
+    demo_palette = bytes(256 * 3)
+    demo_phase = 0
+    demo_shift_y = 0
+    demo_grabbed = nae
+
+    # Three offset integer ramps make the indexed palette colourful.
+    fer i in 0..256 {
+        bytes_set(demo_palette, i * 3, i)
+        bytes_set(demo_palette, i * 3 + 1, (i + 85) % 256)
+        bytes_set(demo_palette, i * 3 + 2, (i + 170) % 256)
+    }
+
+    # The native bridge scales this logical image x4; raylib keeps its existing
+    # window dimensions so this remains a low-resolution interpreter demo.
+    screen_open(w, h, "Bogle Castle - spinning gradient")
+    demo_mouse_window_x = screen_width() / 2
+    demo_mouse_window_y = screen_height() / 2
+}
+
+dae demo_frame(dt_ms) {
+    gin key_down("escape") {
+        gin demo_grabbed { screen_grab_mouse(nae) }
+        gie nae
+    }
+
+    gin key_pressed("g") {
+        demo_grabbed = !demo_grabbed
+        screen_grab_mouse(demo_grabbed)
+        gin demo_grabbed {
+            demo_mouse_window_x = screen_width() / 2
+            demo_mouse_window_y = screen_height() / 2
+        }
+    }
+
+    gin demo_grabbed {
+        demo_mouse_window_x = demo_mouse_window_x + mouse_dx()
+        demo_mouse_window_y = demo_mouse_window_y + mouse_dy()
+        gin demo_mouse_window_x < 0 { demo_mouse_window_x = 0 }
+        gin demo_mouse_window_y < 0 { demo_mouse_window_y = 0 }
+        gin demo_mouse_window_x >= screen_width() {
+            demo_mouse_window_x = screen_width() - 1
+        }
+        gin demo_mouse_window_y >= screen_height() {
+            demo_mouse_window_y = screen_height() - 1
+        }
+    }
+    gin !demo_grabbed {
+        demo_mouse_window_x = mouse_x()
+        demo_mouse_window_y = mouse_y()
+    }
+
+    ken phase_step = dt_ms / 8
+    gin phase_step < 1 { phase_step = 1 }
+    demo_phase = (demo_phase + phase_step) % 256
+    gin key_down("left") { demo_phase = (demo_phase - 3) % 256 }
+    gin key_down("right") { demo_phase = (demo_phase + 3) % 256 }
+    gin demo_phase < 0 { demo_phase = demo_phase + 256 }
+
+    gin key_down("up") { demo_shift_y = demo_shift_y - 2 }
+    gin key_down("down") { demo_shift_y = demo_shift_y + 2 }
+    gin demo_shift_y < 0 { demo_shift_y = demo_shift_y + demo_height }
+    demo_shift_y = demo_shift_y % demo_height
+
+    ken sine = demo_wave(demo_phase)
+    ken cosine = demo_wave(demo_phase + 64)
+    fer y in 0..demo_height {
+        ken dy = y - demo_height / 2 + demo_shift_y
+        fer x in 0..demo_width {
+            ken dx = x - demo_width / 2
+            ken rotated_x = (dx * cosine - dy * sine) / 256
+            ken rotated_y = (dx * sine + dy * cosine) / 256
+            ken shade = (rotated_x * 2 + rotated_y * 3 + 128) % 256
+            gin shade < 0 { shade = shade + 256 }
+            bytes_set(demo_pixels, y * demo_width + x, shade)
+        }
+    }
+
+    demo_arrow(16, 16, 0, key_down("up"))
+    demo_arrow(16, 29, 1, key_down("down"))
+    demo_arrow(6, 23, 2, key_down("left"))
+    demo_arrow(26, 23, 3, key_down("right"))
+
+    ken cursor_x = demo_mouse_window_x * demo_width / screen_width()
+    ken cursor_y = demo_mouse_window_y * demo_height / screen_height()
+    ken cursor_ink = 235
+    gin mouse_down(0) { cursor_ink = 255 }
+    fer offset in -4..5 {
+        demo_pixel(cursor_x + offset, cursor_y, cursor_ink)
+        demo_pixel(cursor_x, cursor_y + offset, cursor_ink)
+    }
+
+    screen_shaw(demo_pixels, demo_palette)
+    gie aye
+}
+
+# The host loop matches the native/interpreter shell from design section 2.3.
+demo_init(320, 200)
+ken last = mono_ms()
+whiles !screen_should_close() {
+    ken now = mono_ms()
+    gin !demo_frame(now - last) { brak }
+    last = now
+    snooze(1)
+}
+screen_close()

@@ -10,16 +10,16 @@ use raylib::prelude::*;
 #[cfg(feature = "graphics")]
 use std::cell::RefCell;
 
-#[cfg(feature = "graphics")]
 use std::rc::Rc;
 
-#[cfg(feature = "graphics")]
 use crate::value::{NativeFunction, Value};
 
 #[cfg(feature = "graphics")]
 thread_local! {
     static RAYLIB_HANDLE: RefCell<Option<RaylibHandle>> = const { RefCell::new(None) };
     static RAYLIB_THREAD: RefCell<Option<RaylibThread>> = const { RefCell::new(None) };
+    static FRAMEBUFFER_TEXTURE: RefCell<Option<Texture2D>> = const { RefCell::new(None) };
+    static FRAMEBUFFER_RGBA: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
 }
 
 /// Register all graphics functions in the interpreter globals
@@ -72,6 +72,10 @@ fn register_screen_functions(globals: &Rc<RefCell<crate::value::Environment>>) {
         "screen_close".to_string(),
         Value::NativeFunction(Rc::new(NativeFunction::new("screen_close", 0, |_args| {
             RAYLIB_HANDLE.with(|h| {
+                // Drop the GPU texture while its graphics context is still open.
+                FRAMEBUFFER_TEXTURE.with(|texture| {
+                    texture.borrow_mut().take();
+                });
                 *h.borrow_mut() = None;
             });
             RAYLIB_THREAD.with(|t| {
@@ -184,6 +188,140 @@ fn register_screen_functions(globals: &Rc<RefCell<crate::value::Environment>>) {
                 } else {
                     Err("Window not open".to_string())
                 }
+            })
+        }))),
+    );
+
+    // screen_shaw - Present indexed RGB or BGRA framebuffer bytes through one
+    // reusable, point-filtered texture. The existing window dimensions remain
+    // the logical framebuffer dimensions.
+    globals.borrow_mut().define(
+        "screen_shaw".to_string(),
+        Value::NativeFunction(Rc::new(NativeFunction::new("screen_shaw", 2, |args| {
+            let pixels = match &args[0] {
+                Value::Bytes(bytes) => bytes.borrow(),
+                _ => return Err("screen_shaw() pixels must be bytes".to_string()),
+            };
+            let palette = match &args[1] {
+                Value::Nil => None,
+                Value::Bytes(bytes) => Some(bytes.borrow()),
+                _ => return Err("screen_shaw() palette must be bytes or naething".to_string()),
+            };
+
+            if let Some(palette) = palette.as_ref() {
+                if palette.len() != 256 * 3 {
+                    return Err("screen_shaw() palette must contain 768 RGB bytes".to_string());
+                }
+            }
+
+            let (window_width, window_height) = RAYLIB_HANDLE.with(|h| {
+                let borrowed = h.borrow();
+                if let Some(rl) = borrowed.as_ref() {
+                    Ok((rl.get_screen_width(), rl.get_screen_height()))
+                } else {
+                    Err("Window not open".to_string())
+                }
+            })?;
+            if window_width <= 0 || window_height <= 0 {
+                return Err("screen_shaw() window size must be positive".to_string());
+            }
+            let bytes_per_pixel = if palette.is_some() { 1 } else { 4 };
+            let width = window_width;
+            let height = window_height;
+            let pixel_count = (width as usize)
+                .checked_mul(height as usize)
+                .ok_or_else(|| "screen_shaw() framebuffer is too large".to_string())?;
+            let expected_len = pixel_count
+                .checked_mul(bytes_per_pixel)
+                .ok_or_else(|| "screen_shaw() framebuffer is too large".to_string())?;
+            if pixels.len() != expected_len {
+                return Err(format!(
+                    "screen_shaw() needs exactly {} pixel bytes, got {}",
+                    expected_len,
+                    pixels.len()
+                ));
+            }
+            let byte_count = pixel_count
+                .checked_mul(4)
+                .ok_or_else(|| "screen_shaw() framebuffer is too large".to_string())?;
+
+            FRAMEBUFFER_RGBA.with(|rgba_cell| {
+                let mut rgba = rgba_cell.borrow_mut();
+                rgba.resize(byte_count, 0);
+                if let Some(palette) = palette.as_ref() {
+                    for (index, &color_index) in pixels.iter().enumerate() {
+                        let palette_index = color_index as usize * 3;
+                        let rgba_index = index * 4;
+                        rgba[rgba_index] = palette[palette_index];
+                        rgba[rgba_index + 1] = palette[palette_index + 1];
+                        rgba[rgba_index + 2] = palette[palette_index + 2];
+                        rgba[rgba_index + 3] = 255;
+                    }
+                } else {
+                    for (source, destination) in
+                        pixels.chunks_exact(4).zip(rgba.chunks_exact_mut(4))
+                    {
+                        // The bridge's naething-palette format is BGRA. Native
+                        // treats alpha as padding (AlphaNoneSkipFirst), so use
+                        // opaque alpha here to keep the displayed result equal.
+                        destination[0] = source[2];
+                        destination[1] = source[1];
+                        destination[2] = source[0];
+                        destination[3] = 255;
+                    }
+                }
+
+                RAYLIB_HANDLE.with(|h| {
+                    let mut borrowed = h.borrow_mut();
+                    let Some(rl) = borrowed.as_mut() else {
+                        return Err("Window not open".to_string());
+                    };
+                    RAYLIB_THREAD.with(|t| {
+                        let thread_borrowed = t.borrow();
+                        let Some(thread) = thread_borrowed.as_ref() else {
+                            return Err("Graphics thread not available".to_string());
+                        };
+                        FRAMEBUFFER_TEXTURE.with(|texture_cell| {
+                            let mut texture_slot = texture_cell.borrow_mut();
+                            let texture_mismatched = texture_slot
+                                .as_ref()
+                                .map(|texture| {
+                                    texture.width() != width || texture.height() != height
+                                })
+                                .unwrap_or(true);
+                            if texture_mismatched {
+                                // Replacing a texture happens before the next one is
+                                // created and while the raylib context is still live.
+                                texture_slot.take();
+                                let image = Image::gen_image_color(width, height, Color::BLANK);
+                                let texture = rl
+                                    .load_texture_from_image(thread, &image)
+                                    .map_err(|error| error.to_string())?;
+                                texture.set_texture_filter(
+                                    thread,
+                                    TextureFilter::TEXTURE_FILTER_POINT,
+                                );
+                                *texture_slot = Some(texture);
+                            }
+
+                            let texture = texture_slot.as_mut().expect("texture was created");
+                            texture
+                                .update_texture(rgba.as_slice())
+                                .map_err(|error| error.to_string())?;
+                            let mut drawing = rl.begin_drawing(thread);
+                            drawing.clear_background(Color::BLACK);
+                            drawing.draw_texture_pro(
+                                texture,
+                                Rectangle::new(0.0, 0.0, width as f32, height as f32),
+                                Rectangle::new(0.0, 0.0, window_width as f32, window_height as f32),
+                                Vector2::new(0.0, 0.0),
+                                0.0,
+                                Color::WHITE,
+                            );
+                            Ok(Value::Nil)
+                        })
+                    })
+                })
             })
         }))),
     );
@@ -412,6 +550,34 @@ fn register_input_functions(globals: &Rc<RefCell<crate::value::Environment>>) {
         }))),
     );
 
+    // mouse_dx / mouse_dy - Get raw motion since raylib's previous frame.
+    globals.borrow_mut().define(
+        "mouse_dx".to_string(),
+        Value::NativeFunction(Rc::new(NativeFunction::new("mouse_dx", 0, |_args| {
+            RAYLIB_HANDLE.with(|h| {
+                let borrowed = h.borrow();
+                if let Some(rl) = borrowed.as_ref() {
+                    Ok(Value::Integer(rl.get_mouse_delta().x as i64))
+                } else {
+                    Err("Window not open".to_string())
+                }
+            })
+        }))),
+    );
+    globals.borrow_mut().define(
+        "mouse_dy".to_string(),
+        Value::NativeFunction(Rc::new(NativeFunction::new("mouse_dy", 0, |_args| {
+            RAYLIB_HANDLE.with(|h| {
+                let borrowed = h.borrow();
+                if let Some(rl) = borrowed.as_ref() {
+                    Ok(Value::Integer(rl.get_mouse_delta().y as i64))
+                } else {
+                    Err("Window not open".to_string())
+                }
+            })
+        }))),
+    );
+
     // mouse_pressed - Check if mouse button was pressed
     globals.borrow_mut().define(
         "mouse_pressed".to_string(),
@@ -433,6 +599,57 @@ fn register_input_functions(globals: &Rc<RefCell<crate::value::Environment>>) {
                 }
             })
         }))),
+    );
+
+    // mouse_down - Check whether a mouse button is currently held.
+    globals.borrow_mut().define(
+        "mouse_down".to_string(),
+        Value::NativeFunction(Rc::new(NativeFunction::new("mouse_down", 1, |args| {
+            let button = args[0].as_integer().ok_or("button must be an integer")? as i32;
+            let mouse_button = match button {
+                0 => MouseButton::MOUSE_BUTTON_LEFT,
+                1 => MouseButton::MOUSE_BUTTON_RIGHT,
+                2 => MouseButton::MOUSE_BUTTON_MIDDLE,
+                _ => return Err("Invalid mouse button (use 0=left, 1=right, 2=middle)".to_string()),
+            };
+
+            RAYLIB_HANDLE.with(|h| {
+                let borrowed = h.borrow();
+                if let Some(rl) = borrowed.as_ref() {
+                    Ok(Value::Bool(rl.is_mouse_button_down(mouse_button)))
+                } else {
+                    Err("Window not open".to_string())
+                }
+            })
+        }))),
+    );
+
+    // screen_grab_mouse - Hide and lock the pointer for relative mouse input.
+    globals.borrow_mut().define(
+        "screen_grab_mouse".to_string(),
+        Value::NativeFunction(Rc::new(NativeFunction::new(
+            "screen_grab_mouse",
+            1,
+            |args| {
+                let grabbed = match &args[0] {
+                    Value::Bool(grabbed) => *grabbed,
+                    _ => return Err("screen_grab_mouse() expects aye or nae".to_string()),
+                };
+                RAYLIB_HANDLE.with(|h| {
+                    let mut borrowed = h.borrow_mut();
+                    if let Some(rl) = borrowed.as_mut() {
+                        if grabbed {
+                            rl.disable_cursor();
+                        } else {
+                            rl.enable_cursor();
+                        }
+                        Ok(Value::Nil)
+                    } else {
+                        Err("Window not open".to_string())
+                    }
+                })
+            },
+        ))),
     );
 }
 
@@ -581,7 +798,35 @@ fn string_to_key(name: &str) -> Result<KeyboardKey, String> {
 /// Stub for when graphics feature is not enabled
 #[cfg(not(feature = "graphics"))]
 pub fn register_graphics_functions(
-    _globals: &std::rc::Rc<std::cell::RefCell<crate::value::Environment>>,
+    globals: &std::rc::Rc<std::cell::RefCell<crate::value::Environment>>,
 ) {
-    // Graphics not available - do nothing
+    // Keep the framebuffer bridge vocabulary available in CLI/minimal builds;
+    // calls fail with the same Scots hurl as the native runtime placeholders.
+    const BRIDGE_FUNCTIONS: &[(&str, usize)] = &[
+        ("screen_open", 3),
+        ("screen_shaw", 2),
+        ("screen_should_close", 0),
+        ("screen_close", 0),
+        ("screen_width", 0),
+        ("screen_height", 0),
+        ("key_down", 1),
+        ("key_pressed", 1),
+        ("mouse_x", 0),
+        ("mouse_y", 0),
+        ("mouse_dx", 0),
+        ("mouse_dy", 0),
+        ("mouse_down", 1),
+        ("screen_grab_mouse", 1),
+    ];
+    for &(name, arity) in BRIDGE_FUNCTIONS {
+        globals.borrow_mut().define(
+            name.to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new(name, arity, |_args| {
+                Err(
+                    "Nae windae! Screen an' keyboard functions cannae be used in native code"
+                        .to_string(),
+                )
+            }))),
+        );
+    }
 }
