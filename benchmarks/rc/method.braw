@@ -1,0 +1,22 @@
+kin Counter {
+    dae init(start) {
+        masel.n = start
+        masel.name = "c"
+    }
+    dae add(k) {
+        masel.n = masel.n + k
+        gie masel.n
+    }
+    dae get() {
+        gie masel.n
+    }
+}
+ken c = Counter(0)
+ken s = 0
+ken i = 0
+whiles i < 1000000 {
+    c.add(i % 3)
+    s = s + c.get()
+    i = i + 1
+}
+blether s

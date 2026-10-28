@@ -1,0 +1,20 @@
+dae adder(n) {
+    gie |x| x + n
+}
+dae run() {
+    ken fs = []
+    ken i = 0
+    whiles i < 10 {
+        shove(fs, adder(i))
+        i = i + 1
+    }
+    ken s = 0
+    ken r = 0
+    whiles r < 1000000 {
+        ken f = fs[r % 10]
+        s = s + f(r)
+        r = r + 1
+    }
+    gie s
+}
+blether run()

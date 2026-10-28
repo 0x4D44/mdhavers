@@ -1,0 +1,44 @@
+dae build(n) {
+    ken xs = []
+    ken i = 0
+    whiles i < n {
+        shove(xs, i)
+        i = i + 1
+    }
+    gie xs
+}
+dae total(xs) {
+    ken s = 0
+    ken i = 0
+    whiles i < len(xs) {
+        s = s + xs[i]
+        i = i + 1
+    }
+    gie s
+}
+dae bump(xs) {
+    ken i = 0
+    whiles i < len(xs) {
+        xs[i] = xs[i] + 1
+        i = i + 1
+    }
+}
+ken grid = []
+ken k = 0
+whiles k < 100 {
+    shove(grid, build(1000))
+    k = k + 1
+}
+ken acc = 0
+ken r = 0
+whiles r < 30 {
+    ken j = 0
+    whiles j < len(grid) {
+        ken row = grid[j]
+        bump(row)
+        acc = acc + total(row)
+        j = j + 1
+    }
+    r = r + 1
+}
+blether acc

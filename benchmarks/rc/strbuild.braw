@@ -1,0 +1,13 @@
+ken total = 0
+ken r = 0
+whiles r < 2000 {
+    ken s = ""
+    ken i = 0
+    whiles i < 100 {
+        s = s + tae_string(i)
+        i = i + 1
+    }
+    total = total + len(s)
+    r = r + 1
+}
+blether total

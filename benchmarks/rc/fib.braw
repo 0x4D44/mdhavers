@@ -1,0 +1,5 @@
+dae fib(n) {
+    gin n < 2 { gie n }
+    gie fib(n - 1) + fib(n - 2)
+}
+blether fib(30)

@@ -1,0 +1,7 @@
+ken s = 0
+ken i = 0
+whiles i < 100000000 {
+    s = s + i % 7
+    i = i + 1
+}
+blether s
