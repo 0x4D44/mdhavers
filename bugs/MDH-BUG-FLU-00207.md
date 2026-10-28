@@ -1,26 +1,25 @@
 # MDH-BUG-FLU-00207 — Native vs interpreter: importer's ken of a fetched module global writes it (native) or shadows it
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** native
 - **Raised:** 2026-10-28T15:22:53Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261028T174322Z-8fc4cac6
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00207-run-fix-20261028T174322Z-8fc4cac6
-- **Owner base:** 305b795d88efba83fa5c38f8595a8871e5120444
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-28T17:43:22Z
-- **Owner until:** 2026-10-28T21:43:22Z
-- **Owner session:** flux/2a9090d7-08f7-48c7-bee8-7b7d1d963ab2 (run fix-20261028T174322Z-8fc4cac6)
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-28T15:22:53Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-28T15:22:53Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-28T19:17:17Z, deltic:auto role=fix run=fix-20261028T174322Z-8fc4cac6 branch=task/bug-MDH-BUG-FLU-00207-run-fix-20261028T174322Z-8fc4cac6 code=f51f4ee gate=manual)
 
 ## Observation
 
