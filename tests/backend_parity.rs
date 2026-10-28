@@ -2049,3 +2049,253 @@ fetch_shared_tests_00205!(
     fetch_shared_globals_00205_native_closures,
     "closures"
 );
+
+// MDH-BUG-FLU-00207: declarations shadow fetched globals; assignments update
+// whichever binding is visible in the current scope.
+// MDH-BUG-FLU-00208: aliased module fields are snapshots, and their functions
+// remain callable after a field write.
+const FETCH_BINDINGS_MODULE_0020: &str = r#"
+ken mg = "mg"
+dae getmg() { gie mg }
+dae label(prefix = "ok", suffix = prefix + "!") { gie suffix }
+thing Point { x }
+"#;
+
+fn fetch_bindings_case_00207(
+    case: &str,
+) -> (
+    &'static str,
+    &'static str,
+    Option<(&'static str, &'static str)>,
+) {
+    match case {
+        "top_level_ken" => (
+            "fetch \"m\"\nken mg = \"new\"\nblether getmg()\nblether mg\n",
+            "mg\nnew",
+            None,
+        ),
+        "top_level_ken_initializer" => (
+            "fetch \"m\"\nken mg = mg + \"-local\"\nblether getmg()\nblether mg\n",
+            "mg\nmg-local",
+            None,
+        ),
+        "function_ken_assignment" => (
+            "fetch \"m\"\ndae importer() { ken mg = \"new\"\nmg = \"local\"\ngie mg }\nblether importer()\nblether getmg()\n",
+            "local\nmg",
+            None,
+        ),
+        "nested_module_redeclaration" => (
+            "fetch \"wrapper\"\nblether getmg()\nblether mg\n",
+            "mg\nwrapper\nmg\nwrapper-updated\nmg\nwrapper-updated",
+            Some((
+                "wrapper.braw",
+                "fetch \"m\"\nken mg = \"wrapper\"\nblether getmg()\nblether mg\nmg = \"wrapper-updated\"\nblether getmg()\nblether mg\n",
+            )),
+        ),
+        "top_level_assignment_after_shadow" => (
+            "fetch \"m\"\nken mg = \"new\"\nmg = \"updated\"\nblether getmg()\nblether mg\n",
+            "mg\nupdated",
+            None,
+        ),
+        _ => panic!("unknown fetch-binding 00207 case: {case}"),
+    }
+}
+
+fn fetch_bindings_case_00208(case: &str) -> (&'static str, &'static str) {
+    match case {
+        "alias_field_write" => (
+            "fetch \"m\" tae m\nm.mg = \"importer\"\nblether m.getmg()\nblether m.label()\nblether m.label(\"hi\")\nblether m.mg\n",
+            "mg\nok!\nhi!\nimporter",
+        ),
+        "alias_field_write_extracted" => (
+            "fetch \"m\" tae m\nm.mg = \"importer\"\nken getmg = m.getmg\nken label = m.label\nblether getmg()\nblether label()\nblether label(\"hi\")\nblether m.mg\n",
+            "mg\nok!\nhi!\nimporter",
+        ),
+        "alias_index_write" => (
+            "fetch \"m\" tae m\nm[\"mg\"] = \"importer\"\nblether m[\"getmg\"]()\nblether m[\"label\"]()\nblether m.mg\n",
+            "mg\nok!\nimporter",
+        ),
+        "alias_constructor_after_write" => (
+            "fetch \"m\" tae m\nm.mg = \"importer\"\nken point = m.Point(3)\nblether point.x\nblether m.getmg()\nblether m.mg\n",
+            "3\nmg\nimporter",
+        ),
+        _ => panic!("unknown fetch-binding 00208 case: {case}"),
+    }
+}
+
+fn stage_fetch_bindings_modules_0020(
+    source: &str,
+    extra_module: Option<(&str, &str)>,
+) -> tempfile::TempDir {
+    let scratch = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(".scratch");
+    std::fs::create_dir_all(&scratch).expect("create scratch directory");
+    let dir = tempfile::tempdir_in(&scratch).expect("fetch-binding module tempdir");
+    for (name, text) in [
+        ("m.braw", FETCH_BINDINGS_MODULE_0020),
+        ("main.braw", source),
+    ] {
+        std::fs::write(dir.path().join(name), text).expect("write module fixture");
+    }
+    if let Some((name, text)) = extra_module {
+        std::fs::write(dir.path().join(name), text).expect("write extra module fixture");
+    }
+    dir
+}
+
+fn assert_fetch_bindings_interpreter_00207(case: &str) {
+    let (source, expected, extra_module) = fetch_bindings_case_00207(case);
+    let dir = stage_fetch_bindings_modules_0020(source, extra_module);
+    let program = mdhavers::parse(source).expect("parse main");
+    let mut interp = Interpreter::with_dir(dir.path());
+    interp.interpret(&program).expect("interpret main");
+    assert_eq!(interp.get_output().join("\n"), expected, "{case}");
+}
+
+#[cfg(feature = "llvm")]
+fn assert_fetch_bindings_native_00207(case: &str) {
+    let (source, expected, extra_module) = fetch_bindings_case_00207(case);
+    let dir = stage_fetch_bindings_modules_0020(source, extra_module);
+    let program = mdhavers::parse(source).expect("parse main");
+    let executable = dir.path().join("fetch_bindings");
+    mdhavers::LLVMCompiler::new()
+        .compile_to_native_with_source(
+            &program,
+            &executable,
+            2,
+            Some(&dir.path().join("main.braw")),
+        )
+        .expect("compile native main");
+    let output = Command::new(&executable)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("run native main");
+    std::fs::remove_file(&executable).expect("remove native fixture executable");
+    assert!(
+        output.status.success(),
+        "{case}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim_end_matches('\n'),
+        expected,
+        "{case}"
+    );
+}
+
+fn assert_fetch_bindings_interpreter_00208(case: &str) {
+    let (source, expected) = fetch_bindings_case_00208(case);
+    let dir = stage_fetch_bindings_modules_0020(source, None);
+    let program = mdhavers::parse(source).expect("parse main");
+    let mut interp = Interpreter::with_dir(dir.path());
+    interp.interpret(&program).expect("interpret main");
+    assert_eq!(interp.get_output().join("\n"), expected, "{case}");
+}
+
+#[cfg(feature = "llvm")]
+fn assert_fetch_bindings_native_00208(case: &str) {
+    let (source, expected) = fetch_bindings_case_00208(case);
+    let dir = stage_fetch_bindings_modules_0020(source, None);
+    let program = mdhavers::parse(source).expect("parse main");
+    let executable = dir.path().join("fetch_bindings");
+    mdhavers::LLVMCompiler::new()
+        .compile_to_native_with_source(
+            &program,
+            &executable,
+            2,
+            Some(&dir.path().join("main.braw")),
+        )
+        .expect("compile native main");
+    let output = Command::new(&executable)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("run native main");
+    std::fs::remove_file(&executable).expect("remove native fixture executable");
+    assert!(
+        output.status.success(),
+        "{case}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim_end_matches('\n'),
+        expected,
+        "{case}"
+    );
+}
+
+macro_rules! fetch_bindings_tests_0020 {
+    ($interpreter:ident, $native:ident, $interpreter_helper:ident, $native_helper:ident, $case:literal) => {
+        #[test]
+        fn $interpreter() {
+            $interpreter_helper($case);
+        }
+        #[test]
+        #[cfg(feature = "llvm")]
+        fn $native() {
+            $native_helper($case);
+        }
+    };
+}
+
+fetch_bindings_tests_0020!(
+    fetch_bindings_00207_interpreter_top_level_ken,
+    fetch_bindings_00207_native_top_level_ken,
+    assert_fetch_bindings_interpreter_00207,
+    assert_fetch_bindings_native_00207,
+    "top_level_ken"
+);
+fetch_bindings_tests_0020!(
+    fetch_bindings_00207_interpreter_top_level_ken_initializer,
+    fetch_bindings_00207_native_top_level_ken_initializer,
+    assert_fetch_bindings_interpreter_00207,
+    assert_fetch_bindings_native_00207,
+    "top_level_ken_initializer"
+);
+fetch_bindings_tests_0020!(
+    fetch_bindings_00207_interpreter_function_ken_assignment,
+    fetch_bindings_00207_native_function_ken_assignment,
+    assert_fetch_bindings_interpreter_00207,
+    assert_fetch_bindings_native_00207,
+    "function_ken_assignment"
+);
+fetch_bindings_tests_0020!(
+    fetch_bindings_00207_interpreter_nested_module_redeclaration,
+    fetch_bindings_00207_native_nested_module_redeclaration,
+    assert_fetch_bindings_interpreter_00207,
+    assert_fetch_bindings_native_00207,
+    "nested_module_redeclaration"
+);
+fetch_bindings_tests_0020!(
+    fetch_bindings_00207_interpreter_top_level_assignment_after_shadow,
+    fetch_bindings_00207_native_top_level_assignment_after_shadow,
+    assert_fetch_bindings_interpreter_00207,
+    assert_fetch_bindings_native_00207,
+    "top_level_assignment_after_shadow"
+);
+fetch_bindings_tests_0020!(
+    fetch_bindings_00208_interpreter_alias_field_write,
+    fetch_bindings_00208_native_alias_field_write,
+    assert_fetch_bindings_interpreter_00208,
+    assert_fetch_bindings_native_00208,
+    "alias_field_write"
+);
+fetch_bindings_tests_0020!(
+    fetch_bindings_00208_interpreter_alias_field_write_extracted,
+    fetch_bindings_00208_native_alias_field_write_extracted,
+    assert_fetch_bindings_interpreter_00208,
+    assert_fetch_bindings_native_00208,
+    "alias_field_write_extracted"
+);
+fetch_bindings_tests_0020!(
+    fetch_bindings_00208_interpreter_alias_index_write,
+    fetch_bindings_00208_native_alias_index_write,
+    assert_fetch_bindings_interpreter_00208,
+    assert_fetch_bindings_native_00208,
+    "alias_index_write"
+);
+fetch_bindings_tests_0020!(
+    fetch_bindings_00208_interpreter_alias_constructor_after_write,
+    fetch_bindings_00208_native_alias_constructor_after_write,
+    assert_fetch_bindings_interpreter_00208,
+    assert_fetch_bindings_native_00208,
+    "alias_constructor_after_write"
+);

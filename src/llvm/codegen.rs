@@ -582,6 +582,14 @@ struct ImportBindings<'ctx> {
     class_method_bindings: HashMap<String, Vec<(String, FunctionValue<'ctx>)>>,
 }
 
+/// Imported function values remain callable after their source names leave scope.
+/// Keep their ABI/default metadata under their unique LLVM symbol (BUG 208).
+struct ImportedFunctionValue<'ctx> {
+    target: FunctionValue<'ctx>,
+    param_names: Vec<String>,
+    defaults: Vec<Option<Expr>>,
+}
+
 /// Character class for string classification functions
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CharClass {
@@ -776,6 +784,7 @@ pub struct CodeGen<'ctx> {
     import_prefixes: HashMap<PathBuf, String>,
     /// Default parameter values for imported module functions (module_path -> {func_name -> defaults}).
     imported_module_function_defaults: HashMap<PathBuf, HashMap<String, Vec<Option<Expr>>>>,
+    imported_function_values: HashMap<String, ImportedFunctionValue<'ctx>>,
     /// Per-module init functions that execute top-level statements exactly once at runtime.
     module_init_functions: HashMap<PathBuf, FunctionValue<'ctx>>,
     /// Per-module init guards (false until init succeeds).
@@ -940,6 +949,7 @@ impl<'ctx> CodeGen<'ctx> {
             imported_modules: HashMap::new(),
             import_prefixes: HashMap::new(),
             imported_module_function_defaults: HashMap::new(),
+            imported_function_values: HashMap::new(),
             module_init_functions: HashMap::new(),
             module_init_flags: HashMap::new(),
             module_unique_ids: HashMap::new(),
@@ -13863,6 +13873,21 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                 }
                 self.bind_block_local(name, true);
+                // An unaliased fetch exposes module storage for assignment. A top-level
+                // `ken` instead binds the importer's own global (BUG 207). Block/function
+                // declarations have already selected their local storage above.
+                let shadows_imported = !self.in_user_function
+                    && self.current_class.is_none()
+                    && self.loop_stack.is_empty()
+                    && self
+                        .variables
+                        .get(name)
+                        .or_else(|| self.globals.get(name))
+                        .is_some_and(|ptr| {
+                            self.imported_module_var_globals.values().any(|vars| {
+                                vars.get(name).is_some_and(|g| g.as_pointer_value() == *ptr)
+                            })
+                        });
                 if self.shadowing_locals.get(name).is_some_and(|v| v.0) {
                     self.boxed_vars.insert(name.clone());
                 }
@@ -13879,7 +13904,9 @@ impl<'ctx> CodeGen<'ctx> {
                         self.forward_globals.remove(name);
                     }
 
-                    let alloca = if let Some(&alloca) = self.variables.get(name) {
+                    let alloca = if shadows_imported {
+                        self.global_symbol_ptr(name)
+                    } else if let Some(&alloca) = self.variables.get(name) {
                         alloca
                     } else if let Some(&alloca) = self.globals.get(name) {
                         alloca
@@ -13894,6 +13921,11 @@ impl<'ctx> CodeGen<'ctx> {
                     } else {
                         self.make_nil()
                     };
+
+                    if shadows_imported {
+                        self.top_level_global(name);
+                        self.variables.insert(name.clone(), alloca);
+                    }
 
                     let one_i32 = self.context.i32_type().const_int(1, false);
                     let cell = self
@@ -13981,8 +14013,9 @@ impl<'ctx> CodeGen<'ctx> {
                 let is_top_level = !self.in_user_function
                     && self.current_class.is_none()
                     && self.loop_stack.is_empty()
-                    && !self.variables.contains_key(name)
-                    && !self.globals.contains_key(name);
+                    && (shadows_imported
+                        || (!self.variables.contains_key(name)
+                            && !self.globals.contains_key(name)));
 
                 // For list variables, create a pointer shadow for fast access
                 // Note: we skip the optimization for top-level vars since they need LLVM globals
@@ -14078,7 +14111,13 @@ impl<'ctx> CodeGen<'ctx> {
                     && self.loop_stack.is_empty()
                     && !self.variables.contains_key(name);
 
-                let alloca = if let Some(&existing) = self.variables.get(name) {
+                let alloca = if shadows_imported {
+                    // Evaluate the initializer before replacing the imported binding:
+                    // `ken mg = mg + suffix` still reads the module's current value.
+                    let global_ptr = self.top_level_global(name);
+                    self.variables.insert(name.clone(), global_ptr);
+                    global_ptr
+                } else if let Some(&existing) = self.variables.get(name) {
                     existing
                 } else if let Some(&existing) = self.globals.get(name) {
                     // Already exists as a global
@@ -33184,12 +33223,29 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
         let function = self.current_function.unwrap();
 
+        // Lexical bindings can hide imported names while their values remain in an
+        // alias dictionary. Dispatch by callable identity, independent of visibility.
+        let mut fn_bindings: Vec<(String, FunctionValue<'ctx>)> = self
+            .functions
+            .iter()
+            .map(|(name, target)| (name.clone(), *target))
+            .collect();
+        for (symbol, imported) in &self.imported_function_values {
+            if !fn_bindings
+                .iter()
+                .any(|(_, target)| *target == imported.target)
+            {
+                fn_bindings.push((symbol.clone(), imported.target));
+            }
+        }
+        fn_bindings.sort_by(|a, b| a.0.cmp(&b.0));
+
         // Inlining a dispatch chain over every function, closure and class at each call
         // site makes the IR grow with (call sites x functions): a 300-line program with
         // ~140 functions came to 640k lines of IR (MDH-BUG-FLU-00157). Past a threshold,
         // share one dispatcher per arg count; it is the same dispatch, emitted once.
         if !self.in_late_dispatch
-            && self.functions.len() + self.classes.len() > INLINE_CALL_DISPATCH_LIMIT
+            && fn_bindings.len() + self.classes.len() > INLINE_CALL_DISPATCH_LIMIT
         {
             let dispatcher = self.late_call_dispatcher(args.len());
             let mut late_args: Vec<BasicMetadataValueEnum> = Vec::with_capacity(args.len() + 1);
@@ -33268,11 +33324,14 @@ impl<'ctx> CodeGen<'ctx> {
         // Dispatch based on the raw function pointer payload so we can:
         // - call with the correct LLVM function signature (avoids UB)
         // - apply default args safely when calling through a function value
-        let mut fn_names: Vec<String> = self.functions.keys().cloned().collect();
-        fn_names.sort();
-        fn_names.retain(|n| self.function_captures.get(n).map_or(0, std::vec::Vec::len) == 0);
+        fn_bindings.retain(|(name, _)| {
+            self.function_captures
+                .get(name)
+                .map_or(0, std::vec::Vec::len)
+                == 0
+        });
 
-        if fn_names.is_empty() {
+        if fn_bindings.is_empty() {
             self.builder
                 .build_unconditional_branch(error_block)
                 .unwrap();
@@ -33280,23 +33339,20 @@ impl<'ctx> CodeGen<'ctx> {
             let unknown_fn_block = self.context.append_basic_block(function, "call_unknown_fn");
 
             let mut check_block = simple_block;
-            for (idx, name) in fn_names.iter().enumerate() {
+            for (idx, (name, target)) in fn_bindings.iter().enumerate() {
                 self.builder.position_at_end(check_block);
 
                 let match_block = self
                     .context
                     .append_basic_block(function, &format!("call_fn_match_{}", idx));
-                let next_block = if idx + 1 == fn_names.len() {
+                let next_block = if idx + 1 == fn_bindings.len() {
                     unknown_fn_block
                 } else {
                     self.context
                         .append_basic_block(function, &format!("call_fn_check_{}", idx + 1))
                 };
 
-                let target = *self
-                    .functions
-                    .get(name)
-                    .expect("missing function binding for dispatch");
+                let target = *target;
                 let target_ptr = target.as_global_value().as_pointer_value();
                 let target_int = self
                     .builder
@@ -33341,8 +33397,14 @@ impl<'ctx> CodeGen<'ctx> {
                         self.current_masel = Some(tmp);
                     }
 
-                    let param_names = self.function_param_names.get(name).cloned();
-                    let defaults = self.function_defaults.get(name).cloned();
+                    let symbol = target.get_name().to_string_lossy();
+                    let imported = self.imported_function_values.get(symbol.as_ref());
+                    let param_names = imported
+                        .map(|f| f.param_names.clone())
+                        .or_else(|| self.function_param_names.get(name).cloned());
+                    let defaults = imported
+                        .map(|f| f.defaults.clone())
+                        .or_else(|| self.function_defaults.get(name).cloned());
 
                     if let (Some(param_names), Some(defaults)) = (param_names, defaults) {
                         // Defaults evaluate in the callee closure environment. When calling a
@@ -36671,11 +36733,17 @@ impl<'ctx> CodeGen<'ctx> {
                         }
                     };
 
+                    // The initializer sees the old imported binding. Afterwards both
+                    // reads and assignments in this init must use this module's slot.
+                    let value = initializer
+                        .as_ref()
+                        .map(|init| self.compile_expr(init))
+                        .transpose()?;
                     let global_ptr = global.as_pointer_value();
                     self.globals.insert(name.clone(), global_ptr);
+                    self.variables.insert(name.clone(), global_ptr);
 
-                    if let Some(init) = initializer {
-                        let value = self.compile_expr(init)?;
+                    if let Some(value) = value {
                         self.store_slot(global_ptr, value);
                     }
                 }
@@ -36974,9 +37042,29 @@ impl<'ctx> CodeGen<'ctx> {
                         if let Err(err) = self.compile_function(name, params, body) {
                             break 'import Err(err);
                         }
+                        let target = module_declared_functions[name];
+                        let symbol = target.get_name().to_string_lossy().into_owned();
+                        self.imported_function_values.insert(
+                            symbol,
+                            ImportedFunctionValue {
+                                target,
+                                param_names: params.iter().map(|p| p.name.clone()).collect(),
+                                defaults: params.iter().map(|p| p.default.clone()).collect(),
+                            },
+                        );
                     }
                     Stmt::Struct { name, fields, .. } => {
                         self.compile_struct_decl(name, fields);
+                        let target = module_declared_functions[name];
+                        let symbol = target.get_name().to_string_lossy().into_owned();
+                        self.imported_function_values.insert(
+                            symbol,
+                            ImportedFunctionValue {
+                                target,
+                                param_names: fields.clone(),
+                                defaults: vec![None; fields.len()],
+                            },
+                        );
                     }
                     Stmt::Class {
                         name,
