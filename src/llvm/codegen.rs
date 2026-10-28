@@ -37,6 +37,7 @@ use crate::ast::{
 use crate::error::HaversError;
 
 mod rc;
+mod toplevel;
 pub(crate) use rc::{rc_split_tag_phis, RC_TAG_CLEANUP};
 
 use super::types::{
@@ -638,6 +639,10 @@ pub struct CodeGen<'ctx> {
     /// Global variable storage (name -> global pointer) - accessible from all functions
     globals: HashMap<String, PointerValue<'ctx>>,
 
+    /// RC-only entry-module declarations that no callable/class can name. They use
+    /// main's ordinary owning slots; imports disable this AST-proven optimisation.
+    main_local_names: HashSet<String>,
+
     /// Shadow i64 storage for integer variables (optimization)
     /// When a variable is known to be Int, we keep an unboxed i64 version
     int_shadows: HashMap<String, PointerValue<'ctx>>,
@@ -920,6 +925,7 @@ impl<'ctx> CodeGen<'ctx> {
             line_slots: HashMap::new(),
             variables: HashMap::new(),
             globals: HashMap::new(),
+            main_local_names: HashSet::new(),
             int_shadows: HashMap::new(),
             string_len_shadows: HashMap::new(),
             string_cap_shadows: HashMap::new(),
@@ -5242,6 +5248,9 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     fn compile_program(&mut self, program: &Program) -> Result<(), HaversError> {
+        if self.rc_enabled {
+            self.main_local_names = toplevel::main_local_names(program);
+        }
         // First pass: declare all functions/struct ctors and store default parameter values
         for stmt in &program.statements {
             match stmt {
@@ -5338,7 +5347,8 @@ impl<'ctx> CodeGen<'ctx> {
         // Names that are also functions or classes keep their existing resolution.
         for stmt in &program.statements {
             if let Stmt::VarDecl { name, .. } = stmt {
-                if !self.globals.contains_key(name)
+                if !self.main_local_names.contains(name)
+                    && !self.globals.contains_key(name)
                     && !self.variables.contains_key(name)
                     && !self.functions.contains_key(name)
                     && !self.classes.contains_key(name)
@@ -14065,6 +14075,12 @@ impl<'ctx> CodeGen<'ctx> {
                 // Track the inferred type for optimization. A name whose type differs
                 // between its bindings stays Unknown, so it never gets shadow caches
                 // (MDH-BUG-FLU-00048).
+                let main_local = self.rc_enabled
+                    && self.main_local_names.contains(name)
+                    && self
+                        .current_function
+                        .is_some_and(|f| f.get_name().to_bytes() == b"main")
+                    && !self.boxed_vars.contains(name);
                 let var_type = match initializer {
                     Some(init) if !self.unstable_vars.contains(name) => self.infer_expr_type(init),
                     _ => VarType::Unknown,
@@ -14120,6 +14136,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let is_top_level = !self.in_user_function
                     && self.current_class.is_none()
                     && self.loop_stack.is_empty()
+                    && !main_local
                     && (shadows_imported
                         || (!self.variables.contains_key(name)
                             && !self.globals.contains_key(name)));
@@ -14216,6 +14233,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let is_top_level = !self.in_user_function
                     && self.current_class.is_none()
                     && self.loop_stack.is_empty()
+                    && !main_local
                     && !self.variables.contains_key(name);
 
                 let alloca = if shadows_imported {
@@ -28320,7 +28338,10 @@ impl<'ctx> CodeGen<'ctx> {
         if hides && make_slot {
             let is_top_level = !self.in_user_function
                 && self.current_class.is_none()
-                && self.loop_stack.is_empty();
+                && self.loop_stack.is_empty()
+                && !(self.rc_enabled
+                    && self.main_local_names.contains(name)
+                    && !self.boxed_vars.contains(name));
             let ptr = if is_top_level {
                 self.block_global_counter += 1;
                 let symbol = format!(
