@@ -1,26 +1,25 @@
 # MDH-BUG-FLU-00212 — cargo clippy -D warnings fails on trunk with --features cli,llvm,native
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** tooling
 - **Raised:** 2026-10-28T21:34:47Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261028T233537Z-4d4508ec
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00212-run-verify-20261028T233537Z-4d4508ec
-- **Owner base:** de9e4f57b7673b679b4c1bdd6ef7ebd7d263965e
-- **Owner fingerprint:** sha256:2b67cf0cadd764d9c654eb3e3eb943d869fd6cfcbd7e6895b66f48c5ce09feed
-- **Owner since:** 2026-10-28T23:35:37Z
-- **Owner until:** 2026-10-29T03:35:37Z
-- **Owner session:** flux/2a9090d7-08f7-48c7-bee8-7b7d1d963ab2 (run verify-20261028T233537Z-4d4508ec)
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-28T21:34:47Z, raised via `deltic bugs new --land`) -> Fixed (2026-10-28T21:46:06Z, deltic:auto role=fix run=fix-20261028T214559Z-4c457540 branch=task/bug-MDH-BUG-FLU-00212-run-fix-20261028T214559Z-4c457540 code=df7a6e0 gate=manual)
+- **State history:** Open (2026-10-28T21:34:47Z, raised via `deltic bugs new --land`) -> Fixed (2026-10-28T21:46:06Z, deltic:auto role=fix run=fix-20261028T214559Z-4c457540 branch=task/bug-MDH-BUG-FLU-00212-run-fix-20261028T214559Z-4c457540 code=df7a6e0 gate=manual) -> Closed (2026-10-28T23:59:52Z, deltic:manual role=verify run=verify-20261028T233537Z-4d4508ec verified_fix_run=fix-20261028T214559Z-4c457540 verdict=close)
 
 ## Observation
 
@@ -43,5 +42,9 @@ Evidence fingerprint: `manual:v1:cargo-clippy-d-warnings-fails-on-trunk-with-fea
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-28T23:59:52Z, deltic:manual run=verify-20261028T233537Z-4d4508ec verified_fix_run=fix-20261028T214559Z-4c457540 verdict=close)
+
+Verifier note: Manual verify: Independent Sol verifier on d36dafb: clippy -D warnings with cli,llvm,native passes; restoring map_or at src/compiler.rs:905 fails on clippy::unnecessary_map_or.
 
 ## Notes
