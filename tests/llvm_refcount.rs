@@ -890,6 +890,109 @@ blether d["ab"] + d["cd"]
     }
 }
 
+/// Retains (`__mdh_retain_fast`, `__mdh_rc_retain_obj_fast`) in compiled function `name`.
+fn retains_in(src: &str, name: &str) -> usize {
+    let ir = LLVMCompiler::new()
+        .with_refcounting(true)
+        .compile_to_ir(&parse(src).expect("parse"))
+        .expect("compile to IR");
+    let head = format!("@__mdh_fn_{name}(");
+    let body = ir
+        .split("\ndefine ")
+        .find(|f| f.lines().next().is_some_and(|l| l.contains(&head)))
+        .unwrap_or_else(|| panic!("{name}'s body"));
+    body.matches("call void @__mdh_retain_fast(").count()
+        + body.matches("call void @__mdh_rc_retain_obj_fast(").count()
+}
+
+/// Runs `src` with MDH_RC_REPORT=1, then also MDH_RC_NOFREE=1: `expected` output, exit 0,
+/// nothing live at exit, no use of a dead object.
+fn assert_exact_run(src: &str, expected: &str) {
+    for envs in [
+        &[("MDH_RC_REPORT", "1")][..],
+        &[("MDH_RC_REPORT", "1"), ("MDH_RC_NOFREE", "1")][..],
+    ] {
+        let run = run_native(src, envs);
+        assert_eq!(run.code, Some(0), "{envs:?}: {}", run.stderr);
+        assert_eq!(run.stdout, expected, "{envs:?}: {}", run.stderr);
+        let total = run
+            .stderr
+            .lines()
+            .find(|l| l.starts_with("mdhavers rc: live at exit:"))
+            .and_then(|l| l.split(" total=").nth(1))
+            .and_then(|t| t.split(' ').next())
+            .unwrap_or_else(|| panic!("no rc report: {}", run.stderr));
+        assert_eq!(total, "0", "{}", run.stderr);
+    }
+}
+
+/// R6 rule (a): `chynge` has an ownership row, so passing it a value loaded from `xs`
+/// cannot drop `xs`'s reference; the read of `xs` takes none (two more retains when every
+/// call passed a loaded value counts as touching the slot).
+#[test]
+fn a_runtime_call_that_borrows_a_local_leaves_its_read_borrowed() {
+    let src = r#"
+dae ins(xs) {
+    ken i = 0
+    whiles i < 100 {
+        xs = chynge(xs, len(xs), "k" + tae_string(i))
+        i = i + 1
+    }
+    gie len(xs)
+}
+blether ins(["a" + "b"])
+"#;
+    assert_eq!(retains_in(src, "ins"), 3);
+    assert_exact_run(src, "101\n");
+}
+
+/// R6 rule (b) stress: `x = x[1]` walks a 500-deep chain whose only holder is `x`; each
+/// store drops the old head. (Rule (b) alone changes no retain here; the element-update
+/// test above isolates it.)
+#[test]
+fn walking_a_chain_through_its_only_holder_frees_nothing_early() {
+    let src = r#"
+dae build(n) {
+    ken l = naething
+    ken i = 0
+    whiles i < n {
+        l = ["s" + tae_string(i), l]
+        i = i + 1
+    }
+    gie l
+}
+dae drain(n) {
+    ken x = build(n)
+    ken k = 0
+    whiles x != naething {
+        k = k + len(x[0])
+        x = x[1]
+    }
+    gie k
+}
+blether drain(500)
+"#;
+    assert_eq!(retains_in(src, "drain"), 6);
+    assert_exact_run(src, "1890\n");
+}
+
+/// R6: creel insert and removal (`toss_in`, `heave_oot`: rows `ms` and `mb`) on a global
+/// creel keep counts exact.
+#[test]
+fn creel_insert_and_removal_keep_counts_exact() {
+    let src = r#"
+ken s = creel(["a" + "b"])
+ken i = 0
+whiles i < 50 {
+    toss_in(s, "k" + tae_string(i))
+    heave_oot(s, "k" + tae_string(i - 1))
+    i = i + 1
+}
+blether len(s)
+"#;
+    assert_exact_run(src, "2\n");
+}
+
 /// R6: after the optimiser, each tag read of a merged value gets its own phi of the
 /// incoming tags (`rc_split_tag_phis`), so heap tests fold where every path is a number.
 /// Values that are a number on some paths and a fresh string or list on others must still

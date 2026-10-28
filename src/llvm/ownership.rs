@@ -14,6 +14,11 @@
 //! - `m` borrowed, and its heap object is mutated in place (push, insert, field set);
 //! - `s` stored: the callee keeps the value (container, closure, global, last error,
 //!   thread, channel, handle table) beyond the call, so under RC it must retain it.
+//!
+//! No row may consume or free an argument object (drop the caller's reference to it):
+//! RC borrowing relies on that (`rc_touches_slot` in `codegen/rc.rs`). The release
+//! functions are the only exception, and borrowing recognises them by name; the test
+//! `no_row_consumes_its_argument` keeps new rows honest.
 
 /// What a runtime function's result is, as far as ownership goes. Where several
 /// apply, the first in declaration order wins (the one that needs the most care).
@@ -438,8 +443,32 @@ pub fn ownership_of(symbol: &str) -> Option<(&'static str, Ret)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     use crate::llvm::codegen::CodeGen;
     use inkwell::context::Context;
+
+    /// RC borrowing treats a runtime function with a row as borrowing its arguments: it
+    /// never drops the caller's reference to an argument object. A function that does
+    /// (by name: consume, take, drop, free, ...) needs a new arg code, not a row; the
+    /// release functions are caught by name in `rc_touches_slot` (release/free/realloc).
+    #[test]
+    fn no_row_consumes_its_argument() {
+        let consuming = [
+            "owned", "destroy", "drop", "kill", "dispose", "take", "consume",
+        ];
+        for (name, _, _) in RUNTIME_OWNERSHIP {
+            if ["release", "free", "realloc"]
+                .iter()
+                .any(|r| name.contains(r))
+            {
+                continue;
+            }
+            assert!(
+                !consuming.iter().any(|w| name.contains(w)),
+                "{name} looks like it consumes an argument: RC borrowing assumes rows borrow"
+            );
+        }
+    }
 
     /// Uses the runtime helpers codegen declares only on first use: division (by
     /// zero), indexing (out of bounds), `hurl` with a line and split's string copy.

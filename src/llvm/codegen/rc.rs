@@ -2236,6 +2236,9 @@ impl<'ctx> CodeGen<'ctx> {
     /// row borrows its arguments (`b`, `m`, `s`: it reads them, mutates their contents or
     /// takes a reference of its own), so it cannot drop the caller's reference to the
     /// object itself; a release, free or realloc, or a function with no row, can.
+    /// Invariant (`src/llvm/ownership.rs`, test `no_row_consumes_its_argument`): no
+    /// function with a row consumes or frees its argument object; the release family is
+    /// the exception and is matched by name here.
     fn rc_touches_slot(inst: InstructionValue<'ctx>, slot: PointerValue<'ctx>) -> bool {
         let may_release_arg = Self::rc_callee(inst).is_none_or(|f| {
             let name = f.get_name().to_string_lossy();
