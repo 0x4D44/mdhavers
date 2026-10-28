@@ -965,9 +965,9 @@ dae setmg() {
     gie j
 }
 "#;
-    let src = "fetch \"m\"\nblether mg + setmg()\n";
+    let src = "fetch \"m\"\nblether mg + setmg()\nblether mg\n";
     assert_probe(
         |envs| run_native_with_modules(src, &[("m.braw", module)], envs),
-        "mgxy\n",
+        "mgxy\nnh\n",
     );
 }

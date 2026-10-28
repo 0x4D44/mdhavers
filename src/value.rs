@@ -1246,10 +1246,14 @@ impl Iterator for RangeIterator {
     }
 }
 
+/// Bindings shared by a module and its unaliased import sites.
+pub(crate) type SharedBindings = HashMap<String, Rc<RefCell<Value>>>;
+
 /// Environment for variable bindings
 #[derive(Debug)]
 pub struct Environment {
     values: HashMap<String, Value>,
+    shared: SharedBindings,
     enclosing: Option<Rc<RefCell<Environment>>>,
 }
 
@@ -1257,6 +1261,7 @@ impl Environment {
     pub fn new() -> Self {
         Environment {
             values: HashMap::new(),
+            shared: HashMap::new(),
             enclosing: None,
         }
     }
@@ -1264,17 +1269,37 @@ impl Environment {
     pub fn with_enclosing(enclosing: Rc<RefCell<Environment>>) -> Self {
         Environment {
             values: HashMap::new(),
+            shared: HashMap::new(),
             enclosing: Some(enclosing),
         }
     }
 
     pub fn define(&mut self, name: String, value: Value) {
+        self.shared.remove(&name);
         self.values.insert(name, value);
+    }
+
+    pub(crate) fn import_bindings(&mut self, bindings: SharedBindings) {
+        for (name, binding) in bindings {
+            self.values.remove(&name);
+            self.shared.insert(name, binding);
+        }
+    }
+
+    /// Promote only exported bindings to cells; ordinary locals keep direct values.
+    pub(crate) fn share_exports(&mut self) -> SharedBindings {
+        for (name, value) in self.values.drain() {
+            self.shared.insert(name, Rc::new(RefCell::new(value)));
+        }
+        self.shared.clone()
     }
 
     pub fn get(&self, name: &str) -> Option<Value> {
         if let Some(value) = self.values.get(name) {
             return Some(value.clone());
+        }
+        if let Some(binding) = self.shared.get(name) {
+            return Some(binding.borrow().clone());
         }
         if let Some(enclosing) = &self.enclosing {
             return enclosing.borrow().get(name);
@@ -1287,16 +1312,26 @@ impl Environment {
             self.values.insert(name.to_string(), value);
             return true;
         }
+        if let Some(binding) = self.shared.get(name) {
+            *binding.borrow_mut() = value;
+            return true;
+        }
         if let Some(enclosing) = &self.enclosing {
             return enclosing.borrow_mut().assign(name, value);
         }
         false
     }
 
-    /// Get all values defined in this environment (not including enclosing)
-    /// Used fer module exports
+    /// Snapshot current values in this environment (not including enclosing).
+    /// Used fer REPL inspection and native builtin discovery, not import bindings.
     pub fn get_exports(&self) -> HashMap<String, Value> {
-        self.values.clone()
+        let mut exports = self.values.clone();
+        exports.extend(
+            self.shared
+                .iter()
+                .map(|(name, binding)| (name.clone(), binding.borrow().clone())),
+        );
+        exports
     }
 }
 

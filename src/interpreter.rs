@@ -2399,7 +2399,7 @@ pub struct Interpreter {
     environment: Rc<RefCell<Environment>>,
     output: Vec<String>,
     /// Cache of module exports keyed by canonical module path
-    module_cache: HashMap<PathBuf, HashMap<String, Value>>,
+    module_cache: HashMap<PathBuf, crate::value::SharedBindings>,
     /// Stack of modules currently being loaded (for circular import detection)
     module_in_progress: Vec<PathBuf>,
     /// Current working directory fer resolving relative imports
@@ -10801,7 +10801,7 @@ impl Interpreter {
     fn execute_module_program(
         &mut self,
         program: &Program,
-    ) -> HaversResult<HashMap<String, Value>> {
+    ) -> HaversResult<crate::value::SharedBindings> {
         // Execute the module in a new environment that inherits fae globals.
         let module_env = Rc::new(RefCell::new(Environment::with_enclosing(
             self.globals.clone(),
@@ -10813,26 +10813,28 @@ impl Interpreter {
             }
         }
 
-        let exports = module_env.borrow().get_exports();
+        let exports = module_env.borrow_mut().share_exports();
         Ok(exports)
     }
 
-    fn inject_module_exports(&mut self, exports: HashMap<String, Value>, alias: Option<&str>) {
+    fn inject_module_exports(
+        &mut self,
+        exports: crate::value::SharedBindings,
+        alias: Option<&str>,
+    ) {
         // If there's an alias, create a namespace object.
         // Otherwise, export all defined names tae the current environment.
         if let Some(alias_name) = alias {
             let mut export_dict = DictValue::new();
-            for (name, value) in exports {
-                export_dict.set(Value::String(name), value);
+            for (name, binding) in exports {
+                export_dict.set(Value::String(name), binding.borrow().clone());
             }
             let module_dict = Value::Dict(Rc::new(RefCell::new(export_dict)));
             self.environment
                 .borrow_mut()
                 .define(alias_name.to_string(), module_dict);
         } else {
-            for (name, value) in exports {
-                self.environment.borrow_mut().define(name, value);
-            }
+            self.environment.borrow_mut().import_bindings(exports);
         }
     }
 

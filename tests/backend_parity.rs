@@ -1897,3 +1897,155 @@ blether aye != nae
     assert_eq!(interp.lines().next(), Some("same-called"));
     assert_eq!(run_js(source).unwrap().trim_end(), interp.trim_end());
 }
+
+// MDH-BUG-FLU-00205: unaliased fetch exposes live module bindings. Keep the
+// backend tests separate so an interpreter failure cannot hide native results.
+const FETCH_SHARED_MODULE_00205: &str = r#"
+ken mg = "m" + "g"
+dae setmg() {
+    mg = "n" + "h"
+    gie "xy"
+}
+dae getmg() { gie mg }
+ken reader = || mg
+ken writer = |value| { mg = value }
+"#;
+
+fn fetch_shared_case_00205(case: &str) -> (&'static str, &'static str) {
+    match case {
+        "original" => (
+            "fetch \"m\"\nblether mg + setmg()\nblether mg\n",
+            "mgxy\nnh",
+        ),
+        "importer_writes" => (
+            "fetch \"m\"\nmg = \"ab\"\nblether getmg()\nsetmg()\nblether mg\n",
+            "ab\nnh",
+        ),
+        "nested" => (
+            "fetch \"wrapper\"\nmg = \"ab\"\nblether getmg()\nsetmg()\nblether mg\n",
+            "ab\nnh",
+        ),
+        "nested_shadow" => (
+            "fetch \"shadow\"\nblether getmg()\nmg = \"ab\"\nblether shadow_get()\nshadow_set()\nblether mg\nsetmg()\nblether getmg()\nblether mg\n",
+            "mg\nab\nchanged\nnh\nchanged",
+        ),
+        "reimport" => (
+            "fetch \"m\"\nsetmg()\nfetch \"m\"\nblether mg\nmg = \"ab\"\nfetch \"m\"\nblether getmg()\n",
+            "nh\nab",
+        ),
+        "closures" => (
+            "fetch \"m\"\nmg = \"ab\"\nblether reader()\nwriter(\"cd\")\nblether mg\n",
+            "ab\ncd",
+        ),
+        _ => panic!("unknown shared-fetch case: {case}"),
+    }
+}
+
+fn stage_fetch_shared_modules_00205(source: &str) -> tempfile::TempDir {
+    let dir = tempfile::tempdir().expect("module tempdir");
+    for (name, text) in [
+        ("m.braw", FETCH_SHARED_MODULE_00205),
+        ("wrapper.braw", "fetch \"m\"\n"),
+        (
+            "shadow.braw",
+            "fetch \"m\"\nken mg = \"wrapper\"\ndae shadow_get() { gie mg }\ndae shadow_set() { mg = \"changed\" }\n",
+        ),
+        ("main.braw", source),
+    ] {
+        std::fs::write(dir.path().join(name), text).expect("write module fixture");
+    }
+    dir
+}
+
+fn assert_fetch_shared_interpreter_00205(case: &str) {
+    let (source, expected) = fetch_shared_case_00205(case);
+    let dir = stage_fetch_shared_modules_00205(source);
+    let program = mdhavers::parse(source).expect("parse main");
+    let mut interp = Interpreter::with_dir(dir.path());
+    interp.interpret(&program).expect("interpret main");
+    assert_eq!(interp.get_output().join("\n"), expected, "{case}");
+    let variables = interp.get_user_variables();
+    let mg = variables.iter().find(|(name, _, _)| name == "mg");
+    assert!(mg.is_some(), "imported global missing from inspection");
+    let expected_mg = expected.rsplit('\n').next().unwrap();
+    assert_eq!(
+        mg.unwrap().2,
+        expected_mg,
+        "inspection must show the live value {expected_mg:?}: {mg:?}"
+    );
+}
+
+#[cfg(feature = "llvm")]
+fn assert_fetch_shared_native_00205(case: &str) {
+    let (source, expected) = fetch_shared_case_00205(case);
+    let dir = stage_fetch_shared_modules_00205(source);
+    let program = mdhavers::parse(source).expect("parse main");
+    let executable = dir.path().join("shared_fetch");
+    mdhavers::LLVMCompiler::new()
+        .compile_to_native_with_source(
+            &program,
+            &executable,
+            2,
+            Some(&dir.path().join("main.braw")),
+        )
+        .expect("compile native main");
+    let output = Command::new(&executable)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("run native main");
+    assert!(
+        output.status.success(),
+        "{case}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim_end_matches('\n'),
+        expected,
+        "{case}"
+    );
+}
+
+macro_rules! fetch_shared_tests_00205 {
+    ($interpreter:ident, $native:ident, $case:literal) => {
+        #[test]
+        fn $interpreter() {
+            assert_fetch_shared_interpreter_00205($case);
+        }
+        #[test]
+        #[cfg(feature = "llvm")]
+        fn $native() {
+            assert_fetch_shared_native_00205($case);
+        }
+    };
+}
+
+fetch_shared_tests_00205!(
+    fetch_shared_globals_00205_interpreter_original,
+    fetch_shared_globals_00205_native_original,
+    "original"
+);
+fetch_shared_tests_00205!(
+    fetch_shared_globals_00205_interpreter_importer_writes,
+    fetch_shared_globals_00205_native_importer_writes,
+    "importer_writes"
+);
+fetch_shared_tests_00205!(
+    fetch_shared_globals_00205_interpreter_nested,
+    fetch_shared_globals_00205_native_nested,
+    "nested"
+);
+fetch_shared_tests_00205!(
+    fetch_shared_globals_00205_interpreter_nested_shadow,
+    fetch_shared_globals_00205_native_nested_shadow,
+    "nested_shadow"
+);
+fetch_shared_tests_00205!(
+    fetch_shared_globals_00205_interpreter_reimport,
+    fetch_shared_globals_00205_native_reimport,
+    "reimport"
+);
+fetch_shared_tests_00205!(
+    fetch_shared_globals_00205_interpreter_closures,
+    fetch_shared_globals_00205_native_closures,
+    "closures"
+);
