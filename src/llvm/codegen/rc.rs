@@ -1940,9 +1940,16 @@ impl<'ctx> CodeGen<'ctx> {
                     || match holder_slot {
                         // A variable slot holds the value: only writing the slot (or code)
                         // can drop its reference.
+                        // A store into the slot drops nothing itself (the old value's
+                        // release after it does, and that release is checked in turn), so
+                        // when the store is the region's last use nothing is lost.
                         Some(slot) => {
+                            let last_store = inst.get_opcode() == InstructionOpcode::Store
+                                && !all
+                                && Some(value_id(inst)) == last_use;
                             (inst.get_opcode() == InstructionOpcode::Store
                                 || effect == RcCallEffect::Drops)
+                                && !last_store
                                 && Self::rc_touches_slot(inst, slot)
                         }
                         None => {
@@ -2223,9 +2230,20 @@ impl<'ctx> CodeGen<'ctx> {
         })
     }
 
-    /// `inst` writes the variable slot `slot`, or passes it (or a value loaded from it)
-    /// to a call: the only ways, besides compiled code, to drop the slot's reference.
+    /// `inst` writes the variable slot `slot`, passes its address to a call, or passes a
+    /// value loaded from it to a call that may release that value: the only ways, besides
+    /// compiled code, to drop the slot's reference. A runtime function with an ownership
+    /// row borrows its arguments (`b`, `m`, `s`: it reads them, mutates their contents or
+    /// takes a reference of its own), so it cannot drop the caller's reference to the
+    /// object itself; a release, free or realloc, or a function with no row, can.
     fn rc_touches_slot(inst: InstructionValue<'ctx>, slot: PointerValue<'ctx>) -> bool {
+        let may_release_arg = Self::rc_callee(inst).is_none_or(|f| {
+            let name = f.get_name().to_string_lossy();
+            ["release", "free", "realloc"]
+                .iter()
+                .any(|fam| name.contains(fam))
+                || ownership_of(&name).is_none()
+        });
         let is_slot = |v: Option<BasicValueEnum<'ctx>>| -> bool {
             let mut v = v;
             for _ in 0..2 {
@@ -2233,8 +2251,9 @@ impl<'ctx> CodeGen<'ctx> {
                     Some(BasicValueEnum::PointerValue(p)) if p == slot => return true,
                     Some(other) => match other.as_instruction_value() {
                         Some(i) if i.get_opcode() == InstructionOpcode::Load => {
-                            return matches!(Self::rc_operand(i, 0),
-                                Some(BasicValueEnum::PointerValue(p)) if p == slot);
+                            return may_release_arg
+                                && matches!(Self::rc_operand(i, 0),
+                                    Some(BasicValueEnum::PointerValue(p)) if p == slot);
                         }
                         Some(i) if i.get_opcode() == InstructionOpcode::ExtractValue => {
                             v = Self::rc_operand(i, 0);

@@ -831,6 +831,65 @@ blether total([1, 2, 3])
     assert_eq!(run.stdout, "12\n");
 }
 
+/// R6: `xs[i] = xs[i] + 1` reads the local `xs` and, on its dict path, stores the
+/// updated dict back into `xs`. The runtime's dict and list setters only borrow `xs`, so
+/// the read takes no reference of its own; the dict path still keeps its counts exact.
+#[test]
+fn an_element_update_takes_no_reference_to_its_container() {
+    let src = r#"
+dae bump(xs) {
+    ken i = 0
+    whiles i < len(xs) {
+        xs[i] = xs[i] + 1
+        i = i + 1
+    }
+    gie xs
+}
+dae bumpd(d, keys) {
+    ken i = 0
+    whiles i < len(keys) {
+        d[keys[i]] = d[keys[i]] + 1
+        i = i + 1
+    }
+    gie d
+}
+ken xs = [1, 2, 3]
+bump(xs)
+blether xs
+ken d = {"a" + "b": 1, "c" + "d": 2}
+bumpd(d, ["a" + "b", "c" + "d", "a" + "b"])
+blether d["ab"] + d["cd"]
+"#;
+    let ir = LLVMCompiler::new()
+        .with_refcounting(true)
+        .compile_to_ir(&parse(src).expect("parse"))
+        .expect("compile to IR");
+    let body = ir
+        .split("\ndefine ")
+        .find(|f| {
+            f.lines()
+                .next()
+                .is_some_and(|l| l.contains("@__mdh_fn_bump("))
+        })
+        .expect("bump's body");
+    let retains = body.matches("call void @__mdh_retain_fast(").count()
+        + body.matches("call void @__mdh_rc_retain_obj_fast(").count();
+    // The per-element retain of `xs` is gone; the rest are on cold paths (`+` joining
+    // lists or strings) and the returned value's own reference (trunk: 6).
+    assert_eq!(retains, 5, "{body}");
+    for envs in [
+        &[("MDH_RC_REPORT", "1")][..],
+        &[("MDH_RC_REPORT", "1"), ("MDH_RC_NOFREE", "1")][..],
+    ] {
+        let run = run_native(src, envs);
+        assert_eq!(run.code, Some(0), "{}", run.stderr);
+        assert_eq!(run.stdout, "[2, 3, 4]\n6\n", "{}", run.stderr);
+        for kind in ["string", "list", "dict"] {
+            assert_eq!(reported_live(&run.stderr, kind), 0, "{}", run.stderr);
+        }
+    }
+}
+
 /// R5 list-buffer cache: item buffers of dead lists are reused for new lists of the same
 /// capacity; lists that grow, shrink and nest keep their contents and counts exact.
 #[test]
