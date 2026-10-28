@@ -902,7 +902,7 @@ impl Compiler {
             Ok(module_path)
                 if Path::new(path)
                     .extension()
-                    .map_or(true, |extension| extension == "braw") =>
+                    .is_none_or(|extension| extension == "braw") =>
             {
                 module_path
             }

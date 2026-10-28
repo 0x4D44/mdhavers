@@ -13662,10 +13662,10 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_z_extend(char_val, self.types.i32_type, "char_i32")
             .unwrap();
-        let ws_space = self.types.i32_type.const_int((' ' as u8) as u64, false);
-        let ws_tab = self.types.i32_type.const_int(('\t' as u8) as u64, false);
-        let ws_nl = self.types.i32_type.const_int(('\n' as u8) as u64, false);
-        let ws_cr = self.types.i32_type.const_int(('\r' as u8) as u64, false);
+        let ws_space = self.types.i32_type.const_int(b' ' as u64, false);
+        let ws_tab = self.types.i32_type.const_int(b'\t' as u64, false);
+        let ws_nl = self.types.i32_type.const_int(b'\n' as u64, false);
+        let ws_cr = self.types.i32_type.const_int(b'\r' as u64, false);
         let is_ws_space = self
             .builder
             .build_int_compare(inkwell::IntPredicate::EQ, char_i32, ws_space, "is_ws_space")
@@ -18985,10 +18985,9 @@ impl<'ctx> CodeGen<'ctx> {
                                 "toss_in returned void",
                             )
                         })
-                        .map(|result| {
+                        .inspect(|&result| {
                             // If first argument is a variable, update it (toss_in may reallocate).
                             self.store_back_creel_arg(&args[0], result);
-                            result
                         });
                 }
                 "heave_oot" => {
@@ -19009,10 +19008,9 @@ impl<'ctx> CodeGen<'ctx> {
                                 "heave_oot returned void",
                             )
                         })
-                        .map(|result| {
+                        .inspect(|&result| {
                             // If first argument is a variable, update it (heave_oot may reallocate).
                             self.store_back_creel_arg(&args[0], result);
-                            result
                         });
                 }
                 "empty_creel" => {
@@ -36680,10 +36678,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.import_unique_counter += 1;
 
         let stem = match import_path.file_stem() {
-            Some(stem) => match stem.to_str() {
-                Some(stem) => stem,
-                _ => "module",
-            },
+            Some(stem) => stem.to_str().unwrap_or("module"),
             None => "module",
         };
         let mut sanitized = String::new();
@@ -36927,7 +36922,7 @@ impl<'ctx> CodeGen<'ctx> {
                     let module_vars = self
                         .imported_module_var_globals
                         .entry(import_path.to_path_buf())
-                        .or_insert_with(HashMap::new);
+                        .or_default();
                     let global = match module_vars.get(name).copied() {
                         Some(existing) => existing,
                         None => {
@@ -37609,8 +37604,10 @@ impl<'ctx> CodeGen<'ctx> {
                     .len()
                     .saturating_sub(capture_count)
                     .min(param_names.len());
-                for user_idx in 0..provided_user_count {
-                    let param_name = param_names[user_idx].clone();
+                for (user_idx, param_name) in
+                    param_names.iter().take(provided_user_count).enumerate()
+                {
+                    let param_name = param_name.clone();
                     let arg_idx = capture_count + user_idx;
                     let arg_val = BasicValueEnum::try_from(compiled_args[arg_idx]).unwrap();
 
@@ -38714,8 +38711,6 @@ impl<'ctx> CodeGen<'ctx> {
         if let Some(block) = saved_block {
             self.builder.position_at_end(block);
         }
-
-        ()
     }
 
     /// Compile property get expression: obj.property
@@ -40304,7 +40299,12 @@ impl<'ctx> CodeGen<'ctx> {
                         }
 
                         let user_param_count = expected_param_count.saturating_sub(1);
-                        for user_idx in provided_user_count..user_param_count {
+                        for (user_idx, param_name) in param_names
+                            .iter()
+                            .enumerate()
+                            .take(user_param_count)
+                            .skip(provided_user_count)
+                        {
                             let val = if let Some(Some(ref default_expr)) = defaults.get(user_idx) {
                                 self.compile_expr(default_expr)?
                             } else {
@@ -40312,7 +40312,7 @@ impl<'ctx> CodeGen<'ctx> {
                             };
                             call_args.push(val.into());
 
-                            let param_name = param_names[user_idx].clone();
+                            let param_name = param_name.clone();
                             let alloca = self.create_entry_block_alloca_raw(&format!(
                                 "__init_default_bind_{current_class}_{user_idx}_{param_name}"
                             ));
@@ -40748,7 +40748,12 @@ impl<'ctx> CodeGen<'ctx> {
                             }
 
                             let user_param_count = expected_param_count.saturating_sub(1);
-                            for user_idx in provided_user_count..user_param_count {
+                            for (user_idx, param_name) in param_names
+                                .iter()
+                                .enumerate()
+                                .take(user_param_count)
+                                .skip(provided_user_count)
+                            {
                                 let val =
                                     if let Some(Some(ref default_expr)) = defaults.get(user_idx) {
                                         self.compile_expr(default_expr)?
@@ -40757,7 +40762,7 @@ impl<'ctx> CodeGen<'ctx> {
                                     };
                                 call_args.push(val.into());
 
-                                let param_name = param_names[user_idx].clone();
+                                let param_name = param_name.clone();
                                 let alloca = self.create_entry_block_alloca_raw(&format!(
                                     "__method_default_bind_{idx}_{user_idx}_{param_name}"
                                 ));
@@ -40899,7 +40904,12 @@ impl<'ctx> CodeGen<'ctx> {
                 }
 
                 let user_param_count = expected_param_count.saturating_sub(1);
-                for user_idx in provided_user_count..user_param_count {
+                for (user_idx, param_name) in param_names
+                    .iter()
+                    .enumerate()
+                    .take(user_param_count)
+                    .skip(provided_user_count)
+                {
                     let val = if let Some(Some(ref default_expr)) = defaults.get(user_idx) {
                         self.compile_expr(default_expr)?
                     } else {
@@ -40907,7 +40917,7 @@ impl<'ctx> CodeGen<'ctx> {
                     };
                     call_args.push(val.into());
 
-                    let param_name = param_names[user_idx].clone();
+                    let param_name = param_name.clone();
                     let alloca = self.create_entry_block_alloca_raw(&format!(
                         "__method_default_bind_{method_name}_{user_idx}_{param_name}"
                     ));
@@ -43113,12 +43123,10 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
 
         // ===== string slice (runtime) =====
-        let string_slice_val;
-        let string_slice_bb;
         self.builder.position_at_end(slice_string_runtime);
 
         let step_mdh = self.make_int(step_val);
-        string_slice_val = self
+        let string_slice_val = self
             .build_call_basic_value(
                 self.libc.slice_string,
                 &[
@@ -43134,7 +43142,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_unconditional_branch(slice_final_merge)
             .unwrap();
-        string_slice_bb = self.builder.get_insert_block().unwrap();
+        let string_slice_bb = self.builder.get_insert_block().unwrap();
 
         // ===== list slice (existing implementation) =====
         self.builder.position_at_end(slice_list_impl);

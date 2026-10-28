@@ -99,7 +99,7 @@ extern "C" {
     fn __mdh_release(value: MdhValue);
 }
 
-#[cfg(debug_assertions)]
+#[cfg(all(debug_assertions, any(feature = "audio", feature = "graphics3d")))]
 extern "C" {
     fn __mdh_rust_enter() -> i64;
     fn __mdh_rust_leave(outer: i64);
@@ -109,11 +109,13 @@ extern "C" {
 /// this frame (MDH-BUG-FLU-00189, `__mdh_rust_enter` in mdh_runtime.c). For the entries
 /// compiled code calls directly (audio, tri); the C runtime marks its own calls into
 /// Rust. Drop it before the entry raises its error. Nothing in release builds.
+#[cfg(any(feature = "audio", feature = "graphics3d"))]
 pub(crate) struct RustFrames {
     #[cfg(debug_assertions)]
     outer: i64,
 }
 
+#[cfg(any(feature = "audio", feature = "graphics3d"))]
 impl RustFrames {
     pub(crate) fn enter() -> Self {
         RustFrames {
@@ -123,6 +125,7 @@ impl RustFrames {
     }
 }
 
+#[cfg(any(feature = "audio", feature = "graphics3d"))]
 impl Drop for RustFrames {
     fn drop(&mut self) {
         #[cfg(debug_assertions)]

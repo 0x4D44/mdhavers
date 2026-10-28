@@ -1718,7 +1718,7 @@ fn dict_get_bool(dict: &DictValue, key: &str) -> Option<bool> {
         })
 }
 
-#[cfg(any(all(feature = "native", unix), feature = "dtls", test))]
+#[cfg(any(feature = "dtls", test))]
 fn dict_get_bytes(dict: &DictValue, key: &str) -> Option<Vec<u8>> {
     dict.get(&Value::String(key.to_string()))
         .and_then(|v| match v {
@@ -1727,7 +1727,7 @@ fn dict_get_bytes(dict: &DictValue, key: &str) -> Option<Vec<u8>> {
         })
 }
 
-#[cfg(any(all(feature = "native", unix), feature = "dtls", test))]
+#[cfg(any(feature = "dtls", test))]
 fn dict_get_u16(dict: &DictValue, key: &str) -> Option<u16> {
     dict.get(&Value::String(key.to_string()))
         .and_then(|v| match v {
@@ -2649,7 +2649,7 @@ impl Interpreter {
                 Value::String(s) => s,
                 _ => return Err("log_init() filter must be a string".to_string()),
             };
-            logging::set_filter(&filter_str)?;
+            logging::set_filter(filter_str)?;
         }
 
         if let Some(format_val) = dict_get(&dict_ref, "format") {
@@ -7634,10 +7634,8 @@ impl Interpreter {
                                     best = item.clone();
                                 }
                             }
-                            (Value::String(a), Value::String(b)) => {
-                                if b.len() > a.len() {
-                                    best = item.clone();
-                                }
+                            (Value::String(a), Value::String(b)) if b.len() > a.len() => {
+                                best = item.clone();
                             }
                             _ => {}
                         }
@@ -11999,10 +11997,10 @@ impl Interpreter {
         {
             match &self.evaluate(object)? {
                 Value::NativeObject(native) => {
-                    return self.call_native_method(&native, property, arguments, span);
+                    return self.call_native_method(native, property, arguments, span);
                 }
                 Value::Instance(inst) => {
-                    return self.call_instance_method(&inst, property, arguments, span);
+                    return self.call_instance_method(inst, property, arguments, span);
                 }
                 _ => {}
             }
@@ -12908,18 +12906,18 @@ impl Interpreter {
     fn call_value(&mut self, callee: Value, args: Vec<Value>, line: usize) -> HaversResult<Value> {
         let _guard = InterpreterGuard::new(self);
         match &callee {
-            Value::Function(func) => self.call_function(&func, args, line),
+            Value::Function(func) => self.call_function(func, args, line),
             // Higher-order builtins call back into the interpreter.
             Value::NativeFunction(native) if native.higher_order => {
                 self.call_builtin_hof(&native.name, args, line)
             }
-            Value::NativeFunction(native) => Self::call_native_function(&native, args, line),
+            Value::NativeFunction(native) => Self::call_native_function(native, args, line),
             Value::NativeObject(_) => Err(HaversError::TypeError {
                 message: "Cannae ca' a native object like a function".to_string(),
                 line,
             }),
             Value::Class(class) => self.construct_instance(class.clone(), args, line),
-            Value::Struct(structure) => Self::construct_struct(&structure, args, line),
+            Value::Struct(structure) => Self::construct_struct(structure, args, line),
             _ => Err(Self::not_callable(&callee, line)),
         }
     }

@@ -2001,8 +2001,7 @@ impl<'ctx> CodeGen<'ctx> {
                         {
                             // A scratch alloca only loaded and stored: its loads are
                             // further uses of the value. Anything else lets it escape.
-                            match Self::rc_operand(inst, 1).and_then(|p| Self::rc_scratch_loads(p))
-                            {
+                            match Self::rc_operand(inst, 1).and_then(Self::rc_scratch_loads) {
                                 Some(loads) => {
                                     for l in loads {
                                         uses.insert(value_id(l));
