@@ -1,26 +1,25 @@
 # MDH-BUG-FLU-00208 — Native: field write on an aliased module then calling its function gives a type error
 
-- **State:** Fixed
+- **State:** Open
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** native
 - **Raised:** 2026-10-28T15:22:59Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261028T191740Z-2678771b
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00208-run-verify-20261028T191740Z-2678771b
-- **Owner base:** c199569ae280800dffce0033bfa39755aeba5385
-- **Owner fingerprint:** sha256:f8977b0536a441c8061ca4cabdb63ac47b74124813a970225ca45157077dfec6
-- **Owner since:** 2026-10-28T19:17:40Z
-- **Owner until:** 2026-10-28T23:17:40Z
-- **Owner session:** flux/2a9090d7-08f7-48c7-bee8-7b7d1d963ab2 (run verify-20261028T191740Z-2678771b)
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
-- **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-28T15:22:59Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-28T19:17:23Z, deltic:auto role=fix run=fix-20261028T174254Z-b3b95c5b branch=task/bug-MDH-BUG-FLU-00208-run-fix-20261028T174254Z-b3b95c5b code=f51f4ee gate=manual)
+- **Attempts:** fix=0, doubt=1, indeterminate=0
+- **State history:** Open (2026-10-28T15:22:59Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-28T19:17:23Z, deltic:auto role=fix run=fix-20261028T174254Z-b3b95c5b branch=task/bug-MDH-BUG-FLU-00208-run-fix-20261028T174254Z-b3b95c5b code=f51f4ee gate=manual) -> Open (2026-10-28T19:29:55Z, deltic:manual role=verify run=verify-20261028T191740Z-2678771b verified_fix_run=fix-20261028T174254Z-b3b95c5b verdict=doubt reason=reopen-fail-type-error-in-call-got-function-output-oracle-fails-empty-vs-mg-ok-h)
 
 ## Observation
 
@@ -42,5 +41,9 @@ Evidence fingerprint: `manual:v1:native-field-write-on-an-aliased-module-then-ca
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-10-28T19:29:55Z, deltic:manual run=verify-20261028T191740Z-2678771b verified_fix_run=fix-20261028T174254Z-b3b95c5b verdict=doubt)
+
+Verifier note: Manual verify: Verifier: Codex gpt-6.1-sol xhigh (separate session from the fixer), trunk 23ecbe2. f51f4ee; fetch_bindings_00208 8/8 pass; 208-only mutant: 4 native assertions fail (Type error in call: got function); output oracle fails empty vs mg/ok!/hi!/importer. Original (tae) prints mg on I[PATH] Residual: m.mg write then m.Box("item") fails native 'Box hasnae been defined yet'; no-write control and I/JS pass. Restored; diff clean. Lead reproduced the residual on 23ecbe2: alias-class.braw native prints "'Box' hasnae been defined yet at line 3"; interpreter prints item:module/module/alias-field; the no-write control passes natively. Same mechanism as the original (alias field write drops the alias's callable targets); the fix covered functions and defaults but not class constructors.
 
 ## Notes
