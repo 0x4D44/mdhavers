@@ -22,12 +22,12 @@ fn llvm_codegen_exercises_string_list_helpers_slices_and_defaults_for_coverage()
 dae add(a, b = 2) { gie a + b }
 blether add(40)
 
-// Missing args without defaults (covers nil-fill logic at call sites)
-dae pick_first(a, b) { gie a }
+// Omitted optional parameter with an explicit nil default.
+dae pick_first(a, b = naething) { gie a }
 blether pick_first(123)
 
-// Defaults present, but missing a non-default param (fills it with nil)
-dae only_uses_default(a, b = 9) { gie b }
+// Fill multiple omitted parameters from nil and integer defaults.
+dae only_uses_default(a = naething, b = 9) { gie b }
 blether only_uses_default()
 
 // Exercise sumaw inline helper

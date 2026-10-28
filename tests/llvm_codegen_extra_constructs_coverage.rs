@@ -11,7 +11,7 @@ fn compile_to_ir_ok(source: &str) {
     assert!(!ir.is_empty());
 }
 
-fn compile_to_ir_err(source: &str) {
+fn compile_to_ir_err(source: &str) -> String {
     let program =
         parse(source).unwrap_or_else(|e| panic!("parse failed for:\n{source}\nerr={e:?}"));
     let err = LLVMCompiler::new()
@@ -19,6 +19,7 @@ fn compile_to_ir_err(source: &str) {
         .expect_err("expected compile error");
     let s = format!("{err:?}");
     assert!(!s.is_empty());
+    s
 }
 
 #[test]
@@ -138,13 +139,13 @@ thing S { a }
 ken s = S(1)
 blether s["a"]
 "#,
-        // Default-arg filling with nil for missing non-default parameters (init + method).
+        // Fill omitted optional parameters from explicit nil and integer defaults (init + method).
         r#"
 kin Foo {
-    dae init(a, b, c = 2) {
+    dae init(a, b = naething, c = 2) {
         masel.c = c
     }
-    dae m(a, b, c = 2) {
+    dae m(a, b = naething, c = 2) {
         gie c
     }
 }
@@ -413,7 +414,7 @@ dae f() {
 }
 f()
 "#,
-        // Additional cold builtins/branches for coverage (shove bool fast-path + placeholder helpers).
+        // Additional cold builtins/branches for coverage (including the shove bool fast path).
         r#"
 dae list_shove_bool() {
     ken xs = [1]
@@ -424,37 +425,21 @@ list_shove_bool()
 
 blether sqrt(4)
 blether count_str("abc", "a")
-blether insert_at()
-blether insert_at([1], 0, 2)
 blether remove_at([1], 0)
-blether assert_true()
 "#,
         // Builtin alias sweep (post-dedupe): cover additional compile_call match arms.
         r#"
 blether to_binary(5)
 blether avg([1, 2, 3])
 blether mean([1, 2, 3])
-blether find_str("hello", "ll")
-blether str_find("hello", "ll")
 blether clamp_value(5, 1, 10)
 blether batch([1, 2, 3], 2)
-blether gen_dict()
-blether gen_shuffle([1, 2, 3])
 blether bitand(1, 3)
 blether bitor(1, 2)
 blether bitxor(1, 2)
 blether bitnot(1)
 blether shl(1, 3)
 blether shr(8, 1)
-blether small(1)
-blether mini(1)
-blether big(1)
-blether large(1)
-blether pass()
-blether matrix_skip()
-blether from_char_code(65)
-blether char_code_at("A")
-blether get_char("hi", 0)
 "#,
         // Infer/type paths for comparisons.
         r#"
@@ -471,10 +456,10 @@ blether 1.foo(1, 2, 3, 4, 5, 6)
 blether 1.foo(1, 2, 3, 4, 5, 6, 7)
 blether 1.foo(1, 2, 3, 4, 5, 6, 7, 8)
 "#,
-        // Class init should nil-fill missing args when no defaults are defined.
+        // Class init fills an omitted optional argument from its explicit nil default.
         r#"
 kin A {
-    dae init(a, b) { }
+    dae init(a, b = naething) { }
 }
 ken a = A(1)
 blether "ok"
@@ -553,11 +538,39 @@ outer()
         r#"__definitely_undefined_fn__()"#,
     ];
 
+    // Decision 145 removed these placeholder implementations. Keep every former coverage
+    // call, now checking the decided undefined-name error instead of unreachable bodies.
+    let removed_builtin_cases = [
+        ("insert_at", "blether insert_at()"),
+        ("insert_at", "blether insert_at([1], 0, 2)"),
+        ("assert_true", "blether assert_true()"),
+        ("find_str", r#"blether find_str("hello", "ll")"#),
+        ("str_find", r#"blether str_find("hello", "ll")"#),
+        ("gen_dict", "blether gen_dict()"),
+        ("gen_shuffle", "blether gen_shuffle([1, 2, 3])"),
+        ("small", "blether small(1)"),
+        ("mini", "blether mini(1)"),
+        ("big", "blether big(1)"),
+        ("large", "blether large(1)"),
+        ("pass", "blether pass()"),
+        ("matrix_skip", "blether matrix_skip()"),
+        ("from_char_code", "blether from_char_code(65)"),
+        ("char_code_at", r#"blether char_code_at("A")"#),
+        ("get_char", r#"blether get_char("hi", 0)"#),
+    ];
+
     for src in ok_cases {
         compile_to_ir_ok(src);
     }
     for src in err_cases {
         compile_to_ir_err(src);
+    }
+    for (name, src) in removed_builtin_cases {
+        let err = compile_to_ir_err(src);
+        assert!(
+            err.contains(&format!("Undefined variable: {name}")),
+            "{src}: unexpected error: {err}"
+        );
     }
 }
 

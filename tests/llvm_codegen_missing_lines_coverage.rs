@@ -286,7 +286,7 @@ fn llvm_codegen_method_param_boxing_happens_when_captured_by_nested_function() {
     compile_to_ir_ok(
         r#"
 kin C {
-    dae init(x) {
+    dae init(x = naething) {
         dae inner() { gie x }
         gie inner()
     }
@@ -551,7 +551,7 @@ blether m.Box(1).add(2)
 }
 
 #[test]
-fn llvm_codegen_aliased_import_default_filling_nil_branches_are_covered() {
+fn llvm_codegen_aliased_import_explicit_nil_defaults_are_covered() {
     let dir = tempfile::tempdir().unwrap();
 
     let stdlib_dir = dir.path().join("stdlib");
@@ -560,9 +560,9 @@ fn llvm_codegen_aliased_import_default_filling_nil_branches_are_covered() {
         stdlib_dir.join("mod.braw"),
         r#"
 kin Box {
-    dae init(v, extra, more = 100) { masel.v = v }
-    dae add(x, y, z = 40) { gie masel.v }
-    dae nodflt(x, y) { gie masel.v }
+    dae init(v, extra = naething, more = 100) { masel.v = v }
+    dae add(x, y = naething, z = 40) { gie masel.v }
+    dae nil_defaults(x = naething, y = naething) { gie masel.v }
 }
 "#,
     )
@@ -576,7 +576,7 @@ fetch "lib/mod" tae m
 ken a = m.Box(1)
 blether a.add(2)
 blether m.Box(1).add(2)
-blether a.nodflt()
+blether a.nil_defaults()
 "#;
     fs::write(&source_path, source).unwrap();
 
@@ -584,7 +584,7 @@ blether a.nodflt()
 }
 
 #[test]
-fn llvm_codegen_imported_function_defaults_fill_nil_without_param_names_for_coverage() {
+fn llvm_codegen_imported_function_explicit_nil_defaults_without_param_names_for_coverage() {
     let dir = tempfile::tempdir().unwrap();
 
     let stdlib_dir = dir.path().join("stdlib");
@@ -592,7 +592,7 @@ fn llvm_codegen_imported_function_defaults_fill_nil_without_param_names_for_cove
     fs::write(
         stdlib_dir.join("mod.braw"),
         r#"
-dae f(x, y = 7) { gie y }
+dae f(x = naething, y = 7) { gie y }
 "#,
     )
     .unwrap();
@@ -630,11 +630,11 @@ fn llvm_codegen_operator_overload_dispatch_covers_builtin_and_default_fill_paths
 kin Ops {
     dae init(v) { masel.v = v }
 
-    # Has defaults + a missing default slot to exercise nil filling in overload default handling.
-    dae __pit_thegither__(that, mid, tail = 1) { gie masel.v }
+    # Dynamic overload dispatch fills omitted parameters from nil and integer defaults.
+    dae __pit_thegither__(that, mid = naething, tail = 1) { gie masel.v }
 
-    # No defaults to exercise the "fill remaining with nil" overload path.
-    dae __tak_awa__(that, extra) { gie masel.v }
+    # Static and dynamic overload dispatch fill an explicit nil default.
+    dae __tak_awa__(that, extra = naething) { gie masel.v }
 
     dae __times__(that) { gie masel.v }
     dae __pairt__(that) { gie masel.v }

@@ -44,6 +44,10 @@ fn run_mdhavers_impl(
         cmd.current_dir(cwd);
     }
 
+    // This helper owns and closes the child's stdin, including after piped input.
+    #[cfg(coverage)]
+    cmd.env("MDHAVERS_COVERAGE_ALLOW_STDIN", "1");
+
     let mut child = cmd.spawn().expect("spawn mdhavers");
     if let Some(input) = stdin {
         use std::io::Write;

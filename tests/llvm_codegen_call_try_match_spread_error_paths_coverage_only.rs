@@ -98,7 +98,16 @@ fn program_with_match(value: Expr, span: Span) -> Program {
 #[test]
 fn llvm_codegen_covers_user_function_call_arg_compile_expr_error_path_for_coverage() {
     let span = Span::new(1, 1);
-    let program = program_with_user_function_call(vec![binary_with_nested_spread(span)], span);
+    let program = program_with_user_function_call(
+        vec![
+            binary_with_nested_spread(span),
+            Expr::Literal {
+                value: Literal::Integer(0),
+                span,
+            },
+        ],
+        span,
+    );
 
     let compiler = LLVMCompiler::new();
     let err = compiler

@@ -46,7 +46,12 @@ fn run_closed_stdin(cmd: &mut Command, secs: u64) -> (Option<i32>, String, Strin
 }
 
 fn run_interpreter(file: &Path) -> (Option<i32>, String, String) {
-    run_closed_stdin(Command::new(bin()).arg("run").arg(file), 60)
+    let mut cmd = Command::new(bin());
+    cmd.arg("run").arg(file);
+    // This helper closes stdin, so coverage can safely exercise the real EOF path.
+    #[cfg(coverage)]
+    cmd.env("MDHAVERS_COVERAGE_ALLOW_STDIN", "1");
+    run_closed_stdin(&mut cmd, 60)
 }
 
 #[cfg(feature = "llvm")]

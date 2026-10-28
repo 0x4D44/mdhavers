@@ -21,7 +21,6 @@ use rustls_pemfile::{certs, pkcs8_private_keys, rsa_private_keys};
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
-#[cfg(not(coverage))]
 use std::io;
 #[cfg(all(feature = "native", unix))]
 use std::io::Read;
@@ -12546,32 +12545,30 @@ impl Interpreter {
     /// `speir` (input)
     #[inline(never)]
     fn eval_input(&mut self, prompt: &Expr) -> HaversResult<Value> {
+        let prompt_val = self.evaluate(prompt)?;
         #[cfg(coverage)]
-        {
-            let _ = self.evaluate(prompt)?;
-            Err(HaversError::InternalError(
+        if std::env::var("MDHAVERS_COVERAGE_ALLOW_STDIN").as_deref() != Ok("1") {
+            // Library coverage tests must not block on input. Subprocess tests can opt in
+            // when they own a closed or piped stdin, and exercise the real EOF handling.
+            return Err(HaversError::InternalError(
                 "speir() input is disabled under coverage runs".to_string(),
-            ))
+            ));
         }
 
-        #[cfg(not(coverage))]
-        {
-            let prompt_val = self.evaluate(prompt)?;
-            print!("{}", prompt_val);
-            io::stdout().flush().unwrap();
+        print!("{}", prompt_val);
+        io::stdout().flush().unwrap();
 
-            let mut input = String::new();
-            let read = io::stdin()
-                .read_line(&mut input)
-                .map_err(|e| HaversError::InternalError(e.to_string()))?;
+        let mut input = String::new();
+        let read = io::stdin()
+            .read_line(&mut input)
+            .map_err(|e| HaversError::InternalError(e.to_string()))?;
 
-            // End of input is naething; an empty line is still "" (MDH-BUG-FLU-00136).
-            if read == 0 {
-                return Ok(Value::Nil);
-            }
-
-            Ok(Value::String(input.trim().to_string()))
+        // End of input is naething; an empty line is still "" (MDH-BUG-FLU-00136).
+        if read == 0 {
+            return Ok(Value::Nil);
         }
+
+        Ok(Value::String(input.trim().to_string()))
     }
 
     /// f-string
