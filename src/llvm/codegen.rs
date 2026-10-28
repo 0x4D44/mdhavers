@@ -14574,7 +14574,6 @@ impl<'ctx> CodeGen<'ctx> {
                     let mut class_method_defaults: HashMap<String, Vec<Option<Expr>>> =
                         HashMap::new();
                     let mut classes_to_hide: Vec<String> = Vec::new();
-                    let mut exports_for_dict: Vec<String> = Vec::new();
 
                     for export in &exports_public {
                         if let Some(&class_global) = self.classes.get(export) {
@@ -14594,8 +14593,6 @@ impl<'ctx> CodeGen<'ctx> {
                             if !before.classes.contains(export) {
                                 classes_to_hide.push(export.clone());
                             }
-                        } else {
-                            exports_for_dict.push(export.clone());
                         }
                     }
 
@@ -14632,9 +14629,9 @@ impl<'ctx> CodeGen<'ctx> {
                         }
                     }
 
-                    // Build the alias dict from value-like exports (functions/vars/struct ctors).
-                    // Classes are handled via a dedicated `alias.ClassName(...)` call path.
-                    let module_val = self.build_module_dict(&exports_for_dict);
+                    // Every export needs a value snapshot: field/index writes invalidate
+                    // direct-call metadata, but the dictionary must remain callable.
+                    let module_val = self.build_module_dict(&resolved_import_path, &exports_public);
                     self.store_import_alias(alias_name, module_val);
                     self.hide_imported_exports(&exports_all, &before);
                     self.restore_import_bindings(&before);
@@ -15806,10 +15803,7 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     let func_name = format!("{}_{}", current, method_name);
                     if let Some(&func) = self.functions.get(&func_name) {
-                        // Need at least masel + 1 arg for operator overloads.
-                        if func.count_params() as usize >= 2 {
-                            resolved = Some((func, func_name));
-                        }
+                        resolved = Some((func, func_name));
                         break;
                     }
                     cursor = self.class_superclasses.get(&current).cloned();
@@ -15910,6 +15904,17 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap();
 
                     self.builder.position_at_end(call_block);
+
+                    let defaults = self.function_defaults.get(func_name).cloned();
+                    if !self.dynamic_call_arity_ok(
+                        method_name,
+                        (method_func.count_params() as usize).saturating_sub(1),
+                        defaults.as_ref(),
+                        1,
+                    ) {
+                        check_block = next_block;
+                        continue;
+                    }
 
                     // Build call arguments: instance first, then right operand, then defaults/nil.
                     let mut call_args: Vec<BasicMetadataValueEnum> =
@@ -16623,6 +16628,7 @@ impl<'ctx> CodeGen<'ctx> {
                         && exports.contains(property)
                     {
                         if self.classes.contains_key(property) {
+                            self.check_init_arity(property, args, callee.span().line)?;
                             return self.compile_class_instantiation(property, args);
                         }
                         if let Some(&func) = self
@@ -33605,6 +33611,23 @@ impl<'ctx> CodeGen<'ctx> {
                 self.builder.position_at_end(match_block);
 
                 let expected_param_count = target.count_params() as usize;
+                let offset = usize::from(method_fn_names.contains(name));
+                let symbol = target.get_name().to_string_lossy();
+                let defaults = self
+                    .imported_function_values
+                    .get(symbol.as_ref())
+                    .map(|f| f.defaults.clone())
+                    .or_else(|| self.function_defaults.get(name).cloned());
+                let display = self.callable_display_name(name, target);
+                if !self.dynamic_call_arity_ok(
+                    &display,
+                    expected_param_count.saturating_sub(offset),
+                    defaults.as_ref(),
+                    args.len().saturating_sub(offset),
+                ) {
+                    check_block = next_block;
+                    continue;
+                }
                 let mut call_args: Vec<BasicMetadataValueEnum> = args
                     .iter()
                     .take(expected_param_count)
@@ -33864,6 +33887,30 @@ impl<'ctx> CodeGen<'ctx> {
                     .unwrap();
 
                 self.builder.position_at_end(match_block);
+                let mut cursor = Some(class_name.clone());
+                let mut visited = HashSet::new();
+                let mut arity_ok = true;
+                while let Some(current) = cursor {
+                    if !visited.insert(current.clone()) {
+                        break;
+                    }
+                    let init_name = format!("{current}_init");
+                    if let Some(&init) = self.functions.get(&init_name) {
+                        let defaults = self.function_defaults.get(&init_name).cloned();
+                        arity_ok = self.dynamic_call_arity_ok(
+                            "init",
+                            (init.count_params() as usize).saturating_sub(1),
+                            defaults.as_ref(),
+                            args.len(),
+                        );
+                        break;
+                    }
+                    cursor = self.class_superclasses.get(&current).cloned();
+                }
+                if !arity_ok {
+                    check_block = next_block;
+                    continue;
+                }
                 let inst = self.compile_class_instantiation_values(class_name, args)?;
                 self.builder
                     .build_unconditional_branch(dispatch_merge)
@@ -34056,6 +34103,17 @@ impl<'ctx> CodeGen<'ctx> {
                 let capture_count = captures.len();
                 let expected_total_param_count = target.count_params() as usize;
                 let user_param_count = expected_total_param_count.saturating_sub(capture_count);
+                let defaults = self.function_defaults.get(name).cloned();
+                let display = self.callable_display_name(name, target);
+                if !self.dynamic_call_arity_ok(
+                    &display,
+                    user_param_count,
+                    defaults.as_ref(),
+                    args.len(),
+                ) {
+                    check_block = next_block;
+                    continue;
+                }
                 let provided_user_count = std::cmp::min(args.len(), user_param_count);
 
                 // Load capture values from closure storage.
@@ -36620,7 +36678,11 @@ impl<'ctx> CodeGen<'ctx> {
         exports
     }
 
-    fn build_module_dict(&mut self, exports: &[String]) -> BasicValueEnum<'ctx> {
+    fn build_module_dict(
+        &mut self,
+        import_path: &Path,
+        exports: &[String],
+    ) -> BasicValueEnum<'ctx> {
         let mut dict = self
             .builder
             .build_call(self.libc.empty_dict, &[], "module_dict")
@@ -36636,7 +36698,28 @@ impl<'ctx> CodeGen<'ctx> {
                 name: name.clone(),
                 span: Span::new(0, 0),
             };
-            let value = self.compile_expr(&var_expr).unwrap();
+            // A module declaration can shadow its class. Use that module's own
+            // slot, rather than a same-named variable inherited from the importer.
+            let module_var = self
+                .imported_module_var_globals
+                .get(import_path)
+                .and_then(|vars| vars.get(name))
+                .copied();
+            let value = if let Some(global) = module_var {
+                self.builder
+                    .build_load(
+                        self.types.value_type,
+                        global.as_pointer_value(),
+                        "module_value",
+                    )
+                    .unwrap()
+            } else if let Some(&class_global) = self.classes.get(name) {
+                let flag = self.class_defined_flags.get(name).copied();
+                self.guard_global_defined_flag(flag, name, "module_class_defined");
+                self.make_class(class_global)
+            } else {
+                self.compile_expr(&var_expr).unwrap()
+            };
             dict = self
                 .builder
                 .build_call(
@@ -36657,6 +36740,22 @@ impl<'ctx> CodeGen<'ctx> {
         dict
     }
 
+    fn module_variable_global(&mut self, import_path: &Path, name: &str) -> GlobalValue<'ctx> {
+        let module_id = self.module_unique_ids[import_path].clone();
+        let module_vars = self
+            .imported_module_var_globals
+            .entry(import_path.to_path_buf())
+            .or_default();
+        *module_vars.entry(name.to_string()).or_insert_with(|| {
+            let global_name = format!("__mdh_modvar_{module_id}_{name}");
+            let global = self
+                .module
+                .add_global(self.types.value_type, None, &global_name);
+            global.set_initializer(&self.types.value_type.const_zero());
+            global
+        })
+    }
+
     fn store_import_alias(&mut self, name: &str, value: BasicValueEnum<'ctx>) {
         self.var_types.insert(name.to_string(), VarType::Dict);
 
@@ -36665,7 +36764,23 @@ impl<'ctx> CodeGen<'ctx> {
             && self.loop_stack.is_empty()
             && !self.variables.contains_key(name);
 
-        let alloca = if let Some(&existing) = self.variables.get(name) {
+        // An initializer is a function in LLVM, but its aliases belong to the
+        // module environment, not that function's stack or the importing scope.
+        let module_path = self.source_path.clone().filter(|path| {
+            self.module_init_functions.get(path).copied() == self.current_function
+                && self.current_function.is_some()
+        });
+        let alloca = if let Some(path) = module_path {
+            // Exported functions must read the live alias slot: another function
+            // can reassign it after their bodies have been compiled.
+            self.import_alias_exports.remove(name);
+            self.import_alias_functions.remove(name);
+            self.import_alias_function_defaults.remove(name);
+            let ptr = self.module_variable_global(&path, name).as_pointer_value();
+            self.globals.insert(name.to_string(), ptr);
+            self.variables.insert(name.to_string(), ptr);
+            ptr
+        } else if let Some(&existing) = self.variables.get(name) {
             existing
         } else if let Some(&existing) = self.globals.get(name) {
             existing
@@ -36929,33 +37044,7 @@ impl<'ctx> CodeGen<'ctx> {
                 Stmt::VarDecl {
                     name, initializer, ..
                 } => {
-                    let module_id = match self.module_unique_ids.get(import_path) {
-                        Some(id) => id.clone(),
-                        None => {
-                            let _ = self.declare_module_init(import_path);
-                            match self.module_unique_ids.get(import_path).cloned() {
-                                Some(id) => id,
-                                None => "module".to_string(),
-                            }
-                        }
-                    };
-
-                    let module_vars = self
-                        .imported_module_var_globals
-                        .entry(import_path.to_path_buf())
-                        .or_default();
-                    let global = match module_vars.get(name).copied() {
-                        Some(existing) => existing,
-                        None => {
-                            let global_name = format!("__mdh_modvar_{}_{}", module_id, name);
-                            let global =
-                                self.module
-                                    .add_global(self.types.value_type, None, &global_name);
-                            global.set_initializer(&self.types.value_type.const_zero());
-                            module_vars.insert(name.clone(), global);
-                            global
-                        }
-                    };
+                    let global = self.module_variable_global(import_path, name);
 
                     // The initializer sees the old imported binding. Afterwards both
                     // reads and assignments in this init must use this module's slot.
@@ -37037,10 +37126,25 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     fn restore_import_bindings(&mut self, before: &ImportBindings<'ctx>) {
-        self.functions = before.function_bindings.clone();
-        self.function_defaults = before.function_defaults.clone();
-        self.function_captures = before.function_captures.clone();
-        self.function_param_names = before.function_param_names.clone();
+        // Generated callable identities are private, but their values can escape in
+        // module dictionaries and closures. Keep their dispatch metadata after hiding
+        // the module's lexical names (MDH-BUG-FLU-00208).
+        let private_callable =
+            |name: &String| name.starts_with("__lambda_") || name.starts_with("__mdh_nested_");
+        self.functions.retain(|name, _| private_callable(name));
+        self.functions.extend(before.function_bindings.clone());
+        self.function_defaults
+            .retain(|name, _| private_callable(name));
+        self.function_defaults
+            .extend(before.function_defaults.clone());
+        self.function_captures
+            .retain(|name, _| private_callable(name));
+        self.function_captures
+            .extend(before.function_captures.clone());
+        self.function_param_names
+            .retain(|name, _| private_callable(name));
+        self.function_param_names
+            .extend(before.function_param_names.clone());
         self.classes = before.class_bindings.clone();
         self.class_methods = before.class_method_bindings.clone();
     }
@@ -37135,6 +37239,14 @@ impl<'ctx> CodeGen<'ctx> {
             return Ok(exports);
         }
 
+        let caller_globals = self.globals.clone();
+        let caller_variables = self.variables.clone();
+        let caller_var_types = self.var_types.clone();
+        let caller_alias_exports = self.import_alias_exports.clone();
+        let caller_alias_bindings = self.import_alias_bindings.clone();
+        let caller_alias_functions = self.import_alias_functions.clone();
+        let caller_alias_defaults = self.import_alias_function_defaults.clone();
+        let mut private_aliases = Vec::new();
         self.import_in_progress.push(import_path.clone());
         let saved_source_path = self.source_path.clone();
         self.source_path = Some(import_path.clone());
@@ -37168,6 +37280,17 @@ impl<'ctx> CodeGen<'ctx> {
             let exports = Self::collect_module_exports(&program);
             self.imported_modules
                 .insert(import_path.clone(), exports.clone());
+
+            private_aliases = program
+                .statements
+                .iter()
+                .filter_map(|stmt| match stmt {
+                    Stmt::Import {
+                        alias: Some(name), ..
+                    } if !exports.contains(name) => Some(name.clone()),
+                    _ => None,
+                })
+                .collect();
 
             // First pass: declare functions/struct constructors and pre-register classes.
             for stmt in &program.statements {
@@ -37243,7 +37366,14 @@ impl<'ctx> CodeGen<'ctx> {
 
             // Ensure imported module-level vars are visible in the current scope (like before).
             for stmt in &program.statements {
-                if let Stmt::VarDecl { name, .. } = stmt {
+                let name = match stmt {
+                    Stmt::VarDecl { name, .. }
+                    | Stmt::Import {
+                        alias: Some(name), ..
+                    } => name,
+                    _ => continue,
+                };
+                {
                     let module_vars = self
                         .imported_module_var_globals
                         .get(&import_path)
@@ -37251,7 +37381,7 @@ impl<'ctx> CodeGen<'ctx> {
                     if let Some(global) = module_vars.get(name) {
                         let ptr = global.as_pointer_value();
                         self.globals.insert(name.clone(), ptr);
-                        self.variables.entry(name.clone()).or_insert(ptr);
+                        self.variables.insert(name.clone(), ptr);
                     }
                 }
             }
@@ -37312,6 +37442,26 @@ impl<'ctx> CodeGen<'ctx> {
             break 'import Ok(exports);
         };
 
+        // Aliases used by module bodies are private to that module. Their slots
+        // remain embedded in the generated code; restore the caller's namespace.
+        for name in private_aliases {
+            self.globals.remove(&name);
+            self.variables.remove(&name);
+            self.var_types.remove(&name);
+            if let Some(&ptr) = caller_globals.get(&name) {
+                self.globals.insert(name.clone(), ptr);
+            }
+            if let Some(&ptr) = caller_variables.get(&name) {
+                self.variables.insert(name.clone(), ptr);
+            }
+            if let Some(&kind) = caller_var_types.get(&name) {
+                self.var_types.insert(name, kind);
+            }
+        }
+        self.import_alias_exports = caller_alias_exports;
+        self.import_alias_bindings = caller_alias_bindings;
+        self.import_alias_functions = caller_alias_functions;
+        self.import_alias_function_defaults = caller_alias_defaults;
         self.source_path = saved_source_path;
         self.import_in_progress.retain(|p| p != &import_path);
         result
@@ -37769,6 +37919,59 @@ impl<'ctx> CodeGen<'ctx> {
             ),
             line,
         })
+    }
+
+    /// Validate only the selected runtime target. Rejecting a candidate while
+    /// generating the dispatch chain would also reject calls to unrelated classes.
+    fn dynamic_call_arity_ok(
+        &mut self,
+        name: &str,
+        params: usize,
+        defaults: Option<&Vec<Option<Expr>>>,
+        got: usize,
+    ) -> bool {
+        let Err(error) = Self::check_arity_count(name, params, defaults, got, 0) else {
+            return true;
+        };
+        if let HaversError::TypeError { message, .. } = error {
+            self.emit_builtin_error(&message, true);
+        } else {
+            let text = error.to_string();
+            let text = text.strip_suffix(" at line 0").unwrap_or(&text);
+            let name = "__mdh_hurl_text_at_line";
+            let raise = self.module.get_function(name).unwrap_or_else(|| {
+                let ptr = self.context.ptr_type(AddressSpace::default());
+                self.module.add_function(
+                    name,
+                    self.types.void_type.fn_type(&[ptr.into()], false),
+                    Some(Linkage::External),
+                )
+            });
+            let text = self
+                .builder
+                .build_global_string_ptr(text, "arity_error")
+                .unwrap();
+            self.builder
+                .build_call(raise, &[text.as_pointer_value().into()], "")
+                .unwrap();
+            self.builder.build_unreachable().unwrap();
+        }
+        false
+    }
+
+    fn callable_display_name(&self, name: &str, target: FunctionValue<'ctx>) -> String {
+        self.class_methods
+            .values()
+            .flatten()
+            .find(|(_, function)| *function == target)
+            .map(|(method, _)| method.clone())
+            .or_else(|| {
+                self.fn_value_names
+                    .iter()
+                    .find(|(function, _)| *function == target)
+                    .map(|(_, display)| display.clone())
+            })
+            .unwrap_or_else(|| name.to_string())
     }
 
     /// Compile assert statement: mak_siccar condition, "message"
@@ -40643,10 +40846,7 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     let func_name = format!("{}_{}", current, method_name);
                     if let Some(&func) = self.functions.get(&func_name) {
-                        // Must accept at least the args at this call-site (masel + args).
-                        if func.count_params() as usize >= expected_param_count {
-                            resolved = Some((func, func_name));
-                        }
+                        resolved = Some((func, func_name));
                         break;
                     }
                     cursor = self.class_superclasses.get(&current).cloned();
@@ -40727,6 +40927,16 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap();
 
                     self.builder.position_at_end(call_block);
+                    let defaults = self.function_defaults.get(func_name).cloned();
+                    if !self.dynamic_call_arity_ok(
+                        method_name,
+                        (method_func.count_params() as usize).saturating_sub(1),
+                        defaults.as_ref(),
+                        arg_vals.len(),
+                    ) {
+                        check_block = next_block;
+                        continue;
+                    }
                     let mut call_args: Vec<BasicMetadataValueEnum> = vec![instance.into()];
                     for arg in arg_vals {
                         call_args.push((*arg).into());

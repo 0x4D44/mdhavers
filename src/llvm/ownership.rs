@@ -174,6 +174,7 @@ pub const RUNTIME_OWNERSHIP: &[(&str, &str, Ret)] = &[
     ("__mdh_help_ma_boab", "b", Ret::Fresh),
     ("__mdh_hurl", "s", Ret::None), // msg stored as thread-local last error
     ("__mdh_hurl_at", "b-", Ret::None), // hurls a fresh "Hurled at line N" string
+    ("__mdh_hurl_text_at_line", "-", Ret::None), // raw text; hurls a fresh line-bearing string
     ("__mdh_index_oob", "--", Ret::None), // never returns; declared on first use
     ("__mdh_indices_o", "bb", Ret::Fresh),
     ("__mdh_int_overflow_error", "", Ret::None),

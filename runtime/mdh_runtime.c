@@ -501,7 +501,7 @@ static int64_t __mdh_err_line(void) {
 static char *__mdh_alloc_text(int size_overflowed, size_t out_len);
 
 /* Hurl `text`, with " at line N" appended when the current line is known. */
-static void __mdh_hurl_text_at_line(const char *text) {
+void __mdh_hurl_text_at_line(const char *text) {
     int64_t line = __mdh_err_line();
     if (line <= 0) {
         __mdh_hurl_owned(__mdh_make_string(text));

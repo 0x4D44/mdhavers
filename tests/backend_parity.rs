@@ -2059,6 +2059,15 @@ ken mg = "mg"
 dae getmg() { gie mg }
 dae label(prefix = "ok", suffix = prefix + "!") { gie suffix }
 thing Point { x }
+kin Box {
+    dae init(item) { masel.item = item }
+    dae read(suffix = "!") { gie masel.item + ":" + mg + suffix }
+}
+ken callback = |item| item + ":" + mg
+dae make_callback(prefix) { gie |item| prefix + ":" + item + ":" + mg }
+ken captured = make_callback("captured")
+kin Shadowed {}
+ken Shadowed = 7
 "#;
 
 fn fetch_bindings_case_00207(
@@ -2118,6 +2127,26 @@ fn fetch_bindings_case_00208(case: &str) -> (&'static str, &'static str) {
         "alias_constructor_after_write" => (
             "fetch \"m\" tae m\nm.mg = \"importer\"\nken point = m.Point(3)\nblether point.x\nblether m.getmg()\nblether m.mg\n",
             "3\nmg\nimporter",
+        ),
+        "alias_class_field_write" => (
+            "fetch \"m\" tae m\nm.mg = \"alias-field\"\nken box = m.Box(\"item\")\nblether box.read()\nblether m.getmg()\nblether m.mg\nblether m.Shadowed\n",
+            "item:mg!\nmg\nalias-field\n7",
+        ),
+        "alias_class_index_write" => (
+            "fetch \"m\" tae m\nm[\"mg\"] = \"alias-index\"\nken box = m[\"Box\"](\"item\")\nblether box.read(\"?\")\nblether m.mg\n",
+            "item:mg?\nalias-index",
+        ),
+        "alias_class_extracted_after_write" => (
+            "fetch \"m\" tae m\nm.mg = \"alias-field\"\nken ctor = m.Box\nken box = ctor(\"item\")\nken read = box.read\nblether read()\nblether m.Point(3).x\nblether m.callback(\"closure\")\n",
+            "item:mg!\n3\nclosure:mg",
+        ),
+        "alias_callable_replacement" => (
+            "fetch \"m\" tae m\nken ctor = m.Box\nm.Box = |item| m.Point(item)\nm.getmg = || \"replacement\"\nblether m.Box(4).x\nblether m.getmg()\nken box = ctor(\"saved\")\nblether box.read()\n",
+            "4\nreplacement\nsaved:mg!",
+        ),
+        "alias_closure_after_write" => (
+            "fetch \"m\" tae m\nm.mg = \"alias-field\"\nblether m.callback(\"lambda\")\nblether m.captured(\"value\")\n",
+            "lambda:mg\ncaptured:value:mg",
         ),
         _ => panic!("unknown fetch-binding 00208 case: {case}"),
     }
@@ -2299,3 +2328,385 @@ fetch_bindings_tests_0020!(
     assert_fetch_bindings_native_00208,
     "alias_constructor_after_write"
 );
+
+fetch_bindings_tests_0020!(
+    fetch_bindings_00208_interpreter_alias_class_field_write,
+    fetch_bindings_00208_native_alias_class_field_write,
+    assert_fetch_bindings_interpreter_00208,
+    assert_fetch_bindings_native_00208,
+    "alias_class_field_write"
+);
+
+fetch_bindings_tests_0020!(
+    fetch_bindings_00208_interpreter_alias_class_index_write,
+    fetch_bindings_00208_native_alias_class_index_write,
+    assert_fetch_bindings_interpreter_00208,
+    assert_fetch_bindings_native_00208,
+    "alias_class_index_write"
+);
+
+fetch_bindings_tests_0020!(
+    fetch_bindings_00208_interpreter_alias_class_extracted_after_write,
+    fetch_bindings_00208_native_alias_class_extracted_after_write,
+    assert_fetch_bindings_interpreter_00208,
+    assert_fetch_bindings_native_00208,
+    "alias_class_extracted_after_write"
+);
+
+fetch_bindings_tests_0020!(
+    fetch_bindings_00208_interpreter_alias_callable_replacement,
+    fetch_bindings_00208_native_alias_callable_replacement,
+    assert_fetch_bindings_interpreter_00208,
+    assert_fetch_bindings_native_00208,
+    "alias_callable_replacement"
+);
+
+// MDH-BUG-FLU-00210: module-local import aliases outlive the initializer.
+const FETCH_LEAF_00210: &str = r#"
+blether "leaf-init"
+ken state = "leaf"
+dae read_state() { gie state }
+dae write_state(v) { state = v }
+"#;
+
+fn fetch_alias_case_00210(case: &str) -> (&'static str, &'static str) {
+    match case {
+        "nested" => (
+            "fetch \"bridge\" tae bridge\nfetch \"leaf\" tae leaf\nblether bridge.read()\nbridge.write(\"nested\")\nblether bridge.read()\nblether leaf.read_state()\n",
+            "leaf-init\nleaf\nnested\nnested",
+        ),
+        "two_levels" => (
+            "fetch \"tower\" tae tower\nblether tower.read()\ntower.write(\"two-levels\")\nblether tower.read()\n",
+            "leaf-init\nleaf\ntwo-levels",
+        ),
+        "method" => (
+            "fetch \"bridge\" tae bridge\nken reader = bridge.Reader()\nblether reader.read()\nbridge.write(\"method\")\nblether reader.read()\n",
+            "leaf-init\nleaf\nmethod",
+        ),
+        "reassigned" => (
+            "fetch \"bridge\" tae bridge\nblether bridge.read()\nbridge.replace()\nblether bridge.read()\nfetch \"leaf\" tae leaf\nblether leaf.read_state()\n",
+            "leaf-init\nleaf\nreplacement\nleaf",
+        ),
+        "importer_shadow" => (
+            "ken leaf = \"importer\"\nfetch \"bridge\" tae bridge\nblether bridge.read()\nblether leaf\n",
+            "leaf-init\nleaf\nimporter",
+        ),
+        _ => panic!("unknown fetch-alias 00210 case: {case}"),
+    }
+}
+
+fn stage_fetch_alias_modules_00210(source: &str) -> tempfile::TempDir {
+    let dir = stage_fetch_bindings_modules_0020(source, None);
+    for (name, text) in [
+        ("leaf.braw", FETCH_LEAF_00210),
+        ("bridge.braw", "fetch \"leaf\" tae leaf\ndae read() { gie leaf.read_state() }\ndae write(v) { leaf.write_state(v) }\ndae replace() { leaf = {\"read_state\": || \"replacement\"} }\nkin Reader { dae read() { gie leaf.read_state() } }\n"),
+        ("tower.braw", "fetch \"bridge\" tae leaf\ndae read() { gie leaf.read() }\ndae write(v) { leaf.write(v) }\n"),
+    ] {
+        std::fs::write(dir.path().join(name), text).expect("write nested alias fixture");
+    }
+    dir
+}
+
+fn assert_fetch_alias_interpreter_00210(case: &str) {
+    let (source, expected) = fetch_alias_case_00210(case);
+    let dir = stage_fetch_alias_modules_00210(source);
+    let program = mdhavers::parse(source).expect("parse main");
+    let mut interpreter = Interpreter::with_dir(dir.path());
+    interpreter.interpret(&program).expect("interpret main");
+    assert_eq!(interpreter.get_output().join("\n"), expected, "{case}");
+}
+
+#[cfg(feature = "llvm")]
+fn assert_fetch_alias_native_00210(case: &str) {
+    let (source, expected) = fetch_alias_case_00210(case);
+    let dir = stage_fetch_alias_modules_00210(source);
+    let program = mdhavers::parse(source).expect("parse main");
+    let executable = dir.path().join("fetch_alias");
+    let compiled = mdhavers::LLVMCompiler::new().compile_to_native_with_source(
+        &program,
+        &executable,
+        2,
+        Some(&dir.path().join("main.braw")),
+    );
+    assert!(compiled.is_ok(), "{case}: {compiled:?}");
+    let output = Command::new(&executable)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("run native main");
+    std::fs::remove_file(&executable).expect("remove native fixture executable");
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{case}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim_end_matches('\n'),
+        expected,
+        "{case}"
+    );
+}
+
+fetch_bindings_tests_0020!(
+    fetch_alias_00210_interpreter_nested,
+    fetch_alias_00210_native_nested,
+    assert_fetch_alias_interpreter_00210,
+    assert_fetch_alias_native_00210,
+    "nested"
+);
+fetch_bindings_tests_0020!(
+    fetch_alias_00210_interpreter_two_levels,
+    fetch_alias_00210_native_two_levels,
+    assert_fetch_alias_interpreter_00210,
+    assert_fetch_alias_native_00210,
+    "two_levels"
+);
+fetch_bindings_tests_0020!(
+    fetch_alias_00210_interpreter_method,
+    fetch_alias_00210_native_method,
+    assert_fetch_alias_interpreter_00210,
+    assert_fetch_alias_native_00210,
+    "method"
+);
+fetch_bindings_tests_0020!(
+    fetch_alias_00210_interpreter_reassigned,
+    fetch_alias_00210_native_reassigned,
+    assert_fetch_alias_interpreter_00210,
+    assert_fetch_alias_native_00210,
+    "reassigned"
+);
+fetch_bindings_tests_0020!(
+    fetch_alias_00210_interpreter_importer_shadow,
+    fetch_alias_00210_native_importer_shadow,
+    assert_fetch_alias_interpreter_00210,
+    assert_fetch_alias_native_00210,
+    "importer_shadow"
+);
+
+fetch_bindings_tests_0020!(
+    fetch_bindings_00208_interpreter_alias_closure_after_write,
+    fetch_bindings_00208_native_alias_closure_after_write,
+    assert_fetch_bindings_interpreter_00208,
+    assert_fetch_bindings_native_00208,
+    "alias_closure_after_write"
+);
+
+#[cfg(feature = "llvm")]
+fn assert_dispatch_parity_00211(source: &str, expected: &str, error: Option<&str>) {
+    let dir = stage_fetch_bindings_modules_0020(source, None);
+    let program = mdhavers::parse(source).expect("parse dispatch fixture");
+    let mut interpreter = Interpreter::with_dir(dir.path());
+    let result = interpreter.interpret(&program);
+    assert_eq!(
+        interpreter.get_output().join("\n"),
+        expected,
+        "interpreter stdout"
+    );
+    if let Some(error) = error {
+        assert_eq!(result.unwrap_err().to_string(), error, "interpreter error");
+        let reference = Command::new(env!("CARGO_BIN_EXE_mdhavers"))
+            .arg("run")
+            .arg(dir.path().join("main.braw"))
+            .stdin(std::process::Stdio::null())
+            .output()
+            .expect("run interpreter CLI");
+        assert_eq!(reference.status.code(), Some(1), "interpreter exit status");
+        assert_eq!(
+            String::from_utf8_lossy(&reference.stdout).trim_end_matches('\n'),
+            expected
+        );
+        // The CLI adds a randomly chosen Scots exclamation before the error.
+        let stderr = String::from_utf8_lossy(&reference.stderr);
+        assert_eq!(
+            stderr
+                .lines()
+                .next()
+                .expect("CLI error line")
+                .split_once(": ")
+                .expect("CLI error prefix")
+                .1,
+            error
+        );
+    } else {
+        result.expect("interpret dispatch fixture");
+    }
+    let executable = dir.path().join("dispatch");
+    let compiled = mdhavers::LLVMCompiler::new().compile_to_native_with_source(
+        &program,
+        &executable,
+        2,
+        Some(&dir.path().join("main.braw")),
+    );
+    assert!(
+        compiled.is_ok(),
+        "dynamic dispatch must compile: {compiled:?}"
+    );
+    let native = Command::new("deltic")
+        .args(["timeout", "30"])
+        .arg(&executable)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("run native dispatch fixture");
+    std::fs::remove_file(executable).expect("remove native dispatch fixture");
+    assert_eq!(
+        String::from_utf8_lossy(&native.stdout).trim_end_matches('\n'),
+        expected,
+        "native stdout"
+    );
+    assert_eq!(
+        native.status.code(),
+        Some(if error.is_some() { 1 } else { 0 }),
+        "native exit status"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&native.stderr).trim_end_matches('\n'),
+        error.unwrap_or(""),
+        "native error"
+    );
+}
+
+#[cfg(feature = "llvm")]
+fn assert_operator_arity_00211(method: &str, operator: &str) {
+    let source = format!(
+        "kin Ops {{ dae {method}(that, extra) {{ gie 7 }} }}\nblether Ops() {operator} 1\n"
+    );
+    let error = format!("Yer bum's oot the windae! Function '{method}' expects 2 arguments but ye gave it 1 at line 2");
+    assert_dispatch_parity_00211(&source, "", Some(&error));
+    let source = format!(
+        "kin Ops {{ dae {method}(that, extra = 7) {{ gie extra }} }}\nblether Ops() {operator} 1\n"
+    );
+    assert_dispatch_parity_00211(&source, "7", None);
+}
+
+macro_rules! operator_arity_tests_00211 {
+    ($($test:ident => ($method:literal, $operator:literal)),* $(,)?) => {
+        $(#[test] #[cfg(feature = "llvm")] fn $test() { assert_operator_arity_00211($method, $operator); })*
+    }
+}
+operator_arity_tests_00211! {
+    dispatch_00211_add => ("__pit_thegither__", "+"),
+    dispatch_00211_subtract => ("__tak_awa__", "-"),
+    dispatch_00211_multiply => ("__times__", "*"),
+    dispatch_00211_divide => ("__pairt__", "/"),
+    dispatch_00211_modulo => ("__lave__", "%"),
+    dispatch_00211_equal => ("__same_as__", "=="),
+    dispatch_00211_not_equal => ("__differs_fae__", "!="),
+    dispatch_00211_less => ("__wee_er__", "<"),
+    dispatch_00211_less_equal => ("__wee_er_or_same__", "<="),
+    dispatch_00211_greater => ("__muckle_er__", ">"),
+    dispatch_00211_greater_equal => ("__muckle_er_or_same__", ">="),
+}
+
+#[test]
+#[cfg(feature = "llvm")]
+fn dispatch_00211_dynamic_method() {
+    assert_dispatch_parity_00211(
+        "kin Ops { dae pick(that, extra) { gie 7 } }\nblether Ops().pick(1)\n",
+        "",
+        Some("Yer bum's oot the windae! Function 'pick' expects 2 arguments but ye gave it 1 at line 2"),
+    );
+    assert_dispatch_parity_00211(
+        "kin Ops { dae pick(that, extra = that + 6) { gie extra } }\nblether Ops().pick(1)\n",
+        "7",
+        None,
+    );
+}
+
+#[test]
+#[cfg(feature = "llvm")]
+fn dispatch_00211_function_value() {
+    assert_dispatch_parity_00211(
+        "dae pick(that, extra) { gie 7 }\nken f = pick\nblether f(1)\n",
+        "",
+        Some("Yer bum's oot the windae! Function 'pick' expects 2 arguments but ye gave it 1 at line 3"),
+    );
+    assert_dispatch_parity_00211(
+        "dae pick(that, extra = that + 6) { gie extra }\nken f = pick\nblether f(1)\n",
+        "7",
+        None,
+    );
+}
+
+#[test]
+#[cfg(feature = "llvm")]
+fn dispatch_00211_closure_value() {
+    assert_dispatch_parity_00211("dae maker(v) { dae pick(that, extra) { gie v }\ngie pick }\nken f = maker(7)\nblether f(1)\n", "", Some("Yer bum's oot the windae! Function 'pick' expects 2 arguments but ye gave it 1 at line 4"));
+    assert_dispatch_parity_00211("dae maker(v) { dae pick(that, extra = v) { gie extra }\ngie pick }\nken f = maker(7)\nblether f(1)\n", "7", None);
+}
+
+#[test]
+#[cfg(feature = "llvm")]
+fn dispatch_00211_bound_method() {
+    assert_dispatch_parity_00211("kin Ops { dae pick(that, extra) { gie 7 } }\nken obj = Ops()\nken f = obj.pick\nblether f(1)\n", "", Some("Yer bum's oot the windae! Function 'pick' expects 2 arguments but ye gave it 1 at line 4"));
+    assert_dispatch_parity_00211("kin Ops { dae pick(that, extra = 7) { gie extra } }\nken obj = Ops()\nken f = obj.pick\nblether f(1)\n", "7", None);
+}
+
+#[test]
+#[cfg(feature = "llvm")]
+fn dispatch_00211_dynamic_constructor() {
+    assert_dispatch_parity_00211(
+        "kin Ops { dae init(that, extra) { masel.n = 7 } }\nken ctor = Ops\nblether ctor(1).n\n",
+        "",
+        Some("Yer bum's oot the windae! Function 'init' expects 2 arguments but ye gave it 1 at line 3"),
+    );
+    assert_dispatch_parity_00211("kin Ops { dae init(that, extra = that + 6) { masel.n = extra } }\nken ctor = Ops\nblether ctor(1).n\n", "7", None);
+}
+
+#[test]
+#[cfg(feature = "llvm")]
+fn dispatch_00211_inherited_operator() {
+    assert_dispatch_parity_00211("kin Base { dae __tak_awa__(that, extra) { gie 7 } }\nkin Ops fae Base {}\nblether Ops() - 1\n", "", Some("Yer bum's oot the windae! Function '__tak_awa__' expects 2 arguments but ye gave it 1 at line 3"));
+    assert_dispatch_parity_00211("kin Base { dae __tak_awa__(that, extra = 7) { gie extra } }\nkin Ops fae Base {}\nblether Ops() - 1\n", "7", None);
+}
+
+#[test]
+#[cfg(feature = "llvm")]
+fn dispatch_00211_too_many_operator_args() {
+    assert_dispatch_parity_00211(
+        "kin Ops { dae __tak_awa__() { gie 7 } }\nblether Ops() - 1\n",
+        "",
+        Some("Yer bum's oot the windae! Function '__tak_awa__' expects 0 arguments but ye gave it 1 at line 2"),
+    );
+}
+
+#[test]
+#[cfg(feature = "llvm")]
+fn dispatch_00211_optional_required() {
+    assert_dispatch_parity_00211("kin Ops { dae __tak_awa__(that, extra, last = 9) { gie 7 } }\nblether Ops() - 1\n", "", Some("That's pure mince! Type error at line 2: Function '__tak_awa__' expects 2 tae 3 arguments but ye gave it 1"));
+}
+
+#[test]
+#[cfg(feature = "llvm")]
+fn dispatch_00211_callable_field() {
+    assert_dispatch_parity_00211("kin Ops { dae init() { masel.pick = |that, extra| 7 } }\nblether Ops().pick(1)\n", "", Some("Yer bum's oot the windae! Function '<lambda>' expects 2 arguments but ye gave it 1 at line 2"));
+}
+
+#[test]
+#[cfg(feature = "llvm")]
+fn dispatch_00211_too_many_dynamic_args() {
+    assert_dispatch_parity_00211("kin Ops { dae pick() { gie 7 } }\nblether Ops().pick(1)\n", "", Some("Yer bum's oot the windae! Function 'pick' expects 0 arguments but ye gave it 1 at line 2"));
+    assert_dispatch_parity_00211("dae pick() { gie 7 }\nken f = pick\nblether f(1)\n", "", Some("Yer bum's oot the windae! Function 'pick' expects 0 arguments but ye gave it 1 at line 3"));
+}
+
+#[test]
+#[cfg(feature = "llvm")]
+fn dispatch_00211_shared_dispatcher() {
+    let mut source = String::new();
+    for i in 0..25 {
+        source.push_str(&format!("dae unused{i}() {{ gie {i} }}\n"));
+    }
+    source.push_str("dae pick(that, extra) { gie 7 }\nken f = pick\nblether f(1)\n");
+    assert_dispatch_parity_00211(&source, "", Some("Yer bum's oot the windae! Function 'pick' expects 2 arguments but ye gave it 1 at line 28"));
+}
+
+#[test]
+#[cfg(feature = "llvm")]
+fn dispatch_00211_caught_error() {
+    assert_dispatch_parity_00211("kin Ops { dae __tak_awa__(that, extra) { gie 7 } }\nhae_a_bash { blether Ops() - 1 } gin_it_gangs_wrang e { blether e }\nblether \"after\"\n", "Yer bum's oot the windae! Function '__tak_awa__' expects 2 arguments but ye gave it 1 at line 2\nafter", None);
+}
+
+#[test]
+#[cfg(feature = "llvm")]
+fn dispatch_00211_imported_constructor() {
+    assert_dispatch_parity_00211("fetch \"m\" tae m\nm.mg = \"alias\"\nblether m.Box()\n", "", Some("Yer bum's oot the windae! Function 'init' expects 1 arguments but ye gave it 0 at line 3"));
+}

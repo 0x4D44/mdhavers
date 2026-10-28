@@ -668,6 +668,8 @@ MdhValue __mdh_bampot_mode(MdhValue list);
 int64_t __mdh_jmp_buf_size(void);
 void __mdh_try_push(void *env);
 void __mdh_try_pop(void);
+/* Raise an already-worded runtime error with the current statement's line. */
+void __mdh_hurl_text_at_line(const char *text);
 void __mdh_hurl(MdhValue msg);
 void __mdh_hurl_at(MdhValue msg, int64_t line);
 MdhValue __mdh_get_last_error(void);
