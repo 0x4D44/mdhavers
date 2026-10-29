@@ -1,0 +1,112 @@
+fetch "games/bogle/engine/game"
+fetch "games/bogle/engine/map"
+fetch "games/bogle/engine/ai"
+fetch "games/bogle/engine/weapons"
+# Actor fixtures avoid loading renderer assets and exercise only pure state.
+dae actor_test_game(m) {
+    ken g = {
+        "map": m,
+        "x": m["start_x"] * 65536,
+        "y": m["start_y"] * 65536,
+        "z": m["floor_h"][m["start_sector"]] * 65536,
+        "sector": m["start_sector"],
+        "health": 100,
+        "spirit": 0,
+        "mars": 0,
+        "powder": 0,
+        "puff": 100,
+        "owned": [aye, nae, nae, nae],
+        "weapon": 1,
+        "keys": 0,
+        "speed_tics": 0,
+        "tics": 0,
+        "seed": 1,
+        "sin": load_trig(),
+        "projectiles": [],
+    }
+    init_things(g)
+    gie g
+}
+
+ken room = "BOGMAP 1\nv 0 0\nv 512 0\nv 512 512\nv 0 512\ns 0 128 1 2 192 0 0 0 1 2 3\nt 1 64 64 0 0\n"
+ken g = actor_test_game(map_parse(room + "t 2 160 64 0 0\n"))
+ken a = g["actors"][0]
+ai_tick(g)
+mak_siccar a["state"] == "windup" an a["timer"] == 18
+fer i in 0..18 {
+    ai_tick(g)
+}
+mak_siccar a["state"] == "charge" an a["dx"] == -163840
+ken before = a["x"]
+ai_tick(g)
+mak_siccar a["x"] == before - 163840
+a["x"] = 17 * 65536
+ai_tick(g)
+mak_siccar a["state"] == "stunned" an a["timer"] == 35
+fer i in 0..35 {
+    ai_tick(g)
+}
+mak_siccar a["state"] == "patrol"
+blether "ok keeper windup charge wall stun recovery"
+g = actor_test_game(map_parse(room + "t 3 450 64 0 0\n"))
+a = g["actors"][0]
+ai_tick(g)
+mak_siccar a["state"] == "dormant"
+g["x"] = 300 * 65536
+ai_tick(g)
+mak_siccar a["state"] == "chase" an a["x"] < 450 * 65536
+a["x"] = g["x"] + 10 * 65536
+ai_tick(g)
+mak_siccar nae a["active"] an g["health"] < 100
+blether "ok haggis proximity wake chase explode"
+g = actor_test_game(map_parse(room + "t 4 200 64 0 0\n"))
+a = g["actors"][0]
+ai_tick(g)
+mak_siccar a["x"] < 200 * 65536
+mak_siccar len(g["projectiles"]) == 1
+mak_siccar g["projectiles"][0]["kind"] == "wail"
+blether "ok ghost drift and wail"
+g = actor_test_game(map_parse(room + "t 5 64 64 0 0\n"))
+fer i in 0..5 {
+    ai_tick(g)
+}
+mak_siccar g["health"] == 99
+mak_siccar g["actors"][0]["health"] == 200
+blether "ok midge periodic contact damage"
+# Two adjoining sectors separated by solid walls: a ghost phases through,
+# while corporeal haggises and midges stop at their shared collision radius.
+ken split_map = "BOGMAP 1\nv 0 0\nv 256 0\nv 256 256\nv 0 256\nv 512 0\nv 512 256\ns 0 128 1 2 192 0 0 0 1 2 3\ns 0 128 1 2 192 0 0 1 4 5 2\nt 1 400 64 0 0\nt 4 255 64 0 0\nt 3 240 100 0 0\nt 5 240 140 0 0\n"
+g = actor_test_game(map_parse(split_map))
+g["map"]["portal"][1] = -1
+g["map"]["portal"][7] = -1
+fer i in 0..5 {
+    ai_tick(g)
+}
+mak_siccar g["actors"][0]["sector"] == 1
+mak_siccar g["actors"][1]["x"] <= 240 * 65536
+mak_siccar g["actors"][2]["x"] <= 240 * 65536
+blether "ok ghost wall phase and corporeal collision"
+# Sight blocked by the solid divider leaves a keeper on a seeded patrol.
+g = actor_test_game(map_parse(replace(split_map, "t 4 255 64 0 0", "t 2 128 64 0 0")))
+g["map"]["portal"][1] = -1
+g["map"]["portal"][7] = -1
+ai_tick(g)
+mak_siccar g["actors"][0]["state"] == "patrol" an g["seed"] == 48271
+blether "ok keeper seeded patrol without sight"
+ken stepped = replace(split_map, "s 0 128 1 2 192 0 0 1", "s 48 128 1 2 192 0 0 1")
+stepped = replace(stepped, "t 5 240 140 0 0", "t 5 255 140 0 0")
+g = actor_test_game(map_parse(stepped))
+fer i in 0..5 {
+    ai_tick(g)
+}
+mak_siccar g["actors"][2]["sector"] == 1
+mak_siccar g["actors"][1]["sector"] == 0
+blether "ok midges ignore steps haggises respect them"
+g = actor_test_game(map_parse(replace(replace(split_map, "t 1 400 64 0 0", "t 1 264 64 0 0"), "t 4 255 64 0 0", "t 2 255 64 0 0")))
+g["map"]["portal"][1] = -1
+g["map"]["portal"][7] = -1
+g["actors"][0]["state"] = "charge"
+g["actors"][0]["dx"] = 163840
+ai_tick(g)
+mak_siccar g["health"] == 100
+blether "ok keeper contact attack respects walls"

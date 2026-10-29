@@ -1,0 +1,45 @@
+fetch "games/bogle/tools/mapbuild"
+fetch "games/bogle/engine/game"
+
+ken gameplay_map = new_map()
+room(gameplay_map, [[0, 0], [512, 0], [512, 256], [0, 256]], 0, 128)
+map_thing(gameplay_map, 1, 64, 128)
+map_thing(gameplay_map, 17, 68, 128)
+map_thing(gameplay_map, 16, 68, 128)
+ken gameplay_game = new_game(validate(gameplay_map))
+mak_siccar gameplay_game["health"] == 100
+mak_siccar gameplay_game["spirit"] == 0
+mak_siccar gameplay_game["weapon"] == 1
+mak_siccar gameplay_game["keys"] == 0
+mak_siccar gameplay_game["gameplay"]
+tic(gameplay_game, {"keys": 1, "dx": 0})
+mak_siccar gameplay_game["owned"][2]
+mak_siccar gameplay_game["powder"] > 0
+tic(gameplay_game, {"keys": 1024, "dx": 0})
+mak_siccar gameplay_game["weapon"] == 3
+blether "ok gameplay initialization and recorded weapon selection"
+ken gameplay_x = gameplay_game["x"]
+gameplay_game["health"] = 0
+tic(gameplay_game, {"keys": 1, "dx": 0})
+mak_siccar gameplay_game["x"] == gameplay_x
+blether "ok dead player cannot advance"
+gameplay_game["health"] = 100
+gameplay_game["won"] = aye
+tic(gameplay_game, {"keys": 1, "dx": 0})
+mak_siccar gameplay_game["x"] == gameplay_x
+blether "ok exit freezes simulation"
+
+ken gameplay_doors = map_parse("BOGMAP 1\nv 0 0\nv 128 0\nv 128 128\nv 0 128\nv 160 0\nv 160 128\nv 320 0\nv 320 128\ns 0 128 1 2 192 0 0 0 1 2 3\ns 0 128 1 2 192 1 0 1 4 5 2\ns 0 128 1 2 192 0 0 4 6 7 5\nt 1 96 64 1024 0\n")
+ken gameplay_turn = new_game(gameplay_doors, aye)
+tic(gameplay_turn, {"keys": 128, "dx": 1024})
+mak_siccar gameplay_turn["doors"][0]["state"] == "opening"
+blether "ok use follows the current tic turn"
+ken gameplay_exit = new_map()
+room(gameplay_exit, [[0, 0], [256, 0], [256, 256], [0, 256]], 0, 128)
+map_thing(gameplay_exit, 1, 64, 128)
+map_thing(gameplay_exit, 21, 96, 128)
+ken gameplay_finish = new_game(validate(gameplay_exit))
+tic(gameplay_finish, {"keys": 129, "dx": 0})
+mak_siccar gameplay_finish["won"]
+mak_siccar gameplay_finish["x"] == 64 * 65536
+blether "ok exit activation stops the current tic"

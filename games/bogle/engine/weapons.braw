@@ -1,0 +1,194 @@
+fetch "games/bogle/engine/fixed"
+fetch "games/bogle/engine/trig"
+
+fetch "games/bogle/engine/things"
+
+# Hitscan selects the nearest enemy intersecting a narrow horizontal ray.
+dae weapon_hitscan(g, angle, range, damage) {
+    ken cosine = bogle_cos(g["sin"], angle)
+    ken sine = bogle_sin(g["sin"], angle)
+    ken best = range + 1
+    ken target = naething
+    fer a in g["actors"] {
+        gin a["active"] an a["kind"] >= 2 an a["kind"] <= 5 {
+            ken dx = (a["x"] - g["x"]) / 65536
+            ken dy = (a["y"] - g["y"]) / 65536
+            ken along = (dx * cosine + dy * sine) / 65536
+            ken across = (dy * cosine - dx * sine) / 65536
+            gin along >= 0 an along <= range an along < best an across >= -16 an across <= 16 {
+                gin bogle_sight(g, g["x"], g["y"], g["view_z"], g["sector"], a["x"], a["y"], a["z"] + 24 * 65536, a["sector"]) {
+                    best = along
+                    target = a
+                }
+            }
+        }
+    }
+    gin target != naething {
+        damage_actor(g, target, damage)
+    }
+}
+
+dae bagpipe_blast(g) {
+    g["puff"] = g["puff"] - 34
+    g["bag_charge"] = 0
+    g["cooldown"] = 10
+    g["message"] = "Hooooonk!"
+    ken cosine = bogle_cos(g["sin"], g["angle"])
+    ken sine = bogle_sin(g["sin"], g["angle"])
+    fer a in g["actors"] {
+        gin a["active"] an a["kind"] >= 2 an a["kind"] <= 5 {
+            ken dx = (a["x"] - g["x"]) / 65536
+            ken dy = (a["y"] - g["y"]) / 65536
+            ken distance = isqrt(dx * dx + dy * dy)
+            ken dot = dx * cosine + dy * sine
+            # Compare squared cosines exactly; rounding the distance down would
+            # admit targets just outside the cone or its range. Short circuit
+            # the range check before squaring dot to keep products bounded.
+            ken distance2 = dx * dx + dy * dy
+            gin distance2 <= 102400 an dot >= 0 an dot * dot * 4 >= distance2 * 3 * 4294967296 {
+                gin bogle_sight(g, g["x"], g["y"], g["view_z"], g["sector"], a["x"], a["y"], a["z"] + 24 * 65536, a["sector"]) {
+                    gin a["kind"] == 5 {
+                        a["health"] = 0
+                        a["active"] = nae
+                    } ither {
+                        damage_actor(g, a, max(1, 60 - distance * 50 / 320))
+                        gin a["active"] {
+                            a["state"] = "stunned"
+                            a["timer"] = 53
+                            ken divisor = max(1, distance)
+                            a["vx"] = dx * 12 * 65536 / divisor
+                            a["vy"] = dy * 12 * 65536 / divisor
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+dae spawn_projectile(g, kind, x, y, z, sector, vx, vy, vz, owner) {
+    shove(g["projectiles"], {"kind": kind, "x": x, "y": y, "z": z, "sector": sector, "vx": vx, "vy": vy, "vz": vz, "owner": owner, "bounce": 0, "timer": 175, "active": aye})
+}
+
+dae projectile_burst(g, p) {
+    gin p["kind"] == "mars" {
+        splash_damage(g, p["x"], p["y"], p["z"], p["sector"], 64, 45, p["owner"])
+        p["kind"] = "sizzle"
+        p["timer"] = 35
+        p["vx"] = 0
+        p["vy"] = 0
+        p["vz"] = 0
+    } ither {
+        p["active"] = nae
+    }
+}
+
+dae projectiles_tick(g) {
+    ken live = []
+    fer p in g["projectiles"] {
+        gin p["active"] {
+            p["timer"] = p["timer"] - 1
+            gin p["timer"] <= 0 {
+                p["active"] = nae
+            } ither gin p["kind"] != "sizzle" {
+                ken nx = p["x"] + p["vx"]
+                ken ny = p["y"] + p["vy"]
+                ken nz = p["z"] + p["vz"]
+                ken hit = bogle_trace(g, p["x"], p["y"], p["z"], p["sector"], nx, ny, nz)
+                gin hit[1] >= 0 {
+                    projectile_burst(g, p)
+                } ither {
+                    p["x"] = nx
+                    p["y"] = ny
+                    p["z"] = nz
+                    p["sector"] = hit[0]
+                    ken floor = g["map"]["floor_h"][p["sector"]] * 65536
+                    gin p["kind"] == "mars" {
+                        p["vz"] = p["vz"] - 32768
+                    }
+                    gin nz <= floor {
+                        p["z"] = floor + 1
+                        gin p["kind"] == "mars" an p["bounce"] == 0 {
+                            p["bounce"] = 1
+                            p["vz"] = max(65536, (0 - p["vz"]) / 2)
+                            p["vx"] = p["vx"] / 2
+                            p["vy"] = p["vy"] / 2
+                        } ither {
+                            projectile_burst(g, p)
+                        }
+                    } ither gin nz >= g["map"]["ceil_h"][p["sector"]] * 65536 {
+                        projectile_burst(g, p)
+                    }
+                    gin p["active"] an p["kind"] == "wail" {
+                        ken dx = (g["x"] - nx) / 65536
+                        ken dy = (g["y"] - ny) / 65536
+                        gin dx * dx + dy * dy <= 400 an nz >= g["z"] an nz <= g["z"] + 56 * 65536 {
+                            hurt_player(g, 10)
+                            p["active"] = nae
+                        }
+                    } ither gin p["active"] an p["kind"] == "mars" {
+                        fer a in g["actors"] {
+                            gin a["active"] an a["kind"] >= 2 an a["kind"] <= 5 {
+                                ken dx = (a["x"] - nx) / 65536
+                                ken dy = (a["y"] - ny) / 65536
+                                gin dx * dx + dy * dy <= 400 an nz >= a["z"] an nz <= a["z"] + 56 * 65536 {
+                                    projectile_burst(g, p)
+                                    brak
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        gin p["active"] {
+            shove(live, p)
+        }
+    }
+    g["projectiles"] = live
+}
+
+dae weapons_tick(g, fire) {
+    gin g["cooldown"] > 0 {
+        g["cooldown"] = g["cooldown"] - 1
+    }
+    g["puff"] = min(100, g["puff"] + 1)
+    ken weapon = g["weapon"]
+    gin weapon < 1 or weapon > 4 or nae g["owned"][weapon - 1] {
+        weapon = 1
+        g["weapon"] = 1
+    }
+    gin weapon != 4 {
+        g["bag_charge"] = 0
+    }
+    gin weapon == 4 {
+        gin fire an g["cooldown"] == 0 an g["puff"] >= 34 {
+            g["bag_charge"] = g["bag_charge"] + 1
+            gin g["bag_charge"] >= 35 {
+                bagpipe_blast(g)
+            }
+        } ither gin nae fire {
+            gin g["bag_charge"] >= 21 an g["puff"] >= 34 {
+                bagpipe_blast(g)
+            }
+            g["bag_charge"] = 0
+        }
+    } ither gin fire an g["cooldown"] == 0 {
+        gin weapon == 1 {
+            weapon_hitscan(g, g["angle"], 64, 20)
+            g["cooldown"] = 8
+        } ither gin weapon == 2 an g["mars"] > 0 {
+            g["mars"] = g["mars"] - 1
+            spawn_projectile(g, "mars", g["x"], g["y"], g["view_z"], g["sector"], 8 * bogle_cos(g["sin"], g["angle"]), 8 * bogle_sin(g["sin"], g["angle"]), 4 * 65536, naething)
+            g["cooldown"] = 18
+        } ither gin weapon == 3 an g["powder"] > 0 {
+            g["powder"] = g["powder"] - 1
+            fer pellet in 0..7 {
+                ken spread = (pellet - 3) * 32 + game_random(g) % 33 - 16
+                weapon_hitscan(g, bogle_angle(g["angle"] + spread), 768, 8)
+            }
+            g["cooldown"] = 28
+        }
+    }
+    g["was_fire"] = fire
+}

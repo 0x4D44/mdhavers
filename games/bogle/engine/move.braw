@@ -60,6 +60,9 @@ dae body_portal_open(g, sector, wall) {
     gin next < 0 or bit_an(m["flags"][wall], 1) != 0 {
         gie nae
     }
+    gin contains(g, "ignore_steps") an g["ignore_steps"] {
+        gie min(m["ceil_h"][sector], m["ceil_h"][next]) > max(m["floor_h"][sector], m["floor_h"][next])
+    }
     ken floor = m["floor_h"][sector]
     gin m["floor_h"][next] > floor {
         floor = m["floor_h"][next]
@@ -202,4 +205,53 @@ dae move_body(g, dx, dy) {
         old_x = next_x
         old_y = next_y
     }
+}
+
+# Walk a segment through convex sectors. Cross products use 24.8 coordinates
+# and map-unit wall vectors so both ratio products fit signed i64.
+# Result: reached sector, blocking wall (-1 when clear), fraction along ray.
+# Use includes a threshold at the endpoint; sight retains its source-side sector.
+dae bogle_trace(g, x, y, z, sector, tx, ty, tz, include_end = nae) {
+    ken m = g["map"]
+    ken last = -1
+    fer step in 0..len(m["floor_h"]) + 1 {
+        ken exit_wall = -1
+        ken fraction = 65537
+        fer w in m["wall_first"][sector]..m["wall_first"][sector] + m["wall_count"][sector] {
+            ken a = m["wall_v1"][w]
+            ken b = m["wall_v2"][w]
+            ken wx = m["vx"][b] - m["vx"][a]
+            ken wy = m["vy"][b] - m["vy"][a]
+            ken before = wx * (y / 256 - m["vy"][a] * 256) - wy * (x / 256 - m["vx"][a] * 256)
+            ken after = wx * (ty / 256 - m["vy"][a] * 256) - wy * (tx / 256 - m["vx"][a] * 256)
+            gin before >= 0 an (after < 0 or (include_end an after == 0 an before > 0)) {
+                ken t = before * 65536 / (before - after)
+                gin t >= last an t < fraction {
+                    fraction = t
+                    exit_wall = w
+                }
+            }
+        }
+        gin exit_wall < 0 {
+            gie [sector, -1, 65536]
+        }
+        ken next = m["portal"][exit_wall]
+        gin next < 0 or bit_an(m["flags"][exit_wall], 1) != 0 {
+            gie [sector, exit_wall, fraction]
+        }
+        ken height = z + (tz - z) * fraction / 65536
+        ken floor = max(m["floor_h"][sector], m["floor_h"][next]) * 65536
+        ken ceiling = min(m["ceil_h"][sector], m["ceil_h"][next]) * 65536
+        gin height <= floor or height >= ceiling {
+            gie [sector, exit_wall, fraction]
+        }
+        sector = next
+        last = fraction
+    }
+    gie [sector, 0, 0]
+}
+
+dae bogle_sight(g, x, y, z, sector, tx, ty, tz, target_sector) {
+    ken hit = bogle_trace(g, x, y, z, sector, tx, ty, tz)
+    gie hit[1] == -1 an hit[0] == target_sector
 }

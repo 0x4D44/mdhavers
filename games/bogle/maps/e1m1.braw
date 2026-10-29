@@ -1,0 +1,89 @@
+# E1M1, The Gatehouse. Run this builder from the repository root.
+# Sector kinds: 0 normal, 1 door, 2 fryer, 3 bog, 4 cold water.
+# Door tags: 0 unlocked, 1 iron key, 2 silver key.
+fetch "games/bogle/tools/mapbuild"
+
+ken gatehouse = new_map()
+# Courtyard: a well and a midge-infested bog in the north-east corner.
+fer row in 0..3 {
+    fer column in 0..3 {
+        ken x = column * 128
+        ken y = row * 128
+        ken kind = 0
+        ken texture = 1
+        gin column == 2 an row == 0 {
+            kind = 3
+            texture = 10
+        }
+        room(gatehouse, [[x, y], [x + 128, y], [x + 128, y + 128], [x, y + 128]], 0, 192, texture, -1, 176, kind)
+    }
+}
+door(gatehouse, [[384, 128], [448, 128], [448, 256], [384, 256]], 0, 160)
+room(gatehouse, [[448, 128], [576, 128], [576, 256], [448, 256]], 0, 160, 1, 2, 192)
+# Great hall, with a two-step raised dais along its north side.
+fer row in 0..3 {
+    fer column in 0..3 {
+        ken x = 576 + column * 128
+        ken y = row * 128
+        ken floor_h = 0
+        gin row == 0 {
+            floor_h = column * 12
+        }
+        room(gatehouse, [[x, y], [x + 128, y], [x + 128, y + 128], [x, y + 128]], floor_h, 192, 4, 2, 208)
+    }
+}
+# Chippy kitchen and landing. Fryer is optional, never the only route.
+room(gatehouse, [[960, 0], [1088, 0], [1088, 128], [960, 128]], 0, 160, 12, 2, 255, 2)
+room(gatehouse, [[960, 128], [1088, 128], [1088, 256], [960, 256]], 0, 160, 1, 2, 208)
+# Eight steps descend to the flooded crypt.
+fer step in 0..8 {
+    ken x = 1088 + step * 32
+    room(gatehouse, [[x, 128], [x + 32, 128], [x + 32, 256], [x, 256]], (0 - step - 1) * 3, 160, 3, 2, 144)
+}
+room(gatehouse, [[1344, 128], [1472, 128], [1472, 256], [1344, 256]], -24, 128, 14, 2, 112, 4)
+room(gatehouse, [[1472, 128], [1600, 128], [1600, 256], [1472, 256]], -24, 128, 3, 2, 128)
+door(gatehouse, [[1600, 128], [1632, 128], [1632, 256], [1600, 256]], -24, 128, 1)
+room(gatehouse, [[1632, 128], [1760, 128], [1760, 256], [1632, 256]], -24, 160, 5, 2, 64)
+room(gatehouse, [[1760, 128], [1888, 128], [1888, 256], [1760, 256]], -24, 160, 5, 2, 224)
+# Chapel torchlight makes ghosts vulnerable. Bagpipes wait on the plinth.
+room(gatehouse, [[1888, 128], [2016, 128], [2016, 256], [1888, 256]], -12, 192, 11, 2, 224)
+room(gatehouse, [[2016, 128], [2144, 128], [2144, 256], [2016, 256]], 0, 192, 11, 2, 240)
+door(gatehouse, [[2144, 128], [2176, 128], [2176, 256], [2144, 256]], 0, 192, 2)
+fer step in 0..4 {
+    ken x = 2176 + step * 64
+    room(gatehouse, [[x, 128], [x + 64, 128], [x + 64, 256], [x, 256]], (step + 1) * 6, 192, 1, -1, 192)
+}
+room(gatehouse, [[2432, 128], [2560, 128], [2560, 256], [2432, 256]], 24, 192, 1, -1, 208)
+
+map_thing(gatehouse, 1, 64, 192)
+map_thing(gatehouse, 17, 160, 192)
+map_thing(gatehouse, 16, 192, 192)
+map_thing(gatehouse, 16, 224, 192)
+map_thing(gatehouse, 14, 256, 192)
+map_thing(gatehouse, 5, 328, 64)
+map_thing(gatehouse, 2, 496, 160, 2048)
+map_thing(gatehouse, 2, 544, 224, 2048)
+map_thing(gatehouse, 3, 808, 80, 2048, 1)
+map_thing(gatehouse, 11, 704, 192)
+map_thing(gatehouse, 12, 832, 192)
+map_thing(gatehouse, 15, 1008, 72)
+map_thing(gatehouse, 15, 1040, 72)
+map_thing(gatehouse, 10, 1032, 192)
+map_thing(gatehouse, 19, 1536, 192)
+map_thing(gatehouse, 13, 1568, 192)
+map_thing(gatehouse, 4, 1704, 200, 2048)
+map_thing(gatehouse, 20, 1824, 192)
+map_thing(gatehouse, 18, 1952, 192)
+map_thing(gatehouse, 16, 2000, 192)
+map_thing(gatehouse, 5, 2080, 192)
+map_thing(gatehouse, 2, 2240, 192, 2048)
+map_thing(gatehouse, 21, 2504, 192)
+# Dressing: stag heads, armour, brazier, thistle, cow portrait, banner, curling stone.
+map_thing(gatehouse, 36, 64, 64)
+map_thing(gatehouse, 30, 624, 48)
+map_thing(gatehouse, 31, 624, 328)
+map_thing(gatehouse, 35, 912, 320)
+map_thing(gatehouse, 34, 1808, 240)
+map_thing(gatehouse, 32, 1904, 144)
+map_thing(gatehouse, 33, 2120, 240)
+write(gatehouse, "games/bogle/data/e1m1.map")

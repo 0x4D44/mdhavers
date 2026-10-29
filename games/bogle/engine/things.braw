@@ -1,0 +1,255 @@
+fetch "games/bogle/engine/move"
+
+# Mutable game actors are separate from immutable map spawn records.
+dae init_things(g) {
+    g["actors"] = []
+    g["bog_spawn_timer"] = 350
+    g["bog_slow"] = nae
+    ken m = g["map"]
+    gin nae contains(m, "thing_type") {
+        gie naething
+    }
+    fer i in 0..len(m["thing_type"]) {
+        ken kind = m["thing_type"][i]
+        gin kind != 1 {
+            ken hp = 1
+            ken state = "idle"
+            gin kind == 2 {
+                hp = 80
+                state = "patrol"
+            }
+            gin kind == 3 {
+                hp = 1
+                state = "dormant"
+            }
+            gin kind == 4 {
+                hp = 60
+                state = "chase"
+            }
+            gin kind == 5 {
+                hp = 200
+                state = "chase"
+            }
+            shove(g["actors"], {
+                "x": m["thing_x"][i] * 65536,
+                "y": m["thing_y"][i] * 65536,
+                "z": m["thing_z"][i] * 65536,
+                "sector": m["thing_sector"][i],
+                "angle": m["thing_angle"][i],
+                "kind": kind,
+                "health": hp,
+                "state": state,
+                "timer": 0,
+                "vx": 0,
+                "vy": 0,
+                "dx": 0,
+                "dy": 0,
+                "active": aye,
+            })
+        }
+    }
+}
+
+# Distances in map units keep the squared products safely inside i64.
+dae actor_distance(x, y, tx, ty) {
+    ken dx = (tx - x) / 65536
+    ken dy = (ty - y) / 65536
+    gie isqrt(dx * dx + dy * dy)
+}
+
+dae hurt_player(g, damage) {
+    gin damage <= 0 or g["health"] <= 0 {
+        gie naething
+    }
+    ken absorbed = damage
+    gin absorbed > g["spirit"] {
+        absorbed = g["spirit"]
+    }
+    g["spirit"] = g["spirit"] - absorbed
+    g["health"] = g["health"] - damage + absorbed
+    g["message"] = "Ya wee scunner!"
+    gin g["health"] < 0 {
+        g["health"] = 0
+    }
+}
+
+dae damage_actor(g, actor, damage) {
+    gin nae actor["active"] or damage <= 0 or actor["kind"] < 2 or actor["kind"] > 5 {
+        gie nae
+    }
+    gin actor["kind"] == 4 an g["map"]["light"][actor["sector"]] <= 96 {
+        gie nae
+    }
+    gin actor["kind"] == 5 {
+        damage = 1
+    }
+    actor["health"] = actor["health"] - damage
+    gin actor["health"] <= 0 {
+        actor["health"] = 0
+        actor["active"] = nae
+        actor["state"] = "dead"
+        # Mark inactive before recursing so two adjacent haggises cannot loop.
+        gin actor["kind"] == 3 {
+            actor["state"] = "exploded"
+            splash_damage(g, actor["x"], actor["y"], actor["z"], actor["sector"], 96, 60, actor)
+        }
+    }
+    gie aye
+}
+
+dae splash_damage(g, x, y, z, sector, radius, damage, source) {
+    gin radius <= 0 or damage <= 0 {
+        gie naething
+    }
+    ken distance = actor_distance(x, y, g["x"], g["y"])
+    gin distance < radius an bogle_sight(g, x, y, z + 24 * 65536, sector, g["x"], g["y"], g["z"] + 24 * 65536, g["sector"]) {
+        hurt_player(g, damage * (radius - distance) / radius)
+    }
+    fer a in g["actors"] {
+        gin a["active"] an a["kind"] >= 2 an a["kind"] <= 5 {
+            distance = actor_distance(x, y, a["x"], a["y"])
+            gin distance < radius an bogle_sight(g, x, y, z + 24 * 65536, sector, a["x"], a["y"], a["z"] + 24 * 65536, a["sector"]) {
+                damage_actor(g, a, damage * (radius - distance) / radius)
+            }
+        }
+    }
+}
+
+# Both ordinary walking and knockback share exactly the player's wall slide.
+dae actor_move(g, a, dx, dy) {
+    ken body = {
+        "map": g["map"],
+        "x": a["x"],
+        "y": a["y"],
+        "z": a["z"],
+        "vz": 0,
+        "sector": a["sector"],
+        "ignore_steps": a["kind"] == 5,
+    }
+    move_body(body, dx, dy)
+    # Walking actors remain grounded when a portal leads to a lower floor.
+    gin a["kind"] != 4 {
+        body["z"] = g["map"]["floor_h"][body["sector"]] * 65536
+    }
+    ken moved = body["x"] - a["x"] == dx an body["y"] - a["y"] == dy
+    fer field in ["x", "y", "z", "sector"] {
+        a[field] = body[field]
+    }
+    gie moved
+}
+
+dae actor_pickup(g, a) {
+    ken kind = a["kind"]
+    ken messages = [
+        "Braw! An oatcake.",
+        "Haggis, neeps an tatties!",
+        "Girder Juice!",
+        "Haud on tae yer bonnet!",
+        "A tin o shortbread!",
+        "Braw! A deep-fried Mars bar.",
+        "Powder an shot!",
+        "A blunderbuss!",
+        "The pipes are callin!",
+        "Ye found the airn key.",
+        "Ye found the siller key.",
+    ]
+    g["message"] = messages[kind - 10]
+    gin kind == 10 {
+        g["health"] = g["health"] + 10
+    }
+    gin kind == 11 {
+        g["health"] = g["health"] + 50
+    }
+    gin kind == 12 {
+        g["health"] = g["health"] + 15
+    }
+    gin kind == 13 {
+        g["health"] = 100
+        g["speed_tics"] = 105
+    }
+    gin g["health"] > 100 {
+        g["health"] = 100
+    }
+    gin kind == 14 {
+        g["spirit"] = 100
+    }
+    gin kind == 15 {
+        g["mars"] = g["mars"] + 5
+        g["owned"][1] = aye
+    }
+    gin kind == 16 {
+        g["powder"] = g["powder"] + 5
+    }
+    gin kind == 17 {
+        g["owned"][2] = aye
+        g["powder"] = g["powder"] + 5
+    }
+    gin kind == 18 {
+        g["owned"][3] = aye
+    }
+    gin kind == 19 {
+        g["keys"] = bit_or(g["keys"], 1)
+    }
+    gin kind == 20 {
+        g["keys"] = bit_or(g["keys"], 2)
+    }
+    a["active"] = nae
+}
+
+dae things_tick(g) {
+    fer a in g["actors"] {
+        gin a["active"] {
+            gin a["vx"] != 0 or a["vy"] != 0 {
+                actor_move(g, a, a["vx"], a["vy"])
+                a["vx"] = a["vx"] / 2
+                a["vy"] = a["vy"] / 2
+            }
+            gin a["kind"] >= 10 an a["kind"] <= 20 an actor_distance(g["x"], g["y"], a["x"], a["y"]) < 24 an abs(g["z"] - a["z"]) < 32 * 65536 an bogle_sight(g, g["x"], g["y"], g["z"] + 24 * 65536, g["sector"], a["x"], a["y"], a["z"] + 24 * 65536, a["sector"]) {
+                actor_pickup(g, a)
+            }
+        }
+    }
+    g["bog_slow"] = nae
+    gin contains(g["map"], "kind") {
+        ken kind = g["map"]["kind"][g["sector"]]
+        g["bog_slow"] = kind == 3 or kind == 4
+        gin kind == 3 {
+            g["bog_spawn_timer"] = g["bog_spawn_timer"] - 1
+            gin g["bog_spawn_timer"] <= 0 {
+                ken populated = nae
+                fer a in g["actors"] {
+                    gin a["active"] an a["kind"] == 5 an a["sector"] == g["sector"] {
+                        populated = aye
+                    }
+                }
+                gin nae populated {
+                    shove(g["actors"], {
+                        "x": g["x"],
+                        "y": g["y"],
+                        "z": g["z"],
+                        "sector": g["sector"],
+                        "angle": game_random(g) % 4096,
+                        "kind": 5,
+                        "health": 200,
+                        "state": "chase",
+                        "timer": 0,
+                        "vx": 0,
+                        "vy": 0,
+                        "dx": 0,
+                        "dy": 0,
+                        "active": aye,
+                    })
+                }
+                g["bog_spawn_timer"] = 350
+            }
+        }
+        gin g["tics"] % 35 == 0 an g["z"] <= g["map"]["floor_h"][g["sector"]] * 65536 {
+            gin kind == 2 {
+                hurt_player(g, 10)
+            }
+            gin kind == 3 {
+                hurt_player(g, 2)
+            }
+        }
+    }
+}

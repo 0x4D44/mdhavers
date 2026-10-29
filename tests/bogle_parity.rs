@@ -140,6 +140,7 @@ impl NativeExecutable {
             .env("TMPDIR", &scratch)
             .env("MDH_RC", if rc { "1" } else { "0" })
             .arg("build")
+            .arg("-O0")
             .arg(source)
             .arg("--output")
             .arg(&native.0);
@@ -283,4 +284,61 @@ fn headless_replay_hashes_match_interpreter_and_native_rc_modes() {
 #[test]
 fn textured_room_replay_matches_interpreter_and_native_rc_modes() {
     check_replay("stage3", "stage3", 2, false);
+}
+
+// The full route runs natively twice. The debug interpreter replays the first
+// 140 tics, including the first door and courtyard combat, to bound its cost.
+#[test]
+fn e1m1_playthrough_matches_native_rc_modes_and_interpreter_prefix() {
+    let repo = root();
+    let script = repo.join("games/bogle/shell/headless.braw");
+    let map = repo.join("games/bogle/data/e1m1.map");
+    let replay = repo.join("games/bogle/replays/e1m1.txt");
+    let expected = std::fs::read(repo.join("games/bogle/replays/e1m1.hashes"))
+        .expect("read full E1M1 frame hashes");
+    assert_eq!(expected.iter().filter(|byte| **byte == b'\n').count(), 5);
+    let mut interpreter = Command::new(env!("CARGO_BIN_EXE_mdhavers"));
+    configure_headless(&mut interpreter, false, &repo, &map, &replay);
+    interpreter
+        .env("BOGLE_EVERY", "140")
+        .env("BOGLE_LIMIT", "140")
+        .arg("run")
+        .arg(&script);
+    let prefix = run_command(interpreter, RUN_TIMEOUT, "E1M1 interpreter prefix");
+    assert_success(&prefix, "E1M1 interpreter prefix");
+    assert_clean_stderr(&prefix, "E1M1 interpreter prefix");
+    assert_eq!(
+        prefix
+            .stdout
+            .bytes
+            .iter()
+            .filter(|byte| **byte == b'\n')
+            .count(),
+        1
+    );
+    let mut outputs = Vec::new();
+    for rc in [false, true] {
+        let native = NativeExecutable::build(&script, rc);
+        let mut command = Command::new(&native.0);
+        configure_headless(&mut command, rc, &repo, &map, &replay);
+        // Headless asserts exit reached alive, both keys collected and all four
+        // weapons owned. The last hash includes the completed-level overlay.
+        command
+            .env("BOGLE_EVERY", "140")
+            .env("BOGLE_REQUIRE_EXIT", "1");
+        let output = run_command(command, RUN_TIMEOUT, "E1M1 complete native playthrough");
+        assert_success(&output, "E1M1 complete native playthrough");
+        assert_clean_stderr(&output, "E1M1 complete native playthrough");
+        assert!(
+            output.stdout.bytes.starts_with(&prefix.stdout.bytes),
+            "E1M1 MDH_RC={} diverged from interpreter prefix",
+            u8::from(rc)
+        );
+        outputs.push(output.stdout.bytes);
+    }
+    assert_eq!(outputs[0], outputs[1], "E1M1 RC modes diverged");
+    assert_eq!(
+        outputs[0], expected,
+        "E1M1 differs from committed frame hashes"
+    );
 }

@@ -14,4 +14,12 @@ gin len(headless_args) == 6 {
     headless_h = headless_args[4]
     headless_every = headless_args[5]
 }
-run_replay(headless_map, headless_replay, map_integer(headless_w), map_integer(headless_h), map_integer(headless_every))
+ken headless_game = run_replay(headless_map, headless_replay, map_integer(headless_w), map_integer(headless_h), map_integer(headless_every), map_integer(bogle_option("BOGLE_LIMIT", "0")))
+gin bogle_option("BOGLE_REQUIRE_EXIT", "0") == "1" {
+    mak_siccar headless_game["won"]
+    mak_siccar headless_game["health"] > 0
+    mak_siccar headless_game["keys"] == 3
+    fer owned in headless_game["owned"] {
+        mak_siccar owned
+    }
+}

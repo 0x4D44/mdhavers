@@ -1,4 +1,4 @@
-# Bogle Castle, stage 3
+# Bogle Castle, stage 4
 
 The engine is a pure integer portal renderer. Positions and heights in game state
 use signed 16.16 integers; map coordinates are integer units. Angles cover one
@@ -18,7 +18,10 @@ mdhavers build games/bogle/shell/native.braw -o .scratch/bogle
 .scratch/bogle
 ```
 
-WASD moves, the mouse turns, arrow keys turn, and Escape quits. The native shell
+WASD moves, the mouse and arrow keys turn, E uses doors and the exit, Space or
+left mouse fires, 1–4 select owned weapons, and Escape quits. Hold fire for at
+least 21 tics with the bagpipes, then release to blast; holding 35 tics fires
+automatically. The native shell starts E1M1, The Gatehouse. The native shell
 exposes `bogle_init(w,h)` and `bogle_frame(dt_ms)` in `shell/frame.braw`; only the
 host owns the loop. It advances an exact 35 Hz accumulator, at most four tics
 per frame. Native play is a manual acceptance check.
@@ -28,8 +31,12 @@ interpreter CLI accepts only a script filename, so both backends also accept
 `BOGLE_MAP`, `BOGLE_REPLAY`, `BOGLE_W`, `BOGLE_H`, and `BOGLE_EVERY`. Defaults are
 the test map, `replays/stage2.txt`, 80, 50, and 35. Each replay row contains a key
 bitmask and mouse delta. Bits are forward 1, back 2, left strafe 4, right strafe
-8, turn left 16, turn right 32. Positive mouse delta turns right. Each hash row
+8, turn left 16, turn right 32, fire 64, use 128, and weapon selections
+256/512/1024/2048. Positive mouse delta turns right. Each hash row
 is a one-based tic followed by unsigned decimal FNV-1a of the indexed bytes.
+The final tic is hashed even when it falls between sampling intervals.
+`BOGLE_LIMIT` caps a replay prefix; `BOGLE_REQUIRE_EXIT=1` asserts completion
+alive with both keys and all four weapons.
 
 Native `--record games/bogle/replays/name.txt` or `BOGLE_RECORD` records inputs
 actually consumed by tics. Mouse deltas accumulate between tics and are consumed
@@ -46,10 +53,16 @@ generated from the L-shaped room.
 
 BOGMAP 1 records follow design section 4.5. Texture ids 0..9 select granite,
 flagstone moss, slate underside, dungeon brick, oak panel, thistle tapestry,
-Celtic lintel, cell door, portcullis and peat straw. Other accepted ids use
-granite. Ceiling texture -1 means sky. Sector kinds
-are normal 0, door 1, water 2, damage 3, exit 4. Thing type 1 is the unique player
-start; 2..5 select gamekeeper, haggis, tartan ghost and midges. Wall flag bit 1 blocks. Door sectors are static in this stage. Loader
+Celtic lintel, cell door, portcullis and peat straw. IDs 10..14 add bog, chapel
+stone, fryer oil, exit lever and loch water. Other accepted IDs use granite.
+Ceiling texture -1 means sky. Sector kinds are normal 0, door 1, fryer 2,
+bog 3 and cold water 4. Door tags 0/1/2 mean unlocked/iron/silver. Thing type 1
+is the player start; 2..5 select gamekeeper, haggis, tartan ghost and midges.
+Types 10..20 are oatcake, haggis plate, juice can, juice bottle, shortbread, Mars
+box, powder, blunderbuss, bagpipes, iron key and silver key. Type 21 is the exit;
+30..36 are stag head, armour, brazier, thistle, cow portrait, banner and curling
+stone. Wall flag bit 1 blocks. Doors move their ceilings and wait for bodies
+to clear before closing. Loader
 validation pairs exact geometric reversed edges, rejects partial or repeated
 edges, enforces convex CCW polygons and reachability, and locates the player.
 
@@ -57,7 +70,7 @@ Tests (from the repository root):
 
 ```sh
 cargo test --no-default-features --features cli,llvm,native \
-  --test bogle_unit --test bogle_parity --test bogle_bridge
+  --test bogle_unit --test bogle_parity --test bogle_bridge -- --test-threads 3
 ```
 
 `bogle_unit` runs every `games/bogle/tests/*.braw` fixture on the interpreter and
@@ -65,7 +78,11 @@ the native compiler and compares it with its `.expected` file, and scans
 `engine/` for floats, bridge, clock and random names. `bogle_parity` replays
 `replays/stage2.txt` at 80x50 on the interpreter and on native builds with
 reference counting off and on, and compares each with `replays/stage2.hashes`.
-It also runs the two-frame `stage3` room replay in all three modes. A deliberate
+It also runs the two-frame `stage3` room replay in all three modes.
+The 671-tic `e1m1.txt` playthrough runs in full natively with RC off/on; its
+first 140 tics run on the debug interpreter. Five frame hashes include the
+exit overlay. `bagpipes_replay.braw` separately asserts the recorded blast
+disperses midges and stuns and pushes a gamekeeper. A deliberate
 rendering change re-blesses hashes only after all three outputs agree. Stage 3
 changes the stage 2 hashes because baked wall/flat texels, sky columns and fixed
 palette light maps replace the synthetic flat colour ramps. Geometry regression
@@ -92,10 +109,14 @@ stored, fixed and dynamic deflate, checks Adler-32, reverses all five filters,
 and rejects interlacing. PNG chunk CRC is outside the selected subset. Fixture
 creation and exact output are documented in `tests/png/README.md`.
 
-`tools/bake.braw` is a library; `bake_all.braw` writes all 22 art assets and the
+`tools/bake.braw` is a library; `bake_all.braw` writes all 67 BOG outputs, including the
 colormap. It box-filters textures to 64x64 with periodic sampling, fits cropped
-sprite content in 64x96 with visible feet on row 95, and resizes sky to 256x128.
+sprite content in 64x96 with visible feet on row 95, fits weapon frames in
+128x96, and resizes sky to 256x128.
 Alpha below 128 or RGB within 24 per channel of magenta masks a source pixel.
+Sprites and weapons additionally mask magenta dominance (red and blue at least
+128 and each at least 64 above green), removing antialiased purple fringes.
+Textures and sky retain their original predicate so natural purple stays opaque.
 A filtered texel is opaque at 50% foreground coverage; foreground RGB alone is
 averaged and quantised to the nearest palette index 0..254 (lowest index wins ties).
 BOG files have `BOG1 width height\n` headers and column-major payloads. Colormap
@@ -104,3 +125,20 @@ RGB by `(32-level)/32` before nearest-palette lookup. Transparent 255 stays 255.
 Real granite and gamekeeper fixtures rebake and compare complete committed bytes.
 Run the baker natively for bulk art; interpreter rebake fixtures use the harness's
 existing 300-second per-process ceiling on a loaded shared box.
+
+Rebuild E1M1 with `mdhavers run games/bogle/maps/e1m1.braw`. Its 43 convex
+sectors cover the courtyard, gatehouse, hall and dais, kitchen, eight descending
+steps, crypt, gallery, chapel and battlements. The iron key opens the gallery;
+the silver key opens the battlement stair. The kitchen offers Mars bars, the
+chapel holds bagpipes, and the final lever ends the level. Bog and fryer floors
+hurt; bog and cold water slow movement. The kelpie, bogle, Piper’s Ghost, caber, whisky barrels and sound
+remain deferred as specified by the design.
+
+`tools/stage4frame.braw` replays to the descending stair near the crypt, renders
+an enemy and key with the held weapon, measures ten warm native 320x200 renders,
+and writes `.scratch/bogle-stage4.ppm`. Randomness is the seeded Park–Miller
+state in the pure engine; the shell alone handles input, clocks and recording.
+
+`new_game(map)` recognizes gameplay things (types 10 and above). The optional
+`new_game(map, aye)` enables gameplay for focused maps with only doors or
+enemies; earlier renderer-only test maps retain their static geometry.

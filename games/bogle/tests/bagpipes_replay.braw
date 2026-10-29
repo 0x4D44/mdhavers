@@ -1,0 +1,16 @@
+fetch "games/bogle/shell/replay"
+ken bagpipe_map = map_parse("BOGMAP 1\nv 0 0\nv 512 0\nv 512 256\nv 0 256\ns 0 128 1 2 192 0 0 0 1 2 3\nt 1 64 128 0 0\nt 18 64 128 0 0\nt 2 200 128 0 0\nt 5 272 128 0 0\n")
+ken bagpipe_game = new_game(bagpipe_map)
+fer input in replay_inputs("games/bogle/replays/bagpipes.txt") {
+    tic(bagpipe_game, input)
+}
+mak_siccar bagpipe_game["tics"] == 23
+mak_siccar bagpipe_game["weapon"] == 4
+mak_siccar bagpipe_game["actors"][1]["state"] == "stunned"
+mak_siccar bagpipe_game["actors"][1]["timer"] == 52
+mak_siccar bagpipe_game["actors"][1]["vx"] > 0
+mak_siccar bagpipe_game["actors"][1]["health"] < 80
+blether "ok recorded bagpipe blast stuns and knocks back gamekeeper"
+mak_siccar nae bagpipe_game["actors"][2]["active"]
+mak_siccar bagpipe_game["actors"][2]["health"] == 0
+blether "ok recorded bagpipe blast disperses midge swarm"

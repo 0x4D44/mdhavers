@@ -1,0 +1,5 @@
+ok dynamic pickup visibility follows actor activity
+ok dynamic ghosts draw alternate columns
+ok weapon attack frame HUD and death cue
+ok blunderbuss flash ends before cooldown recovery
+ok Mars sizzle draws a low wide floor splat

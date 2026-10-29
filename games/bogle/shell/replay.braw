@@ -25,7 +25,7 @@ dae replay_inputs(path) {
             }
             ken keys = map_integer(fields[0])
             ken dx = map_integer(fields[1])
-            gin keys < 0 or keys > 63 {
+            gin keys < 0 or keys > 4095 {
                 hurl "Replay input oot o range"
             }
             shove(inputs, {"keys": keys, "dx": dx})
@@ -34,7 +34,7 @@ dae replay_inputs(path) {
     gie inputs
 }
 
-dae run_replay(map_path, replay_path, w, h, every) {
+dae run_replay(map_path, replay_path, w, h, every, limit = 0) {
     gin every < 1 {
         hurl "Replay interval must be positive"
     }
@@ -43,12 +43,19 @@ dae run_replay(map_path, replay_path, w, h, every) {
     ken inputs = replay_inputs(replay_path)
     ken frame = 0
     fer input in inputs {
+        gin limit > 0 an frame >= limit {
+            brak
+        }
         tic(game, input)
         frame = frame + 1
         gin frame % every == 0 {
             render(game, fb, w, h)
             blether tae_string(frame) + " " + tae_string(frame_hash(fb))
         }
+    }
+    gin frame > 0 an frame % every != 0 {
+        render(game, fb, w, h)
+        blether tae_string(frame) + " " + tae_string(frame_hash(fb))
     }
     gie game
 }

@@ -1,11 +1,28 @@
 fetch "games/bogle/engine/trig"
 fetch "games/bogle/engine/move"
 fetch "games/bogle/engine/render"
+fetch "games/bogle/engine/things"
+fetch "games/bogle/engine/weapons"
+fetch "games/bogle/engine/doors"
+fetch "games/bogle/engine/ai"
 
-dae new_game(map) {
+dae new_game(map, play = naething) {
     ken assets = bogle_assets()
     ken z = map["floor_h"][map["start_sector"]] * 65536
-    gie {
+    ken gameplay = nae
+    gin contains(map, "thing_type") {
+        fer kind in map["thing_type"] {
+            gin kind >= 10 {
+                gameplay = aye
+            }
+        }
+    }
+    # Old renderer maps use static decorative doors. A caller can explicitly
+    # enable gameplay for a small map containing only enemies or a door.
+    gin play != naething {
+        gameplay = play
+    }
+    ken game = {
         "map": map,
         "x": map["start_x"] * 65536,
         "y": map["start_y"] * 65536,
@@ -22,17 +39,48 @@ dae new_game(map) {
         "sky": assets["sky"],
         "sprite_tex": assets["sprite_tex"],
         "sprite_fullbright": [nae, nae, aye, nae],
+        "gameplay": gameplay,
+        "health": 100,
+        "spirit": 0,
+        "keys": 0,
+        "mars": 0,
+        "powder": 0,
+        "puff": 100,
+        "owned": [aye, nae, nae, nae],
+        "weapon": 1,
+        "cooldown": 0,
+        "bag_charge": 0,
+        "was_fire": nae,
+        "was_use": nae,
+        "projectiles": [],
+        "doors": [],
+        "speed_tics": 0,
+        "won": nae,
+        "message": "",
+        "bog_slow": nae,
     }
-}
-
-# Park-Miller state remains positive and the product is safely within i64.
-dae game_random(g) {
-    g["seed"] = g["seed"] * 48271 % 2147483647
-    gie g["seed"]
+    init_things(game)
+    gin gameplay {
+        init_doors(game)
+    }
+    gie game
 }
 
 dae tic(g, input) {
+    gin g["gameplay"] an (g["health"] <= 0 or g["won"]) {
+        gie naething
+    }
     ken keys = input["keys"]
+    gin g["gameplay"] {
+        fer weapon in 1..5 {
+            gin bit_an(keys, 128 * bogle_pow2(weapon)) != 0 an g["owned"][weapon - 1] {
+                gin g["weapon"] != weapon {
+                    g["bag_charge"] = 0
+                }
+                g["weapon"] = weapon
+            }
+        }
+    }
     # Reduce mouse input before subtracting: even either i64 endpoint is safe.
     ken angle = bogle_angle(g["angle"] - bogle_angle(input["dx"]))
     gin bit_an(keys, 16) != 0 {
@@ -43,6 +91,15 @@ dae tic(g, input) {
     }
     angle = bogle_angle(angle)
     g["angle"] = angle
+    gin g["gameplay"] {
+        ken use = bit_an(keys, 128) != 0
+        doors_tick(g, use an nae g["was_use"])
+        g["was_use"] = use
+        gin g["won"] {
+            g["tics"] = g["tics"] + 1
+            gie naething
+        }
+    }
     ken forward = 0
     ken sideways = 0
     gin bit_an(keys, 1) != 0 {
@@ -56,6 +113,18 @@ dae tic(g, input) {
     }
     gin bit_an(keys, 8) != 0 {
         sideways = sideways - 4
+    }
+    gin g["gameplay"] {
+        gin g["speed_tics"] > 0 {
+            forward = forward * 2
+            sideways = sideways * 2
+            g["speed_tics"] = g["speed_tics"] - 1
+        }
+        ken terrain = g["map"]["kind"][g["sector"]]
+        gin terrain == 3 or terrain == 4 {
+            forward = forward / 2
+            sideways = sideways / 2
+        }
     }
     ken cosine = bogle_cos(g["sin"], angle)
     ken sine = bogle_sin(g["sin"], angle)
@@ -72,8 +141,26 @@ dae tic(g, input) {
     ken target = g["z"] + 2686976
     g["view_z"] = g["view_z"] + (target - g["view_z"]) / 4
     g["tics"] = g["tics"] + 1
+    gin g["gameplay"] {
+        weapons_tick(g, bit_an(keys, 64) != 0)
+        projectiles_tick(g)
+        things_tick(g)
+        ai_tick(g)
+    }
 }
 
 dae render(g, fb, w, h) {
     bogle_render(g, fb, w, h)
+    gin g["gameplay"] {
+        bogle_overlay(g, fb, w, h)
+    }
+}
+
+# Four selection bits follow movement, fire and use in the replay mask.
+dae bogle_pow2(exponent) {
+    ken value = 1
+    fer i in 0..exponent {
+        value = value * 2
+    }
+    gie value
 }

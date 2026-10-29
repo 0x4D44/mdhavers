@@ -1,0 +1,77 @@
+fetch "games/bogle/shell/replay"
+fetch "games/bogle/tools/mapbuild"
+fetch "games/bogle/tools/render_fixtures"
+
+ken visual_map = new_map()
+room(visual_map, [[0, 0], [512, 0], [512, 256], [0, 256]], 0, 128, 1, 2, 255)
+map_thing(visual_map, 1, 64, 128)
+ken visual_g = new_game(validate(visual_map))
+fixture_identity(visual_g)
+visual_g["gameplay"] = aye
+visual_g["actors"] = []
+ken visual_art = bogle_gameplay_assets()
+visual_art["pick_oatcake"] = fixture_fill(6144, 177)
+visual_art["spr_tartan_ghost_idle"] = fixture_fill(6144, 188)
+visual_art["spr_tartan_ghost_float2"] = fixture_fill(6144, 188)
+ken visual_actor = {"kind": 10, "x": 192 * 65536, "y": 128 * 65536, "z": 0, "sector": 0, "state": "idle", "active": aye}
+shove(visual_g["actors"], visual_actor)
+ken visual_fb = bytes(4000)
+bogle_render(visual_g, visual_fb, 80, 50)
+mak_siccar bytes_get(visual_fb, 32 * 80 + 40) == 177
+visual_actor["active"] = nae
+bogle_render(visual_g, visual_fb, 80, 50)
+mak_siccar bytes_get(visual_fb, 32 * 80 + 40) == 7
+blether "ok dynamic pickup visibility follows actor activity"
+visual_actor["active"] = aye
+visual_actor["kind"] = 4
+bogle_render(visual_g, visual_fb, 80, 50)
+mak_siccar bytes_get(visual_fb, 20 * 80 + 40) == 188
+mak_siccar bytes_get(visual_fb, 20 * 80 + 41) == 7
+blether "ok dynamic ghosts draw alternate columns"
+visual_g["health"] = 100
+visual_g["spirit"] = 25
+visual_g["weapon"] = 1
+visual_g["cooldown"] = 0
+visual_g["bag_charge"] = 0
+visual_g["mars"] = 5
+visual_g["powder"] = 10
+visual_g["puff"] = 100
+visual_g["message"] = ""
+visual_g["won"] = nae
+visual_art["wpn_sgian_dubh"] = fixture_fill(128 * 96, 199)
+visual_art["wpn_sgian_dubh_stab"] = fixture_fill(128 * 96, 211)
+ken visual_screen = bytes(64000)
+bogle_overlay(visual_g, visual_screen, 320, 200)
+mak_siccar bytes_get(visual_screen, 120 * 320 + 160) == 199
+mak_siccar bytes_get(visual_screen, 199 * 320) == 2
+visual_g["cooldown"] = 1
+bogle_overlay(visual_g, visual_screen, 320, 200)
+mak_siccar bytes_get(visual_screen, 120 * 320 + 160) == 211
+visual_g["health"] = 0
+visual_screen = bytes(64000)
+bogle_overlay(visual_g, visual_screen, 320, 200)
+mak_siccar bytes_get(visual_screen, 120 * 320 + 160) == 0
+mak_siccar bytes_get(visual_screen, 4 * 320 + 4) != 0
+blether "ok weapon attack frame HUD and death cue"
+
+visual_g["health"] = 100
+visual_g["weapon"] = 3
+visual_art["wpn_blunderbuss"] = fixture_fill(128 * 96, 199)
+visual_art["wpn_blunderbuss_fire"] = fixture_fill(128 * 96, 211)
+visual_g["cooldown"] = 28
+bogle_overlay(visual_g, visual_screen, 320, 200)
+mak_siccar bytes_get(visual_screen, 120 * 320 + 160) == 211
+visual_g["cooldown"] = 22
+bogle_overlay(visual_g, visual_screen, 320, 200)
+mak_siccar bytes_get(visual_screen, 120 * 320 + 160) == 199
+blether "ok blunderbuss flash ends before cooldown recovery"
+
+visual_g["actors"] = []
+visual_g["projectiles"] = [{"kind": "sizzle", "x": 192 * 65536, "y": 128 * 65536, "z": 0, "sector": 0, "active": aye}]
+visual_art["prj_mars_bar"] = fixture_fill(6144, 195)
+visual_art["prj_mars_splat"] = fixture_fill(6144, 183)
+bogle_render(visual_g, visual_fb, 80, 50)
+mak_siccar bytes_get(visual_fb, 36 * 80 + 40) == 183
+mak_siccar bytes_get(visual_fb, 36 * 80 + 36) == 183
+mak_siccar bytes_get(visual_fb, 35 * 80 + 40) == 7
+blether "ok Mars sizzle draws a low wide floor splat"

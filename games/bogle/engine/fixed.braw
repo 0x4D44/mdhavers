@@ -41,3 +41,9 @@ dae isqrt(n) {
     }
     gie answer
 }
+
+# Park-Miller state remains positive and the product is safely within i64.
+dae game_random(g) {
+    g["seed"] = g["seed"] * 48271 % 2147483647
+    gie g["seed"]
+}

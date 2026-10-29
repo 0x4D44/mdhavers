@@ -14,7 +14,7 @@ dae bogle_init(w, h) {
     bogle_height = h
     bogle_fb = bytes(w * h)
     bogle_palette = make_palette()
-    bogle_game = new_game(load_map(bogle_option("BOGLE_MAP", "games/bogle/data/test.map")))
+    bogle_game = new_game(load_map(bogle_option("BOGLE_MAP", "games/bogle/data/e1m1.map")))
     bogle_accumulator = 0
     bogle_pending_dx = 0
     bogle_record = env_get("BOGLE_RECORD")
@@ -30,7 +30,7 @@ dae bogle_init(w, h) {
     gin bogle_record != naething {
         scrieve(bogle_record, "")
     }
-    screen_open(w, h, "Bogle Castle - engine core")
+    screen_open(w, h, "Bogle Castle - The Gatehouse")
     screen_grab_mouse(aye)
 }
 
@@ -57,6 +57,17 @@ dae bogle_frame(dt_ms) {
     }
     gin key_down("right") {
         keys = keys + 32
+    }
+    gin key_down("space") or mouse_down(0) {
+        keys = keys + 64
+    }
+    gin key_down("e") {
+        keys = keys + 128
+    }
+    fer weapon in 1..5 {
+        gin key_down(tae_string(weapon)) {
+            keys = keys + 128 * bogle_pow2(weapon)
+        }
     }
     bogle_pending_dx = bogle_pending_dx + mouse_dx()
     # Keep the fractional tic even when a frame runs four tics. Discard only

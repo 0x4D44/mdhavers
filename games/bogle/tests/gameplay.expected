@@ -1,0 +1,5 @@
+ok gameplay initialization and recorded weapon selection
+ok dead player cannot advance
+ok exit freezes simulation
+ok use follows the current tic turn
+ok exit activation stops the current tic

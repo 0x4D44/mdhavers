@@ -1,0 +1,54 @@
+# Native screenshot and steady rendering cost. Run from the repository root.
+fetch "games/bogle/shell/replay"
+ken picture_game = new_game(load_map("games/bogle/data/e1m1.map"))
+ken picture_tic = 0
+fer input in replay_inputs("games/bogle/replays/e1m1.txt") {
+    tic(picture_game, input)
+    picture_tic = picture_tic + 1
+    gin picture_game["x"] >= 1232 * 65536 {
+        brak
+    }
+}
+# A recorded look input keeps the key beside the held weapon in the capture.
+tic(picture_game, {"keys": 0, "dx": -256})
+picture_tic = picture_tic + 1
+ken picture_fb = bytes(320 * 200)
+# Warm immutable assets before measuring the same mid-level view ten times.
+render(picture_game, picture_fb, 320, 200)
+# Confirm both requested objects contribute visible pixels in this exact frame.
+ken picture_probe = bytes(320 * 200)
+fer actor in picture_game["actors"] {
+    gin actor["active"] an (actor["kind"] == 4 or actor["kind"] == 19) {
+        actor["active"] = nae
+        render(picture_game, picture_probe, 320, 200)
+        actor["active"] = aye
+        ken changed = 0
+        fer pixel in 0..320 * 200 {
+            gin bytes_get(picture_probe, pixel) != bytes_get(picture_fb, pixel) {
+                changed = changed + 1
+            }
+        }
+        blether "visible_kind_pixels " + tae_string(actor["kind"]) + " " + tae_string(changed)
+    }
+}
+ken picture_ns = 0
+fer frame in 0..10 {
+    ken picture_start = mono_ns()
+    render(picture_game, picture_fb, 320, 200)
+    picture_ns = picture_ns + mono_ns() - picture_start
+}
+blether "tic " + tae_string(picture_tic)
+blether "position " + tae_string(picture_game["x"] / 65536) + " " + tae_string(picture_game["y"] / 65536)
+blether "mean_frame_ns " + tae_string(picture_ns / 10)
+blether "frame_hash " + tae_string(frame_hash(picture_fb))
+ken picture_palette = make_palette()
+ken picture_ppm = bytes_from_string("P6\n320 200\n255\n")
+ken picture_rgb = bytes(320 * 200 * 3)
+fer pixel in 0..320 * 200 {
+    ken colour = bytes_get(picture_fb, pixel)
+    fer channel in 0..3 {
+        bytes_set(picture_rgb, pixel * 3 + channel, bytes_get(picture_palette, colour * 3 + channel))
+    }
+}
+bytes_append(picture_ppm, picture_rgb)
+write_bytes(".scratch/bogle-stage4.ppm", picture_ppm)

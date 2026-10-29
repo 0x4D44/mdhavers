@@ -1,0 +1,92 @@
+fetch "games/bogle/engine/game"
+fetch "games/bogle/engine/map"
+ken room = "BOGMAP 1\nv 0 0\nv 1024 0\nv 1024 512\nv 0 512\ns 0 128 1 2 192 0 0 0 1 2 3\nt 1 64 64 0 0\n"
+ken g = new_game(map_parse(room + "t 2 112 64 0 0\n"))
+weapons_tick(g, aye)
+mak_siccar g["actors"][0]["health"] == 60
+mak_siccar g["cooldown"] == 8
+weapons_tick(g, aye)
+mak_siccar g["actors"][0]["health"] == 60
+blether "ok knife range and cooldown"
+g = new_game(map_parse(room + "t 2 200 64 0 0\n"))
+g["owned"][2] = aye
+g["weapon"] = 3
+g["powder"] = 2
+ken seed = g["seed"]
+weapons_tick(g, aye)
+mak_siccar g["powder"] == 1 an g["seed"] != seed
+mak_siccar g["actors"][0]["health"] == 40 an g["seed"] == 1105902161
+g["cooldown"] = 0
+g["powder"] = 0
+seed = g["seed"]
+weapons_tick(g, aye)
+mak_siccar g["seed"] == seed
+blether "ok seeded pellets and empty powder"
+g = new_game(map_parse(room + "t 2 112 64 0 0\n"))
+g["owned"][1] = aye
+g["weapon"] = 2
+g["mars"] = 1
+weapons_tick(g, aye)
+mak_siccar g["mars"] == 0 an len(g["projectiles"]) == 1
+ken p = g["projectiles"][0]
+p["vx"] = 0
+p["vz"] = -65536
+p["z"] = 32768
+projectiles_tick(g)
+mak_siccar p["bounce"] == 1 an p["vz"] > 0
+p["z"] = 32768
+p["vz"] = -65536
+projectiles_tick(g)
+mak_siccar p["kind"] == "sizzle" an p["timer"] == 35
+mak_siccar g["actors"][0]["health"] == 69 an g["health"] == 55
+fer i in 0..35 {
+    projectiles_tick(g)
+}
+mak_siccar nae p["active"]
+blether "ok Mars ammo bounce burst and sizzle"
+g = new_game(map_parse(room + "t 2 128 64 0 0\nt 5 180 64 0 0\nt 2 64 200 0 0\n"))
+g["weapon"] = 4
+g["owned"][3] = aye
+fer i in 0..20 {
+    weapons_tick(g, aye)
+}
+weapons_tick(g, nae)
+mak_siccar g["bag_charge"] == 0 an g["actors"][0]["health"] == 80
+fer i in 0..21 {
+    weapons_tick(g, aye)
+}
+weapons_tick(g, nae)
+mak_siccar g["puff"] == 66
+mak_siccar g["actors"][0]["state"] == "stunned" an g["actors"][0]["timer"] == 53
+mak_siccar g["actors"][0]["vx"] > 0 an g["actors"][0]["health"] < 80
+mak_siccar nae g["actors"][1]["active"]
+mak_siccar g["actors"][2]["health"] == 80
+blether "ok bagpipe cancel stun knockback cone and midges"
+g = new_game(map_parse(room + "t 2 128 64 0 0\n"))
+g["weapon"] = 4
+g["owned"][3] = aye
+fer i in 0..35 {
+    weapons_tick(g, aye)
+}
+mak_siccar g["bag_charge"] == 0 an g["puff"] == 66
+mak_siccar g["actors"][0]["state"] == "stunned"
+blether "ok bagpipe automatic blast"
+
+g = new_game(map_parse(room + "t 2 384 64 0 0\nt 2 385 64 0 0\nt 2 200 142 0 0\nt 2 200 143 0 0\n"))
+bagpipe_blast(g)
+mak_siccar g["actors"][0]["health"] == 70
+mak_siccar g["actors"][1]["health"] == 80
+mak_siccar g["actors"][2]["state"] == "stunned"
+mak_siccar g["actors"][3]["health"] == 80
+blether "ok bagpipe range and cone boundaries"
+ken portals = "BOGMAP 1\nv 0 0\nv 128 0\nv 128 128\nv 0 128\nv 256 0\nv 256 128\ns 0 128 1 2 192 0 0 0 1 2 3\ns 0 128 1 2 192 0 0 1 4 5 2\nt 1 64 64 0 0\nt 2 192 64 0 0\n"
+g = new_game(map_parse(portals))
+mak_siccar bogle_sight(g, g["x"], g["y"], g["view_z"], 0, 192 * 65536, 64 * 65536, 24 * 65536, 1)
+g["map"]["ceil_h"][1] = 24
+bagpipe_blast(g)
+mak_siccar g["actors"][0]["health"] == 80
+g["map"]["ceil_h"][1] = 128
+g["map"]["flags"][1] = 1
+bagpipe_blast(g)
+mak_siccar g["actors"][0]["health"] == 80
+blether "ok bagpipe blocked by vertical opening and wall"

@@ -126,13 +126,45 @@ dae bogle_flat(g, fb, w, h, x, top, bottom, texture, light, delta, scales, ray_x
 dae bogle_sprites(g, fb, w, h, visible, drawsegs, cosine, sine) {
     ken m = g["map"]
     ken sprites = []
-    fer actor in 0..len(m["thing_type"]) {
-        ken kind = m["thing_type"][actor]
-        gin kind < 2 or kind > 5 or nae contains(visible, m["thing_sector"][actor]) {
+    ken actors = []
+    ken dynamic = contains(g, "gameplay") an g["gameplay"]
+    gin dynamic {
+        fer actor in g["actors"] {
+            shove(actors, actor)
+        }
+        gin contains(g, "projectiles") {
+            fer projectile in g["projectiles"] {
+                gin projectile["active"] {
+                    ken kind = 6
+                    gin projectile["kind"] == "wail" {
+                        kind = 7
+                    }
+                    gin projectile["kind"] == "sizzle" {
+                        kind = 8
+                    }
+                    shove(actors, {"kind": kind, "sector": projectile["sector"], "x": projectile["x"], "y": projectile["y"], "z": projectile["z"], "active": aye, "state": "idle"})
+                }
+            }
+        }
+    } ither {
+        fer actor in 0..len(m["thing_type"]) {
+            shove(actors, {"kind": m["thing_type"][actor], "sector": m["thing_sector"][actor], "x": m["thing_x"][actor] * 65536, "y": m["thing_y"][actor] * 65536, "z": m["thing_z"][actor] * 65536, "active": aye, "state": "idle"})
+        }
+    }
+    fer actor in actors {
+        ken kind = actor["kind"]
+        gin nae actor["active"] or nae contains(visible, actor["sector"]) {
             haud
         }
-        ken dx = m["thing_x"][actor] * 65536 - g["x"]
-        ken dy = m["thing_y"][actor] * 65536 - g["y"]
+        gin dynamic {
+            gin bogle_actor_art(g, actor) == "" {
+                haud
+            }
+        } ither gin kind < 2 or kind > 5 {
+            haud
+        }
+        ken dx = actor["x"] - g["x"]
+        ken dy = actor["y"] - g["y"]
         ken z = (dx * cosine + dy * sine) / 65536
         gin z < 16384 {
             haud
@@ -152,21 +184,45 @@ dae bogle_sprites(g, fb, w, h, visible, drawsegs, cosine, sine) {
         ken actor = sprite[0]
         ken z = sprite[1]
         ken centre = focal + sprite[2] * focal / z
-        ken half = 2097152 * focal / z
+        ken world_height = 6291456
+        ken world_half = 2097152
+        gin dynamic an actor["kind"] >= 10 an actor["kind"] <= 20 {
+            world_height = 2097152
+            world_half = 1048576
+        }
+        gin dynamic an (actor["kind"] == 6 or actor["kind"] == 7) {
+            world_height = 1048576
+            world_half = 524288
+        }
+        gin dynamic an actor["kind"] == 8 {
+            world_height = 262144
+            world_half = 1048576
+        }
+        ken half = world_half * focal / z
         ken left = centre - half
         ken right = centre + half
-        ken bottom = horizon - (m["thing_z"][actor] * 65536 - g["view_z"]) * focal / z
-        ken top = horizon - (m["thing_z"][actor] * 65536 + 6291456 - g["view_z"]) * focal / z
+        ken bottom = horizon - (actor["z"] - g["view_z"]) * focal / z
+        ken top = horizon - (actor["z"] + world_height - g["view_z"]) * focal / z
         gin right <= left or bottom <= top {
             haud
         }
-        ken kind = m["thing_type"][actor] - 2
-        ken texture = g["sprite_tex"][kind]
-        ken fullbright = g["sprite_fullbright"][kind]
-        ken level = bogle_level(m["light"][m["thing_sector"][actor]], z)
+        ken kind = actor["kind"]
+        ken texture = g["sprite_tex"][0]
+        ken fullbright = nae
+        gin dynamic {
+            texture = bogle_gameplay_assets()[bogle_actor_art(g, actor)]
+            fullbright = kind == 4 or kind == 32
+        } ither {
+            texture = g["sprite_tex"][kind - 2]
+            fullbright = g["sprite_fullbright"][kind - 2]
+        }
+        ken level = bogle_level(m["light"][actor["sector"]], z)
         ken step = 6291456 / (bottom - top)
-        ken ceiling_top = horizon - (m["ceil_h"][m["thing_sector"][actor]] * 65536 - g["view_z"]) * focal / z
+        ken ceiling_top = horizon - (m["ceil_h"][actor["sector"]] * 65536 - g["view_z"]) * focal / z
         fer x in max(0, left)..min(w, right) {
+            gin dynamic an kind == 4 an x % 2 == 1 {
+                haud
+            }
             ken clip_top = max(0, max(top, ceiling_top))
             ken clip_bottom = min(h - 1, bottom - 1)
             fer segment in drawsegs {
@@ -440,4 +496,160 @@ dae bogle_render(g, fb, w, h) {
     bogle_sprites(g, fb, w, h, visible, drawsegs, cosine, sine)
     g["visible"] = visible
     g["drawsegs"] = drawsegs
+}
+
+# Three-by-five glyphs remain legible at the 320x200 reference resolution.
+ken bogle_font = {
+    "A": "010101111101101",
+    "B": "110101110101110",
+    "C": "011100100100011",
+    "D": "110101101101110",
+    "E": "111100110100111",
+    "F": "111100110100100",
+    "G": "011100101101011",
+    "H": "101101111101101",
+    "I": "111010010010111",
+    "J": "001001001101010",
+    "K": "101101110101101",
+    "L": "100100100100111",
+    "M": "101111111101101",
+    "N": "101111111111101",
+    "O": "010101101101010",
+    "P": "110101110100100",
+    "Q": "010101101111011",
+    "R": "110101110101101",
+    "S": "011100010001110",
+    "T": "111010010010010",
+    "U": "101101101101111",
+    "V": "101101101101010",
+    "W": "101101111111101",
+    "X": "101101010101101",
+    "Y": "101101010010010",
+    "Z": "111001010100111",
+    "0": "111101101101111",
+    "1": "010110010010111",
+    "2": "110001010100111",
+    "3": "110001010001110",
+    "4": "101101111001001",
+    "5": "111100110001110",
+    "6": "011100111101111",
+    "7": "111001010010010",
+    "8": "111101111101111",
+    "9": "111101111001110",
+    "!": "010010010000010",
+    ":": "000010000010000",
+    "-": "000000111000000",
+    ".": "000000000000010",
+    "'": "010010000000000",
+}
+
+dae bogle_text(fb, w, h, left, top, text, ink, scale) {
+    ken x = left
+    fer letter in upper(text) {
+        gin x + 3 * scale > w {
+            brak
+        }
+        gin contains(bogle_font, letter) {
+            ken glyph = bogle_font[letter]
+            fer row in 0..5 {
+                fer col in 0..3 {
+                    gin glyph[row * 3 + col] == "1" {
+                        fer yy in 0..scale {
+                            fer xx in 0..scale {
+                                ken px = x + col * scale + xx
+                                ken py = top + row * scale + yy
+                                gin px >= 0 an py >= 0 an px < w an py < h {
+                                    bytes_set(fb, py * w + px, ink)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        x = x + 4 * scale
+    }
+}
+
+dae bogle_overlay(g, fb, w, h) {
+    gin nae contains(g, "gameplay") or nae g["gameplay"] {
+        gie naething
+    }
+    ken art = bogle_gameplay_assets()
+    ken weapon = g["weapon"]
+    ken name = "wpn_sgian_dubh"
+    gin weapon == 1 an g["cooldown"] > 0 {
+        name = "wpn_sgian_dubh_stab"
+    }
+    gin weapon == 2 {
+        name = "wpn_mars_bar"
+        gin g["cooldown"] >= 14 {
+            name = "wpn_mars_throw"
+        }
+    }
+    gin weapon == 3 {
+        name = "wpn_blunderbuss"
+        gin g["cooldown"] >= 24 {
+            name = "wpn_blunderbuss_fire"
+        }
+    }
+    gin weapon == 4 {
+        name = "wpn_bagpipes_empty"
+        gin g["bag_charge"] > 0 {
+            name = "wpn_bagpipes_filling"
+        }
+        gin g["bag_charge"] >= 21 {
+            name = "wpn_bagpipes_full"
+        }
+        gin g["cooldown"] >= 6 {
+            name = "wpn_bagpipes_blast"
+        }
+    }
+    ken scale = max(1, min(w / 320, h / 200))
+    ken hud = min(h, 16 * scale)
+    ken weapon_width = max(1, w * 2 / 5)
+    ken weapon_height = max(1, h * 12 / 25)
+    ken left = (w - weapon_width) / 2
+    ken top = h - hud - weapon_height
+    gin g["health"] > 0 {
+        ken texture = art[name]
+        fer x in 0..weapon_width {
+            fer y in 0..weapon_height {
+                ken colour = bytes_get(texture, (x * 128 / weapon_width) * 96 + y * 96 / weapon_height)
+                ken py = top + y
+                gin colour != 255 an py >= 0 {
+                    bytes_set(fb, py * w + left + x, colour)
+                }
+            }
+        }
+    }
+    fer y in h - hud..h {
+        fer x in 0..w {
+            bytes_set(fb, y * w + x, 2)
+        }
+    }
+    bogle_text(fb, w, h, 3 * scale, h - hud + 2 * scale, "HEALTH " + tae_string(g["health"]), 15, scale)
+    bogle_text(fb, w, h, w / 3, h - hud + 2 * scale, "SPIRIT " + tae_string(g["spirit"]), 15, scale)
+    ken ammo = "-"
+    gin weapon == 2 {
+        ammo = tae_string(g["mars"])
+    }
+    gin weapon == 3 {
+        ammo = tae_string(g["powder"])
+    }
+    gin weapon == 4 {
+        ammo = tae_string(g["puff"])
+    }
+    bogle_text(fb, w, h, w * 2 / 3, h - hud + 2 * scale, "AMMO " + ammo, 15, scale)
+    bogle_text(fb, w, h, 3 * scale, h - 6 * scale, "1 KNIFE  2 MARS  3 BUSS  4 PIPES", 13, scale)
+    ken message = g["message"]
+    gin g["won"] {
+        message = "YE'VE ESCAPED THE GATEHOUSE!"
+    }
+    gin g["health"] <= 0 {
+        message = "YE'RE DEID! RESTART TAE TRY AGAIN."
+    }
+    gin len(message) > 0 {
+        bogle_text(fb, w, h, 4 * scale, 4 * scale, message, 15, scale)
+    }
 }

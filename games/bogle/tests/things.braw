@@ -1,0 +1,122 @@
+fetch "games/bogle/engine/game"
+fetch "games/bogle/engine/map"
+fetch "games/bogle/engine/ai"
+fetch "games/bogle/engine/weapons"
+# Actor fixtures avoid loading renderer assets and exercise only pure state.
+dae actor_test_game(m) {
+    ken g = {
+        "map": m,
+        "x": m["start_x"] * 65536,
+        "y": m["start_y"] * 65536,
+        "z": m["floor_h"][m["start_sector"]] * 65536,
+        "sector": m["start_sector"],
+        "health": 100,
+        "spirit": 0,
+        "mars": 0,
+        "powder": 0,
+        "puff": 100,
+        "owned": [aye, nae, nae, nae],
+        "weapon": 1,
+        "keys": 0,
+        "speed_tics": 0,
+        "tics": 0,
+        "seed": 1,
+        "sin": load_trig(),
+        "projectiles": [],
+    }
+    init_things(g)
+    gie g
+}
+
+ken text = "BOGMAP 1\nv 0 0\nv 512 0\nv 512 512\nv 0 512\ns 0 128 1 2 192 0 0 0 1 2 3\nt 1 64 64 0 0\n"
+ken g = actor_test_game(map_parse(text + "t 2 128 64 0 0\nt 4 200 64 0 0\nt 5 240 64 0 0\nt 10 64 64 0 0\nt 30 300 64 0 0\n"))
+mak_siccar len(g["actors"]) == 5
+mak_siccar g["map"]["thing_type"][1] == 2
+mak_siccar g["actors"][0]["health"] == 80
+mak_siccar g["actors"][0]["x"] == 128 * 65536
+blether "ok actor initialization preserves map"
+g["health"] = 50
+g["spirit"] = 10
+hurt_player(g, 15)
+mak_siccar g["health"] == 45 an g["spirit"] == 0
+mak_siccar g["message"] == "Ya wee scunner!"
+things_tick(g)
+mak_siccar g["health"] == 55 an nae g["actors"][3]["active"]
+mak_siccar g["actors"][4]["active"]
+mak_siccar g["message"] == "Braw! An oatcake."
+blether "ok armour health and pickup"
+g["map"]["light"][0] = 96
+mak_siccar nae damage_actor(g, g["actors"][1], 20)
+g["map"]["light"][0] = 97
+mak_siccar damage_actor(g, g["actors"][1], 20)
+mak_siccar g["actors"][1]["health"] == 40
+mak_siccar damage_actor(g, g["actors"][2], 100)
+mak_siccar g["actors"][2]["health"] == 199
+blether "ok ghost light and midge resistance"
+ken a = g["actors"][0]
+a["x"] = 490 * 65536
+a["vx"] = 20 * 65536
+things_tick(g)
+mak_siccar a["x"] <= 496 * 65536 an a["vx"] == 10 * 65536
+blether "ok knockback collides and decays"
+g = actor_test_game(map_parse(text + "t 3 128 64 0 0\nt 3 160 64 0 0\nt 2 180 64 0 0\n"))
+mak_siccar damage_actor(g, g["actors"][0], 1)
+mak_siccar nae g["actors"][0]["active"] an nae g["actors"][1]["active"]
+mak_siccar g["actors"][2]["health"] < 80
+mak_siccar g["health"] < 100
+blether "ok haggis splash chain"
+g = actor_test_game(map_parse(text))
+g["map"]["kind"][0] = 2
+g["tics"] = 35
+things_tick(g)
+mak_siccar g["health"] == 90
+g["map"]["kind"][0] = 3
+things_tick(g)
+mak_siccar g["bog_slow"] an g["health"] == 88
+blether "ok fryer and bog hazards"
+g = actor_test_game(map_parse(text + "t 11 64 64 0 0\nt 12 64 64 0 0\nt 13 64 64 0 0\nt 14 64 64 0 0\nt 15 64 64 0 0\nt 16 64 64 0 0\nt 17 64 64 0 0\nt 18 64 64 0 0\nt 19 64 64 0 0\nt 20 64 64 0 0\n"))
+g["health"] = 1
+things_tick(g)
+mak_siccar g["health"] == 100 an g["spirit"] == 100 an g["speed_tics"] == 105
+mak_siccar g["mars"] == 5 an g["powder"] == 10 an g["keys"] == 3
+mak_siccar g["owned"] == [aye, aye, aye, aye]
+fer a in g["actors"] {
+    mak_siccar nae a["active"]
+}
+things_tick(g)
+mak_siccar g["mars"] == 5 an g["powder"] == 10
+blether "ok all supplies weapons keys and single consumption"
+g = actor_test_game(map_parse(text))
+g["map"]["kind"][0] = 3
+g["bog_spawn_timer"] = 1
+things_tick(g)
+mak_siccar len(g["actors"]) == 1 an g["actors"][0]["kind"] == 5
+mak_siccar g["seed"] == 48271
+g["bog_spawn_timer"] = 1
+things_tick(g)
+mak_siccar len(g["actors"]) == 1
+blether "ok bog seeded spawn and population bound"
+ken divider = "BOGMAP 1\nv 0 0\nv 256 0\nv 256 256\nv 0 256\nv 512 0\nv 512 256\ns 0 128 1 2 192 0 0 0 1 2 3\ns 0 128 1 2 192 0 0 1 4 5 2\nt 1 264 64 0 0\nt 10 255 64 0 0\n"
+g = actor_test_game(map_parse(divider))
+g["health"] = 50
+g["map"]["portal"][1] = -1
+g["map"]["portal"][7] = -1
+things_tick(g)
+mak_siccar g["health"] == 50 an g["actors"][0]["active"]
+blether "ok pickups cannot cross solid walls"
+# Grounded walking and knockback snap down steps; ghost height stays free.
+ken descent = replace(divider, "s 0 128 1 2 192 0 0 0 1 2 3", "s 24 128 1 2 192 0 0 0 1 2 3")
+descent = replace(descent, "t 10 255 64 0 0", "t 2 255 64 0 0\nt 3 255 100 0 0\nt 4 255 140 0 0")
+g = actor_test_game(map_parse(descent))
+actor_move(g, g["actors"][0], 8 * 65536, 0)
+mak_siccar g["actors"][0]["sector"] == 1 an g["actors"][0]["z"] == 0
+g["actors"][1]["vx"] = 8 * 65536
+things_tick(g)
+mak_siccar g["actors"][1]["sector"] == 1 an g["actors"][1]["z"] == 0
+actor_move(g, g["actors"][2], 8 * 65536, 0)
+mak_siccar g["actors"][2]["sector"] == 1 an g["actors"][2]["z"] == 24 * 65536
+g["actors"][1]["x"] = 490 * 65536
+g["actors"][1]["vx"] = 20 * 65536
+things_tick(g)
+mak_siccar g["actors"][1]["x"] <= 496 * 65536 an g["actors"][1]["z"] == 0
+blether "ok grounded stepdown knockback and ghost height"

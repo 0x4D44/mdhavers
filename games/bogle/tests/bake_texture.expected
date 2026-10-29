@@ -1,1 +1,3 @@
+ok purple texture stays opaque while sprite fringe is keyed
 ok granite texture rebakes byte for byte
+ok magenta antialias fringe keyed without erasing tartan or skin

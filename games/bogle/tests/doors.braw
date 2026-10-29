@@ -1,0 +1,49 @@
+fetch "games/bogle/engine/game"
+fetch "games/bogle/engine/map"
+ken rooms = "BOGMAP 1\nv 0 0\nv 128 0\nv 128 128\nv 0 128\nv 160 0\nv 160 128\nv 320 0\nv 320 128\ns 0 128 1 2 192 0 0 0 1 2 3\ns 0 128 1 2 192 1 1 1 4 5 2\ns 0 128 1 2 192 0 0 4 6 7 5\nt 1 96 64 0 0\n"
+ken g = new_game(map_parse(rooms), aye)
+mak_siccar len(g["doors"]) == 1 an g["map"]["ceil_h"][1] == 0
+mak_siccar g["doors"][0]["target"] == 124
+mak_siccar nae bogle_sight(g, g["x"], g["y"], g["view_z"], 0, 200 * 65536, 64 * 65536, 40 * 65536, 2)
+doors_tick(g, aye)
+mak_siccar g["doors"][0]["state"] == "closed"
+g["keys"] = 1
+doors_tick(g, aye)
+fer i in 0..30 {
+    doors_tick(g, nae)
+}
+mak_siccar g["map"]["ceil_h"][1] == 124
+mak_siccar bogle_sight(g, g["x"], g["y"], g["view_z"], 0, 200 * 65536, 64 * 65536, 40 * 65536, 2)
+blether "ok locked iron door and portal sight"
+g["sector"] = 1
+g["x"] = 144 * 65536
+fer i in 0..110 {
+    doors_tick(g, nae)
+}
+mak_siccar g["map"]["ceil_h"][1] == 124
+g["sector"] = 0
+g["x"] = 96 * 65536
+fer i in 0..140 {
+    doors_tick(g, nae)
+}
+mak_siccar g["map"]["ceil_h"][1] == 0
+blether "ok door hold and safe close"
+g["map"]["tag"][1] = 2
+doors_tick(g, aye)
+mak_siccar g["doors"][0]["state"] == "closed"
+g["keys"] = 2
+doors_tick(g, aye)
+mak_siccar g["doors"][0]["state"] == "opening"
+blether "ok silver key differs from iron"
+ken room = "BOGMAP 1\nv 0 0\nv 256 0\nv 256 256\nv 0 256\ns 0 128 1 2 192 0 0 0 1 2 3\nt 1 64 64 0 0\nt 21 96 64 0 0\n"
+g = new_game(map_parse(room))
+doors_tick(g, aye)
+mak_siccar g["won"]
+blether "ok exit lever use"
+
+g = new_game(map_parse(rooms), aye)
+g["x"] = 64 * 65536
+g["keys"] = 1
+doors_tick(g, aye)
+mak_siccar g["doors"][0]["state"] == "opening"
+blether "ok door use includes exact 64 unit endpoint"

@@ -55,7 +55,7 @@ dae make_cmap() {
 dae bogle_assets() {
     gin nae contains(bogle_asset_cache, "textures") {
         ken textures = []
-        fer name in ["tex_granite", "tex_flagstone_moss", "tex_slate_under", "tex_dungeon_brick", "tex_oak_panel", "tex_tapestry_thistle", "tex_celtic_lintel", "tex_cell_door", "tex_portcullis", "tex_peat_straw"] {
+        fer name in ["tex_granite", "tex_flagstone_moss", "tex_slate_under", "tex_dungeon_brick", "tex_oak_panel", "tex_tapestry_thistle", "tex_celtic_lintel", "tex_cell_door", "tex_portcullis", "tex_peat_straw", "tex_bog", "tex_chapel_stone", "tex_fryer_oil", "tex_lever_wall", "tex_loch_water"] {
             shove(textures, bogle_asset(name, 64, 64))
         }
         ken sprites = []
@@ -67,4 +67,123 @@ dae bogle_assets() {
         bogle_asset_cache["sky"] = bogle_asset("sky_highlands", 256, 128)
     }
     gie bogle_asset_cache
+}
+
+# Stage 4 assets are lazy so geometry fixtures need only the original art set.
+dae bogle_gameplay_assets() {
+    gin nae contains(bogle_asset_cache, "gameplay") {
+        ken art = {}
+        art["dec_armour"] = bogle_asset("dec_armour", 64, 96)
+        art["dec_banner"] = bogle_asset("dec_banner", 64, 96)
+        art["dec_brazier"] = bogle_asset("dec_brazier", 64, 96)
+        art["dec_cow_portrait"] = bogle_asset("dec_cow_portrait", 64, 96)
+        art["dec_curling_stone"] = bogle_asset("dec_curling_stone", 64, 96)
+        art["dec_stag_head"] = bogle_asset("dec_stag_head", 64, 96)
+        art["dec_thistle_pot"] = bogle_asset("dec_thistle_pot", 64, 96)
+        art["pick_bagpipes"] = bogle_asset("pick_bagpipes", 64, 96)
+        art["pick_blunderbuss"] = bogle_asset("pick_blunderbuss", 64, 96)
+        art["pick_girder_bottle"] = bogle_asset("pick_girder_bottle", 64, 96)
+        art["pick_girder_juice"] = bogle_asset("pick_girder_juice", 64, 96)
+        art["pick_haggis_plate"] = bogle_asset("pick_haggis_plate", 64, 96)
+        art["pick_key_silver"] = bogle_asset("pick_key_silver", 64, 96)
+        art["pick_key_tartan"] = bogle_asset("pick_key_tartan", 64, 96)
+        art["pick_mars_box"] = bogle_asset("pick_mars_box", 64, 96)
+        art["pick_oatcake"] = bogle_asset("pick_oatcake", 64, 96)
+        art["pick_powder_shot"] = bogle_asset("pick_powder_shot", 64, 96)
+        art["pick_shortbread"] = bogle_asset("pick_shortbread", 64, 96)
+        art["prj_mars_bar"] = bogle_asset("prj_mars_bar", 64, 96)
+        art["prj_mars_splat"] = bogle_asset("prj_mars_splat", 64, 96)
+        art["prj_wail"] = bogle_asset("prj_wail", 64, 96)
+        art["spr_gamekeeper_charge"] = bogle_asset("spr_gamekeeper_charge", 64, 96)
+        art["spr_gamekeeper_death1"] = bogle_asset("spr_gamekeeper_death1", 64, 96)
+        art["spr_gamekeeper_death2"] = bogle_asset("spr_gamekeeper_death2", 64, 96)
+        art["spr_gamekeeper_idle"] = bogle_asset("spr_gamekeeper_idle", 64, 96)
+        art["spr_gamekeeper_pain"] = bogle_asset("spr_gamekeeper_pain", 64, 96)
+        art["spr_gamekeeper_walk1"] = bogle_asset("spr_gamekeeper_walk1", 64, 96)
+        art["spr_gamekeeper_walk2"] = bogle_asset("spr_gamekeeper_walk2", 64, 96)
+        art["spr_haggis_boom1"] = bogle_asset("spr_haggis_boom1", 64, 96)
+        art["spr_haggis_boom2"] = bogle_asset("spr_haggis_boom2", 64, 96)
+        art["spr_haggis_idle"] = bogle_asset("spr_haggis_idle", 64, 96)
+        art["spr_haggis_walk1"] = bogle_asset("spr_haggis_walk1", 64, 96)
+        art["spr_haggis_walk2"] = bogle_asset("spr_haggis_walk2", 64, 96)
+        art["spr_midges_idle"] = bogle_asset("spr_midges_idle", 64, 96)
+        art["spr_midges_idle2"] = bogle_asset("spr_midges_idle2", 64, 96)
+        art["spr_tartan_ghost_death"] = bogle_asset("spr_tartan_ghost_death", 64, 96)
+        art["spr_tartan_ghost_float2"] = bogle_asset("spr_tartan_ghost_float2", 64, 96)
+        art["spr_tartan_ghost_idle"] = bogle_asset("spr_tartan_ghost_idle", 64, 96)
+        art["spr_tartan_ghost_pain"] = bogle_asset("spr_tartan_ghost_pain", 64, 96)
+        art["spr_tartan_ghost_wail"] = bogle_asset("spr_tartan_ghost_wail", 64, 96)
+        art["wpn_bagpipes_blast"] = bogle_asset("wpn_bagpipes_blast", 128, 96)
+        art["wpn_bagpipes_empty"] = bogle_asset("wpn_bagpipes_empty", 128, 96)
+        art["wpn_bagpipes_filling"] = bogle_asset("wpn_bagpipes_filling", 128, 96)
+        art["wpn_bagpipes_full"] = bogle_asset("wpn_bagpipes_full", 128, 96)
+        art["wpn_blunderbuss"] = bogle_asset("wpn_blunderbuss", 128, 96)
+        art["wpn_blunderbuss_fire"] = bogle_asset("wpn_blunderbuss_fire", 128, 96)
+        art["wpn_mars_bar"] = bogle_asset("wpn_mars_bar", 128, 96)
+        art["wpn_mars_throw"] = bogle_asset("wpn_mars_throw", 128, 96)
+        art["wpn_sgian_dubh"] = bogle_asset("wpn_sgian_dubh", 128, 96)
+        art["wpn_sgian_dubh_stab"] = bogle_asset("wpn_sgian_dubh_stab", 128, 96)
+        bogle_asset_cache["gameplay"] = art
+    }
+    gie bogle_asset_cache["gameplay"]
+}
+
+dae bogle_actor_art(g, actor) {
+    ken kind = actor["kind"]
+    ken state = actor["state"]
+    ken tick = g["tics"] / 6 % 2
+    ken name = ""
+    gin kind == 2 {
+        name = "spr_gamekeeper_idle"
+        gin state == "chase" or state == "walk" or state == "patrol" {
+            name = "spr_gamekeeper_walk" + tae_string(tick + 1)
+        }
+        gin state == "charge" or state == "windup" {
+            name = "spr_gamekeeper_charge"
+        }
+        gin state == "pain" or state == "stunned" {
+            name = "spr_gamekeeper_pain"
+        }
+        gin state == "dead" or state == "death" {
+            name = "spr_gamekeeper_death2"
+        }
+    } ither gin kind == 3 {
+        name = "spr_haggis_idle"
+        gin state == "chase" or state == "walk" {
+            name = "spr_haggis_walk" + tae_string(tick + 1)
+        }
+        gin state == "dead" or state == "death" or state == "explode" {
+            name = "spr_haggis_boom" + tae_string(tick + 1)
+        }
+    } ither gin kind == 4 {
+        name = "spr_tartan_ghost_idle"
+        gin tick == 1 {
+            name = "spr_tartan_ghost_float2"
+        }
+        gin state == "pain" or state == "stunned" {
+            name = "spr_tartan_ghost_pain"
+        }
+        gin state == "attack" or state == "wail" {
+            name = "spr_tartan_ghost_wail"
+        }
+        gin state == "dead" or state == "death" {
+            name = "spr_tartan_ghost_death"
+        }
+    } ither gin kind == 5 {
+        name = "spr_midges_idle"
+        gin tick == 1 {
+            name = "spr_midges_idle2"
+        }
+    } ither gin kind == 6 {
+        name = "prj_mars_bar"
+    } ither gin kind == 7 {
+        name = "prj_wail"
+    } ither gin kind == 8 {
+        name = "prj_mars_splat"
+    } ither gin kind >= 10 an kind <= 21 {
+        name = ["pick_oatcake", "pick_haggis_plate", "pick_girder_juice", "pick_girder_bottle", "pick_shortbread", "pick_mars_box", "pick_powder_shot", "pick_blunderbuss", "pick_bagpipes", "pick_key_tartan", "pick_key_silver", "dec_banner"][kind - 10]
+    } ither gin kind >= 30 an kind <= 36 {
+        name = ["dec_stag_head", "dec_armour", "dec_brazier", "dec_thistle_pot", "dec_cow_portrait", "dec_banner", "dec_curling_stone"][kind - 30]
+    }
+    gie name
 }

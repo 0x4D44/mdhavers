@@ -17,11 +17,16 @@ mak_siccar bake_nearest(bake_pal, 0, 255, 0) == 43
 mak_siccar bake_nearest(bake_pal, 0, 0, 255) == 58
 mak_siccar bake_nearest(bake_pal, 100, 0, 200) == 251
 blether "ok fixed palette nearest RGB colours"
+# Stage 4 also keys antialiased pixels dominated by magenta.
+mak_siccar bake_transparent(128, 64, 128, 255)
+mak_siccar nae bake_transparent(127, 0, 128, 255)
+mak_siccar nae bake_transparent(128, 65, 128, 255)
+mak_siccar nae bake_transparent(128, 0, 127, 255)
 mak_siccar bake_transparent(255, 0, 255, 255)
 mak_siccar bake_transparent(231, 24, 231, 255)
-mak_siccar nae bake_transparent(230, 24, 231, 255)
-mak_siccar nae bake_transparent(231, 25, 231, 255)
-mak_siccar nae bake_transparent(231, 24, 230, 255)
+mak_siccar bake_transparent(230, 24, 231, 255)
+mak_siccar bake_transparent(231, 25, 231, 255)
+mak_siccar bake_transparent(231, 24, 230, 255)
 mak_siccar bake_transparent(1, 2, 3, 127)
 mak_siccar nae bake_transparent(1, 2, 3, 128)
 blether "ok inclusive magenta key and alpha threshold"

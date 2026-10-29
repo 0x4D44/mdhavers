@@ -1,4 +1,23 @@
 fetch "games/bogle/tools/bake"
+ken purple_rgba = bytes(4)
+bytes_set(purple_rgba, 0, 190)
+bytes_set(purple_rgba, 1, 40)
+bytes_set(purple_rgba, 2, 180)
+bytes_set(purple_rgba, 3, 255)
+ken purple_image = {"w": 1, "h": 1, "rgba": purple_rgba}
+ken purple_palette = bake_palette()
+ken purple_tile = bake_image(purple_image, "texture", purple_palette)
+ken purple_sprite = bake_image(purple_image, "sprite", purple_palette)
+mak_siccar bytes_get(purple_tile, bytes_len(bytes_from_string("BOG1 64 64\n"))) != 255
+mak_siccar bytes_get(purple_sprite, bytes_len(bytes_from_string("BOG1 64 96\n")) + 95) == 255
+blether "ok purple texture stays opaque while sprite fringe is keyed"
 ken bake_texture_result = bake_source("games/bogle/art/src/tex_granite.png", "texture", bake_palette())
 mak_siccar bake_texture_result == read_bytes("games/bogle/data/tex_granite.bog")
 blether "ok granite texture rebakes byte for byte"
+
+# A partially blended key edge lies outside the former 24-channel key.
+mak_siccar bake_transparent(190, 40, 180, 255)
+mak_siccar bake_transparent(255, 0, 255, 255)
+mak_siccar nae bake_transparent(150, 100, 155, 255)
+mak_siccar nae bake_transparent(210, 125, 85, 255)
+blether "ok magenta antialias fringe keyed without erasing tartan or skin"

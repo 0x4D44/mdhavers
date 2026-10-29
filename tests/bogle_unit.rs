@@ -159,6 +159,8 @@ impl NativeExecutable {
             .env("TMPDIR", &scratch)
             .env("MDH_RC", if rc { "1" } else { "0" })
             .arg("build")
+            // Fixtures check semantics; avoid repeatedly optimizing the whole game.
+            .arg("-O0")
             .arg(source)
             .arg("--output")
             .arg(&native.0);

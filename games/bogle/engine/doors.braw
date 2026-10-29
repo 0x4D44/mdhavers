@@ -1,0 +1,116 @@
+fetch "games/bogle/engine/weapons"
+
+dae init_doors(g) {
+    ken m = g["map"]
+    g["doors"] = []
+    fer s in 0..len(m["floor_h"]) {
+        gin m["kind"][s] == 1 {
+            ken target = m["ceil_h"][s]
+            ken found = nae
+            fer w in m["wall_first"][s]..m["wall_first"][s] + m["wall_count"][s] {
+                ken next = m["portal"][w]
+                gin next >= 0 {
+                    gin nae found or m["ceil_h"][next] - 4 < target {
+                        target = m["ceil_h"][next] - 4
+                    }
+                    found = aye
+                }
+            }
+            shove(g["doors"], {"sector": s, "target": max(m["floor_h"][s], target), "state": "closed", "timer": 0})
+        }
+    }
+    # Compute every target before closing any neighbouring door.
+    fer d in g["doors"] {
+        m["ceil_h"][d["sector"]] = m["floor_h"][d["sector"]]
+    }
+}
+
+dae door_occupied(g, sector) {
+    gin g["sector"] == sector {
+        gie aye
+    }
+    fer a in g["actors"] {
+        gin a["active"] an a["kind"] >= 2 an a["kind"] <= 5 an a["sector"] == sector {
+            gie aye
+        }
+    }
+    # Bodies overlapping either threshold are protected before their centre enters.
+    ken m = g["map"]
+    fer w in m["wall_first"][sector]..m["wall_first"][sector] + m["wall_count"][sector] {
+        gin m["portal"][w] >= 0 {
+            gin body_wall(m, w, g["x"], g["y"])[0] {
+                gie aye
+            }
+            fer a in g["actors"] {
+                gin a["active"] an a["kind"] >= 2 an a["kind"] <= 5 an body_wall(m, w, a["x"], a["y"])[0] {
+                    gie aye
+                }
+            }
+        }
+    }
+    gie nae
+}
+
+dae doors_tick(g, use) {
+    ken m = g["map"]
+    gin use {
+        ken tx = g["x"] + 64 * bogle_cos(g["sin"], g["angle"])
+        ken ty = g["y"] + 64 * bogle_sin(g["sin"], g["angle"])
+        ken hit = bogle_trace(g, g["x"], g["y"], g["view_z"], g["sector"], tx, ty, g["view_z"], aye)
+        ken selected = hit[0]
+        gin hit[1] >= 0 {
+            selected = m["portal"][hit[1]]
+        }
+        fer d in g["doors"] {
+            gin d["sector"] == selected {
+                ken lock = m["tag"][selected]
+                gin lock == 1 an bit_an(g["keys"], 1) == 0 {
+                    g["message"] = "It's lockit. Ye'll be needin' the airn key."
+                } ither gin lock == 2 an bit_an(g["keys"], 2) == 0 {
+                    g["message"] = "It's lockit. Ye'll be needin' the siller key."
+                } ither {
+                    d["state"] = "opening"
+                }
+            }
+        }
+        fer a in g["actors"] {
+            gin a["active"] an a["kind"] == 21 {
+                ken dx = (a["x"] - g["x"]) / 65536
+                ken dy = (a["y"] - g["y"]) / 65536
+                ken dot = dx * bogle_cos(g["sin"], g["angle"]) + dy * bogle_sin(g["sin"], g["angle"])
+                gin dx * dx + dy * dy <= 4096 an dot >= 0 an bogle_sight(g, g["x"], g["y"], g["view_z"], g["sector"], a["x"], a["y"], a["z"] + 24 * 65536, a["sector"]) {
+                    g["won"] = aye
+                    g["message"] = "Ye've escaped the Gatehouse. Haud on tae yer bonnet."
+                }
+            }
+        }
+    }
+    fer d in g["doors"] {
+        ken sector = d["sector"]
+        gin d["state"] == "opening" {
+            m["ceil_h"][sector] = min(d["target"], m["ceil_h"][sector] + 4)
+            gin m["ceil_h"][sector] >= d["target"] {
+                d["state"] = "open"
+                d["timer"] = 105
+            }
+        } ither gin d["state"] == "open" {
+            gin door_occupied(g, sector) {
+                d["timer"] = 105
+            } ither {
+                d["timer"] = d["timer"] - 1
+                gin d["timer"] <= 0 {
+                    d["state"] = "closing"
+                }
+            }
+        } ither gin d["state"] == "closing" {
+            gin door_occupied(g, sector) {
+                d["state"] = "opening"
+            } ither {
+                m["ceil_h"][sector] = max(m["floor_h"][sector], m["ceil_h"][sector] - 4)
+                gin m["ceil_h"][sector] <= m["floor_h"][sector] {
+                    d["state"] = "closed"
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,2 @@
+# Bogle palette indices are raw bytes after their short BOG1 header.
+games/bogle/data/*.bog binary

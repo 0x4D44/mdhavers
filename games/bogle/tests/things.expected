@@ -1,0 +1,10 @@
+ok actor initialization preserves map
+ok armour health and pickup
+ok ghost light and midge resistance
+ok knockback collides and decays
+ok haggis splash chain
+ok fryer and bog hazards
+ok all supplies weapons keys and single consumption
+ok bog seeded spawn and population bound
+ok pickups cannot cross solid walls
+ok grounded stepdown knockback and ghost height
