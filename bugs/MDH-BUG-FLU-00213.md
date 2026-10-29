@@ -1,26 +1,25 @@
 # MDH-BUG-FLU-00213 — Native RC: a string returned through thread_join is still live at exit
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** llvm
 - **Raised:** 2026-10-28T21:49:28Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261029T161549Z-8ed87b09
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00213-run-fix-20261029T161549Z-8ed87b09
-- **Owner base:** 48408743063f7079c91c32eebf020e9213747dc3
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-29T16:15:49Z
-- **Owner until:** 2026-10-29T20:15:49Z
-- **Owner session:** flux/2a9090d7-08f7-48c7-bee8-7b7d1d963ab2 (run fix-20261029T161549Z-8ed87b09)
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-28T21:49:28Z, raised via `deltic bugs new --land`)
+- **State history:** Open (2026-10-28T21:49:28Z, raised via `deltic bugs new --land`) -> Fixed (2026-10-29T16:36:43Z, deltic:auto role=fix run=fix-20261029T161549Z-8ed87b09 branch=task/bug-MDH-BUG-FLU-00213-run-fix-20261029T161549Z-8ed87b09 code=ff3ada6 gate=manual)
 
 ## Observation
 
