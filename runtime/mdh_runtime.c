@@ -4182,9 +4182,36 @@ static void __mdh_handle_lock_release(void) {
     __atomic_clear(&__mdh_handle_lock, __ATOMIC_RELEASE);
 }
 
+/* A join borrows the cached result, including on repeated joins. The record owns
+ * the worker's +1 until exit (MDH-BUG-FLU-00213). Registered after rc_init, this
+ * runs before its atexit report. Never wait for workers at exit or release caches
+ * an active worker could still read. Completed, unjoined/detached workers count too. */
+static void __mdh_thread_results_fini(void) {
+    __mdh_handle_lock_acquire();
+    for (int64_t i = 0; i < __mdh_handle_len; i++) {
+        if (__mdh_handle_table[i].kind != MDH_HANDLE_THREAD) continue;
+        MdhThread *t = (MdhThread *)__mdh_handle_table[i].ptr;
+        if (!__atomic_load_n(&t->done, __ATOMIC_ACQUIRE)) {
+            __mdh_handle_lock_release();
+            return;
+        }
+    }
+    for (int64_t i = 0; i < __mdh_handle_len; i++) {
+        if (__mdh_handle_table[i].kind != MDH_HANDLE_THREAD) continue;
+        MdhThread *t = (MdhThread *)__mdh_handle_table[i].ptr;
+        __mdh_release(t->result);
+        t->result = __mdh_make_nil();
+    }
+    __mdh_handle_lock_release();
+}
+
 static MdhValue __mdh_handle_new(MdhHandleKind kind, void *ptr) {
+    static int thread_results_fini_registered = 0;
     int64_t id = 0;
     __mdh_handle_lock_acquire();
+    if (kind == MDH_HANDLE_THREAD && !thread_results_fini_registered) {
+        thread_results_fini_registered = atexit(__mdh_thread_results_fini) == 0;
+    }
     if (__mdh_handle_len == __mdh_handle_cap) {
         int64_t new_cap = __mdh_handle_cap > 0 ? __mdh_handle_cap * 2 : 16;
         MdhHandleSlot *grown =
@@ -4414,7 +4441,8 @@ static void *__mdh_thread_entry(void *arg) {
     t->func = __mdh_make_nil();
     t->args = __mdh_make_nil();
     __mdh_stack_guard_fini();
-    t->done = 1;
+    /* Publish the result and all worker releases to the exit-time cache teardown. */
+    __atomic_store_n(&t->done, 1, __ATOMIC_RELEASE);
     return NULL;
 }
 
