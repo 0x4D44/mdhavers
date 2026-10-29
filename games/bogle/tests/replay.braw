@@ -1,0 +1,41 @@
+fetch "games/bogle/shell/replay"
+ken replay_map = load_map("games/bogle/data/test.map")
+ken replay_game = new_game(replay_map)
+ken replay_seen = [replay_game["sector"]]
+ken replay_edges = []
+ken replay_height = 0
+ken replay_tics = replay_inputs("games/bogle/replays/stage2.txt")
+mak_siccar len(replay_tics) == 350
+fer input in replay_tics {
+    ken before = replay_game["sector"]
+    tic(replay_game, input)
+    ken after = replay_game["sector"]
+    gin nae contains(replay_seen, after) {
+        shove(replay_seen, after)
+    }
+    gin before != after {
+        ken edge = [min(before, after), max(before, after)]
+        gin nae contains(replay_edges, edge) {
+            shove(replay_edges, edge)
+        }
+    }
+    replay_height = max(replay_height, replay_game["z"])
+}
+mak_siccar replay_game["tics"] == 350
+mak_siccar len(replay_seen) == len(replay_map["floor_h"])
+fer sector in 0..len(replay_map["floor_h"]) {
+    ken first = replay_map["wall_first"][sector]
+    fer wall in first..first + replay_map["wall_count"][sector] {
+        ken other = replay_map["portal"][wall]
+        gin other >= 0 {
+            mak_siccar contains(replay_edges, [min(sector, other), max(sector, other)])
+        }
+    }
+}
+mak_siccar replay_height == 40 * 65536
+blether "ok replay crosses every portal and stair"
+mak_siccar frame_hash(bytes(0)) == 2166136261
+ken hash_vector = bytes(1)
+bytes_set(hash_vector, 0, 97)
+mak_siccar frame_hash(hash_vector) == 3826002220
+blether "ok FNV byte vectors"

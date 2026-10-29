@@ -1,0 +1,60 @@
+fetch "games/bogle/engine/fixed"
+fetch "games/bogle/engine/trig"
+
+mak_siccar fixed_mul(98304, 131072) == 196608
+mak_siccar fixed_mul(-65537, 32768) == -32768
+mak_siccar fixed_mul(2147483647, 2147483647) == 70368744112128
+mak_siccar fixed_mul(-2147483647, 2147483647) == -70368744112128
+mak_siccar fixed_div(65536, 131072) == 32768
+mak_siccar fixed_div(-65537, 131072) == -32768
+mak_siccar fixed_div(2147483647, 1) == 140737488289792
+blether "ok fixed mul/div edges"
+
+ken caught = 0
+hae_a_bash {
+    fixed_div(1, 0)
+} gin_it_gangs_wrang err {
+    caught = caught + 1
+}
+hae_a_bash {
+    fixed_mul(2147483648, 1)
+} gin_it_gangs_wrang err {
+    caught = caught + 1
+}
+hae_a_bash {
+    fixed_div(2147483648, 1)
+} gin_it_gangs_wrang err {
+    caught = caught + 1
+}
+hae_a_bash {
+    isqrt(-1)
+} gin_it_gangs_wrang err {
+    caught = caught + 1
+}
+mak_siccar caught == 4
+blether "ok math guards"
+
+mak_siccar isqrt(0) == 0
+mak_siccar isqrt(1) == 1
+mak_siccar isqrt(2) == 1
+mak_siccar isqrt(15) == 3
+mak_siccar isqrt(16) == 4
+mak_siccar isqrt(17) == 4
+mak_siccar isqrt(9223372036854775807) == 3037000499
+blether "ok integer square root"
+
+ken table = load_trig()
+mak_siccar len(table) == 4096
+mak_siccar bogle_sin(table, 0) == 0
+mak_siccar bogle_sin(table, 1024) == 65536
+mak_siccar bogle_sin(table, 2048) == 0
+mak_siccar bogle_sin(table, -1024) == -65536
+mak_siccar bogle_cos(table, -4096) == 65536
+ken checksum = 0
+fer i in 0..4096 {
+    mak_siccar table[i] >= -65536 an table[i] <= 65536
+    mak_siccar table[i] == 0 - table[(i + 2048) % 4096]
+    checksum = (checksum + (i + 1) * (table[i] + 65536)) % 4294967291
+}
+mak_siccar checksum == 1235186099
+blether "ok committed trig checksum"

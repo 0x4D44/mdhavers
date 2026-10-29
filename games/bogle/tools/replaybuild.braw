@@ -1,0 +1,26 @@
+# Deterministic 350-tic stage-2 route, at four map units per walking tic.
+# Run from the repository root. Keep the committed route byte-for-byte stable.
+dae stage2_replay() {
+    ken walks = [229, 35, 12, 16, 12, 12, 8, 8]
+    ken text = ""
+    ken tics = 0
+    fer leg in 0..len(walks) {
+        fer step in 0..walks[leg] {
+            text = text + "1 0\n"
+            tics = tics + 1
+        }
+        gin leg < len(walks) - 1 {
+            text = text + "0 -1024\n"
+            tics = tics + 1
+        }
+    }
+    mak_siccar tics == 339
+    whiles tics < 350 {
+        text = text + "0 0\n"
+        tics = tics + 1
+    }
+    mak_siccar tics == 350
+    gie text
+}
+
+scrieve("games/bogle/replays/stage2.txt", stage2_replay())

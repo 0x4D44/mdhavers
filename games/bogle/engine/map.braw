@@ -1,0 +1,334 @@
+# BOGMAP geometry stays in integer map units; game coordinates are fixed point.
+# File bounds: coordinates/heights/offsets -32767..32767; textures 0..255
+# (ceiling -1 means sky), light 0..255, kind 0..4, tags/flags 0..65535.
+dae map_need(ok, message) {
+    gin nae ok {
+        hurl "BOGMAP: " + message
+    }
+}
+
+dae map_empty() {
+    gie {"vx": [], "vy": [], "floor_h": [], "ceil_h": [], "floor_tex": [], "ceil_tex": [], "light": [], "kind": [], "tag": [], "wall_first": [], "wall_count": [], "wall_v1": [], "wall_v2": [], "portal": [], "upper_tex": [], "lower_tex": [], "mid_tex": [], "x_off": [], "y_off": [], "flags": [], "thing_type": [], "thing_x": [], "thing_y": [], "thing_angle": [], "thing_flags": [], "thing_sector": [], "thing_z": [], "thing_state": [], "thing_tics": [], "thing_health": [], "start_x": 0, "start_y": 0, "start_angle": 0, "start_sector": -1}
+}
+
+dae map_integer(text) {
+    map_need(len(text) > 0, "missing integer")
+    ken pos = 0
+    gin text[0] == "-" {
+        pos = 1
+    }
+    map_need(pos < len(text), "bad integer")
+    fer i in pos..len(text) {
+        map_need(contains("0123456789", text[i]), "bad integer")
+    }
+    map_need(len(text) <= 10, "integer too long")
+    gie tae_int(text)
+}
+
+dae map_cross(ax, ay, bx, by, cx, cy) {
+    gie (bx - ax) * (cy - ay) - (by - ay) * (cx - ax)
+}
+
+dae map_point(m, s, x, y) {
+    ken first = m["wall_first"][s]
+    fer w in first..first + m["wall_count"][s] {
+        ken a = m["wall_v1"][w]
+        ken b = m["wall_v2"][w]
+        gin map_cross(m["vx"][a], m["vy"][a], m["vx"][b], m["vy"][b], x, y) < 0 {
+            gie nae
+        }
+    }
+    gie aye
+}
+
+dae map_same(m, a, b) {
+    gie m["vx"][a] == m["vx"][b] an m["vy"][a] == m["vy"][b]
+}
+
+dae map_on(m, a, b, p) {
+    ken x = m["vx"][p]
+    ken y = m["vy"][p]
+    gie map_cross(m["vx"][a], m["vy"][a], m["vx"][b], m["vy"][b], x, y) == 0 an x >= min(m["vx"][a], m["vx"][b]) an x <= max(m["vx"][a], m["vx"][b]) an y >= min(m["vy"][a], m["vy"][b]) an y <= max(m["vy"][a], m["vy"][b])
+}
+
+dae map_wall_within_radius(m, wall, x, y) {
+    ken a = m["wall_v1"][wall]
+    ken b = m["wall_v2"][wall]
+    ken wx = m["vx"][b] - m["vx"][a]
+    ken wy = m["vy"][b] - m["vy"][a]
+    ken px = x - m["vx"][a]
+    ken py = y - m["vy"][a]
+    ken length2 = wx * wx + wy * wy
+    ken along = px * wx + py * wy
+    gin along <= 0 {
+        gie px * px + py * py < 256
+    }
+    gin along >= length2 {
+        ken ex = x - m["vx"][b]
+        ken ey = y - m["vy"][b]
+        gie ex * ex + ey * ey < 256
+    }
+    ken cross = wx * py - wy * px
+    gin cross < 0 {
+        cross = 0 - cross
+    }
+    ken span_x = wx
+    gin span_x < 0 {
+        span_x = 0 - span_x
+    }
+    ken span_y = wy
+    gin span_y < 0 {
+        span_y = 0 - span_y
+    }
+    # The L1 span proves distant points clear before squaring the cross product.
+    gin cross >= 16 * (span_x + span_y) {
+        gie nae
+    }
+    gie cross * cross < 256 * length2
+}
+
+dae map_wall_blocks_player(m, sector, wall, player_floor) {
+    ken next = m["portal"][wall]
+    gin next < 0 or bit_an(m["flags"][wall], 1) != 0 {
+        gie aye
+    }
+    ken floor = m["floor_h"][sector]
+    gin m["floor_h"][next] > floor {
+        floor = m["floor_h"][next]
+    }
+    ken ceiling = m["ceil_h"][sector]
+    gin m["ceil_h"][next] < ceiling {
+        ceiling = m["ceil_h"][next]
+    }
+    gin ceiling - floor < 56 or m["floor_h"][next] - player_floor > 24 {
+        gie aye
+    }
+    ken feet = floor
+    gin player_floor > feet {
+        feet = player_floor
+    }
+    gie feet + 56 > ceiling
+}
+
+dae map_range(v, low, high) {
+    gie whit_kind(v) == "integer" an v >= low an v <= high
+}
+
+dae validate_map(m) {
+    ken nv = len(m["vx"])
+    ken ns = len(m["floor_h"])
+    ken nw = len(m["wall_v1"])
+    map_need(nv >= 3 an nv <= 4096 an ns > 0 an ns <= 1024 an nw <= 8192, "map size")
+    map_need(len(m["vy"]) == nv, "vertex arrays")
+    fer k in ["ceil_h", "floor_tex", "ceil_tex", "light", "kind", "tag", "wall_first", "wall_count"] {
+        map_need(len(m[k]) == ns, "sector arrays")
+    }
+    fer k in ["wall_v2", "portal", "upper_tex", "lower_tex", "mid_tex", "x_off", "y_off", "flags"] {
+        map_need(len(m[k]) == nw, "wall arrays")
+    }
+    fer v in 0..nv {
+        map_need(map_range(m["vx"][v], -32767, 32767) an map_range(m["vy"][v], -32767, 32767), "coordinate range")
+    }
+    ken owners = []
+    ken next = 0
+    fer s in 0..ns {
+        map_need(map_range(m["floor_h"][s], -32767, 32767) an map_range(m["ceil_h"][s], -32767, 32767) an m["floor_h"][s] < m["ceil_h"][s], "height range")
+        map_need(map_range(m["floor_tex"][s], 0, 255) an map_range(m["ceil_tex"][s], -1, 255) an map_range(m["light"][s], 0, 255) an map_range(m["kind"][s], 0, 4) an map_range(m["tag"][s], 0, 65535), "sector value")
+        ken first = m["wall_first"][s]
+        ken count = m["wall_count"][s]
+        map_need(first == next an count >= 3 an first + count <= nw, "wall run")
+        next = first + count
+        ken twice_area = 0
+        # Convexity reads every wall vertex, so guard all references first.
+        fer w in first..next {
+            map_need(map_range(m["wall_v1"][w], 0, nv - 1) an map_range(m["wall_v2"][w], 0, nv - 1), "vertex index")
+        }
+        fer w in first..next {
+            ken a = m["wall_v1"][w]
+            ken b = m["wall_v2"][w]
+            map_need(nae map_same(m, a, b), "zero wall")
+            map_need(b == m["wall_v1"][first + (w - first + 1) % count], "broken wall loop")
+            shove(owners, s)
+            m["portal"][w] = -1
+            fer k in ["upper_tex", "lower_tex", "mid_tex"] {
+                map_need(map_range(m[k][w], 0, 255), "wall texture")
+            }
+            fer k in ["x_off", "y_off"] {
+                map_need(map_range(m[k][w], -32767, 32767), "wall offset")
+            }
+            map_need(map_range(m["flags"][w], 0, 65535), "wall flags")
+            # Every other vertex is on or left of this edge: catches stars as well as wrong winding.
+            fer q in first..next {
+                ken p = m["wall_v1"][q]
+                map_need(map_cross(m["vx"][a], m["vy"][a], m["vx"][b], m["vy"][b], m["vx"][p], m["vy"][p]) >= 0, "convex CCW required")
+            }
+            twice_area = twice_area + m["vx"][a] * m["vy"][b] - m["vy"][a] * m["vx"][b]
+        }
+        # Collinear boundary vertices split exact portal edges; the polygon still needs area.
+        map_need(twice_area > 0, "positive polygon area required")
+    }
+    map_need(next == nw, "unused walls")
+    fer w in 0..nw {
+        ken a = m["wall_v1"][w]
+        ken b = m["wall_v2"][w]
+        fer q in w + 1..nw {
+            ken c = m["wall_v1"][q]
+            ken d = m["wall_v2"][q]
+            ken reverse_edge = map_same(m, a, d) an map_same(m, b, c)
+            ken same_edge = map_same(m, a, c) an map_same(m, b, d)
+            map_need(nae same_edge, "same direction or duplicate edge")
+            gin reverse_edge {
+                map_need(owners[w] != owners[q] an m["portal"][w] == -1 an m["portal"][q] == -1, "edge paired more than twice")
+                m["portal"][w] = owners[q]
+                m["portal"][q] = owners[w]
+            } ither {
+                fer p in [c, d] {
+                    map_need(nae (map_on(m, a, b, p) an nae map_same(m, p, a) an nae map_same(m, p, b)), "partial edge or T junction")
+                }
+                fer p in [a, b] {
+                    map_need(nae (map_on(m, c, d, p) an nae map_same(m, p, c) an nae map_same(m, p, d)), "partial edge or T junction")
+                }
+                ken ab_c = map_cross(m["vx"][a], m["vy"][a], m["vx"][b], m["vy"][b], m["vx"][c], m["vy"][c])
+                ken ab_d = map_cross(m["vx"][a], m["vy"][a], m["vx"][b], m["vy"][b], m["vx"][d], m["vy"][d])
+                ken cd_a = map_cross(m["vx"][c], m["vy"][c], m["vx"][d], m["vy"][d], m["vx"][a], m["vy"][a])
+                ken cd_b = map_cross(m["vx"][c], m["vy"][c], m["vx"][d], m["vy"][d], m["vx"][b], m["vy"][b])
+                map_need(nae (((ab_c < 0 an ab_d > 0) or (ab_c > 0 an ab_d < 0)) an ((cd_a < 0 an cd_b > 0) or (cd_a > 0 an cd_b < 0))), "crossed edges")
+            }
+        }
+    }
+    ken reached = [0]
+    ken cursor = 0
+    whiles cursor < len(reached) {
+        ken s = reached[cursor]
+        cursor = cursor + 1
+        ken first = m["wall_first"][s]
+        fer w in first..first + m["wall_count"][s] {
+            ken p = m["portal"][w]
+            gin p >= 0 an nae contains(reached, p) {
+                shove(reached, p)
+            }
+        }
+    }
+    map_need(len(reached) == ns, "disconnected sectors")
+    ken nt = len(m["thing_type"])
+    fer k in ["thing_x", "thing_y", "thing_angle", "thing_flags", "thing_sector", "thing_z", "thing_state", "thing_tics", "thing_health"] {
+        map_need(len(m[k]) == nt, "thing arrays")
+    }
+    ken starts = 0
+    fer t in 0..nt {
+        map_need(map_range(m["thing_type"][t], 1, 65535) an map_range(m["thing_angle"][t], 0, 4095) an map_range(m["thing_flags"][t], 0, 65535), "thing value")
+        ken x = m["thing_x"][t]
+        ken y = m["thing_y"][t]
+        map_need(map_range(x, -32767, 32767) an map_range(y, -32767, 32767), "thing coordinate")
+        ken sector = -1
+        fer s in 0..ns {
+            gin sector == -1 an map_point(m, s, x, y) {
+                sector = s
+            }
+        }
+        map_need(sector >= 0, "thing outside map")
+        m["thing_sector"][t] = sector
+        m["thing_z"][t] = m["floor_h"][sector]
+        gin m["thing_type"][t] == 1 {
+            starts = starts + 1
+            m["start_x"] = x
+            m["start_y"] = y
+            m["start_sector"] = sector
+            m["start_angle"] = m["thing_angle"][t]
+        }
+    }
+    map_need(starts == 1, "exactly one player start required")
+    ken player_floor = m["floor_h"][m["start_sector"]]
+    fer s in 0..ns {
+        fer w in m["wall_first"][s]..m["wall_first"][s] + m["wall_count"][s] {
+            gin map_wall_blocks_player(m, s, w, player_floor) {
+                map_need(nae map_wall_within_radius(m, w, m["start_x"], m["start_y"]), "player start within body radius of solid wall")
+            }
+        }
+    }
+    gie m
+}
+
+dae map_parse(text) {
+    ken m = map_empty()
+    ken header = nae
+    ken overrides = []
+    fer raw in split(text, "\n") {
+        ken line = wheesht(split(raw, "#")[0])
+        gin len(line) > 0 {
+            ken tokens = []
+            fer token in split(replace(line, "\t", " "), " ") {
+                gin len(token) > 0 {
+                    shove(tokens, token)
+                }
+            }
+            gin nae header {
+                map_need(tokens == ["BOGMAP", "1"], "header/version")
+                header = aye
+            } ither {
+                ken values = []
+                fer i in 1..len(tokens) {
+                    shove(values, map_integer(tokens[i]))
+                }
+                ken kind = tokens[0]
+                gin kind == "v" {
+                    map_need(len(values) == 2, "vertex fields")
+                    shove(m["vx"], values[0])
+                    shove(m["vy"], values[1])
+                } ither gin kind == "s" {
+                    map_need(len(values) >= 10, "sector fields")
+                    ken fields = ["floor_h", "ceil_h", "floor_tex", "ceil_tex", "light", "kind", "tag"]
+                    fer i in 0..7 {
+                        shove(m[fields[i]], values[i])
+                    }
+                    ken count = len(values) - 7
+                    shove(m["wall_first"], len(m["wall_v1"]))
+                    shove(m["wall_count"], count)
+                    fer i in 0..count {
+                        shove(m["wall_v1"], values[7 + i])
+                        shove(m["wall_v2"], values[7 + (i + 1) % count])
+                        fer k in ["portal", "upper_tex", "lower_tex", "mid_tex", "x_off", "y_off", "flags"] {
+                            ken v = 0
+                            gin k == "portal" {
+                                v = -1
+                            }
+                            shove(m[k], v)
+                        }
+                    }
+                } ither gin kind == "w" {
+                    map_need(len(values) == 8, "wall fields")
+                    shove(overrides, values)
+                } ither gin kind == "t" {
+                    map_need(len(values) == 5, "thing fields")
+                    ken fields = ["thing_type", "thing_x", "thing_y", "thing_angle", "thing_flags"]
+                    fer i in 0..5 {
+                        shove(m[fields[i]], values[i])
+                    }
+                    fer k in ["thing_sector", "thing_z", "thing_state", "thing_tics", "thing_health"] {
+                        shove(m[k], 0)
+                    }
+                } ither {
+                    hurl "BOGMAP: unknown record"
+                }
+            }
+        }
+    }
+    map_need(header, "missing header")
+    ken seen = []
+    fer v in overrides {
+        map_need(map_range(v[0], 0, len(m["floor_h"]) - 1), "override sector")
+        map_need(map_range(v[1], 0, m["wall_count"][v[0]] - 1), "override wall")
+        ken w = m["wall_first"][v[0]] + v[1]
+        map_need(nae contains(seen, w), "duplicate override")
+        shove(seen, w)
+        ken fields = ["upper_tex", "lower_tex", "mid_tex", "x_off", "y_off", "flags"]
+        fer i in 0..6 {
+            m[fields[i]][w] = v[i + 2]
+        }
+    }
+    gie validate_map(m)
+}
+
+dae load_map(path) {
+    gie map_parse(read_file(path))
+}

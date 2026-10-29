@@ -1,0 +1,12 @@
+fetch "frame"
+bogle_init(320, 200)
+ken last = mono_ms()
+whiles nae screen_should_close() {
+    ken now = mono_ms()
+    gin nae bogle_frame(now - last) {
+        brak
+    }
+    last = now
+    snooze(1)
+}
+screen_close()

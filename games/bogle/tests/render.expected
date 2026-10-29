@@ -1,0 +1,8 @@
+ok near intersection overflow bounds
+ok portal traversal and deterministic frame
+ok flat colours and generated distance lighting
+ok step lintel flat rows and sky pixels
+ok near plane clipping
+ok near portal crossing aperture
+ok mixed near portal has no clipping holes
+ok framebuffer dimensions and bounds

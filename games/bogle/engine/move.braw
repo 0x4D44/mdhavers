@@ -1,0 +1,205 @@
+fetch "games/bogle/engine/fixed"
+
+# Nearest point on a wall. Wall vectors stay in map units; the returned normal
+# only needs a direction, so its scale does not affect the slide projection.
+dae body_wall(m, wall, x, y) {
+    ken a = m["wall_v1"][wall]
+    ken b = m["wall_v2"][wall]
+    ken ax = m["vx"][a] * 65536
+    ken ay = m["vy"][a] * 65536
+    ken wx = m["vx"][b] - m["vx"][a]
+    ken wy = m["vy"][b] - m["vy"][a]
+    ken length2 = wx * wx + wy * wy
+    ken along = (x - ax) * wx + (y - ay) * wy
+    ken px = ax
+    ken py = ay
+    gin along >= length2 * 65536 {
+        px = m["vx"][b] * 65536
+        py = m["vy"][b] * 65536
+    } ither gin along > 0 {
+        # Cross / length measures perpendicular distance without squaring it.
+        ken cross = wx * (y - ay) - wy * (x - ax)
+        gin cross < 0 {
+            cross = 0 - cross
+        }
+        ken span = wx
+        gin span < 0 {
+            span = 0 - span
+        }
+        ken span_y = wy
+        gin span_y < 0 {
+            span_y = 0 - span_y
+        }
+        # Reject distant points before the scaled product. Fifteen fractional
+        # length bits preserve circle clearance even for short diagonal walls.
+        gin cross >= 1048576 * (span + span_y) {
+            gie [nae, 0, 0]
+        }
+        # Wall deltas are <= 65534, so length2 <= 2*65534^2 and length2*1073741824 < 2^63.
+        ken distance = cross * 32768 / isqrt(length2 * 1073741824)
+        gie [distance < 1048576, 0 - wy, wx]
+    }
+    ken ex = x - px
+    ken ey = y - py
+    gin ex <= -1048576 or ex >= 1048576 or ey <= -1048576 or ey >= 1048576 {
+        gie [nae, 0, 0]
+    }
+    ken near = ex * ex + ey * ey < 1099511627776
+    ken nx = ex / 256
+    ken ny = ey / 256
+    gin nx == 0 an ny == 0 {
+        nx = 0 - wy
+        ny = wx
+    }
+    gie [near, nx, ny]
+}
+
+dae body_portal_open(g, sector, wall) {
+    ken m = g["map"]
+    ken next = m["portal"][wall]
+    gin next < 0 or bit_an(m["flags"][wall], 1) != 0 {
+        gie nae
+    }
+    ken floor = m["floor_h"][sector]
+    gin m["floor_h"][next] > floor {
+        floor = m["floor_h"][next]
+    }
+    ken ceiling = m["ceil_h"][sector]
+    gin m["ceil_h"][next] < ceiling {
+        ceiling = m["ceil_h"][next]
+    }
+    gin ceiling - floor < 56 {
+        gie nae
+    }
+    gin m["floor_h"][next] * 65536 - g["z"] > 1572864 {
+        gie nae
+    }
+    ken feet = g["z"]
+    gin floor * 65536 > feet {
+        feet = floor * 65536
+    }
+    gie feet + 3670016 <= ceiling * 65536
+}
+
+# Walk all portals touched by either circle. A neighbouring sector's solid
+# walls can block the body before its centre reaches that sector.
+dae body_blocker(g, x, y) {
+    ken m = g["map"]
+    ken queue = [g["sector"]]
+    ken seen = []
+    fer i in 0..len(m["floor_h"]) {
+        shove(seen, nae)
+    }
+    seen[g["sector"]] = aye
+    ken cursor = 0
+    whiles cursor < len(queue) {
+        ken sector = queue[cursor]
+        cursor = cursor + 1
+        ken first = m["wall_first"][sector]
+        ken end = first + m["wall_count"][sector]
+        fer wall in first..end {
+            ken hit = body_wall(m, wall, x, y)
+            ken open = body_portal_open(g, sector, wall)
+            gin hit[0] an nae open {
+                gie hit
+            }
+            gin open {
+                ken old_hit = body_wall(m, wall, g["x"], g["y"])
+                gin hit[0] or old_hit[0] {
+                    ken next = m["portal"][wall]
+                    gin nae seen[next] {
+                        seen[next] = aye
+                        shove(queue, next)
+                    }
+                }
+            }
+        }
+    }
+    gie [nae, 0, 0]
+}
+
+# A substep is at most eight units, so crossing cannot skip a sixteen-unit
+# wall radius. Track actual portal crossings using the old and new signs.
+dae body_substep(g, dx, dy) {
+    ken hit = body_blocker(g, g["x"] + dx, g["y"] + dy)
+    gin hit[0] {
+        ken nx = hit[1]
+        ken ny = hit[2]
+        ken length2 = nx * nx + ny * ny
+        gin length2 == 0 {
+            gie naething
+        }
+        ken dot = dx * nx + dy * ny
+        dx = dx - dot * nx / length2
+        dy = dy - dot * ny / length2
+        hit = body_blocker(g, g["x"] + dx, g["y"] + dy)
+        gin hit[0] {
+            gie naething
+        }
+    }
+    ken m = g["map"]
+    ken x = g["x"] + dx
+    ken y = g["y"] + dy
+    # A valid map may have several thin sectors within one substep. Repeat
+    # sign-cross tracking until no exit remains, bounded by the sector count.
+    fer crossing in 0..len(m["floor_h"]) {
+        ken crossed = nae
+        ken sector = g["sector"]
+        ken first = m["wall_first"][sector]
+        ken end = first + m["wall_count"][sector]
+        fer wall in first..end {
+            gin m["portal"][wall] >= 0 {
+                ken a = m["wall_v1"][wall]
+                ken b = m["wall_v2"][wall]
+                ken wx = m["vx"][b] - m["vx"][a]
+                ken wy = m["vy"][b] - m["vy"][a]
+                ken ax = m["vx"][a] * 65536
+                ken ay = m["vy"][a] * 65536
+                ken before = wx * (g["y"] - ay) - wy * (g["x"] - ax)
+                ken after = wx * (y - ay) - wy * (x - ax)
+                gin before >= 0 an after < 0 an body_portal_open(g, sector, wall) {
+                    g["sector"] = m["portal"][wall]
+                    crossed = aye
+                    brak
+                }
+            }
+        }
+        gin nae crossed {
+            brak
+        }
+    }
+    g["x"] = x
+    g["y"] = y
+    ken floor = m["floor_h"][g["sector"]] * 65536
+    gin floor > g["z"] {
+        g["z"] = floor
+        g["vz"] = 0
+    }
+}
+
+dae move_body(g, dx, dy) {
+    gin dx < -2147483647 or dx > 2147483647 or dy < -2147483647 or dy > 2147483647 {
+        hurl "move_body delta outside safe fixed range"
+    }
+    ken distance = dx
+    gin distance < 0 {
+        distance = 0 - distance
+    }
+    ken other = dy
+    gin other < 0 {
+        other = 0 - other
+    }
+    gin other > distance {
+        distance = other
+    }
+    ken steps = distance / 524288 + 1
+    ken old_x = 0
+    ken old_y = 0
+    fer i in 1..(steps + 1) {
+        ken next_x = dx * i / steps
+        ken next_y = dy * i / steps
+        body_substep(g, next_x - old_x, next_y - old_y)
+        old_x = next_x
+        old_y = next_y
+    }
+}

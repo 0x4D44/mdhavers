@@ -1,0 +1,93 @@
+fetch "../tools/mapbuild.braw"
+
+dae map_test(ok, name) {
+    gin nae ok {
+        hurl "map test failed: " + name
+    }
+    blether "ok " + name
+}
+
+dae map_reject(text, name, expected = "") {
+    ken rejected = nae
+    hae_a_bash {
+        map_parse(text)
+    } gin_it_gangs_wrang err {
+        rejected = expected == "" or contains(tae_string(err), expected)
+    }
+    map_test(rejected, name)
+}
+
+ken square = "BOGMAP 1\nv 0 0\nv 128 0\nv 128 128\nv 0 128\ns 0 128 1 2 192 0 0 0 1 2 3\nt 1 64 64 0 0\n"
+ken good = map_parse(square)
+map_test(good["start_sector"] == 0 an good["start_x"] == 64 an good["wall_count"] == [4], "map square")
+map_test(good["portal"] == [-1, -1, -1, -1], "map solid walls")
+ken override = map_parse(square + "w 0 1 3 4 5 -6 7 1\n")
+map_test(override["upper_tex"][1] == 3 an override["lower_tex"][1] == 4 an override["mid_tex"][1] == 5 an override["x_off"][1] == -6 an override["y_off"][1] == 7 an override["flags"][1] == 1, "map wall override")
+ken pair = "BOGMAP 1\nv 0 0\nv 128 0\nv 128 128\nv 0 128\nv 256 0\nv 256 128\ns 0 128 1 2 192 0 0 0 1 2 3\ns 8 80 1 -1 255 1 7 1 4 5 2\nt 1 64 64 0 0\n"
+ken paired = map_parse(pair)
+map_test(paired["portal"][1] == 1 an paired["portal"][7] == 0, "map reciprocal portals")
+map_test(paired["ceil_tex"][1] == -1 an paired["floor_h"][1] == 8, "map sky and step")
+ken duplicate_coords = replace(pair, "v 256 0", "v 128 0\nv 128 128\nv 256 0")
+duplicate_coords = replace(duplicate_coords, "1 4 5 2\n", "4 6 7 5\n")
+ken geometric = map_parse(duplicate_coords)
+map_test(geometric["portal"][1] == 1 an geometric["portal"][7] == 0, "map geometric edge pairing")
+map_reject(replace(square, "BOGMAP 1", "BOGMAP 2"), "map rejects version")
+map_reject(replace(square, "v 0 0", "v 0 0 1"), "map rejects record arity")
+map_reject(square + "q 1\n", "map rejects unknown record")
+map_reject(replace(square, "v 128 0", "v 1x 0"), "map rejects malformed integer")
+map_reject(replace(square, "v 128 0", "v 32768 0"), "map rejects coordinate bound")
+map_reject(replace(square, "s 0 128", "s 128 128"), "map rejects height")
+map_reject(replace(square, "192 0 0", "256 0 0"), "map rejects light")
+map_reject(replace(square, "192 0 0", "192 5 0"), "map rejects sector kind")
+map_reject(replace(square, "1 2 192", "1 -2 192"), "map rejects texture")
+map_reject(replace(square, "0 1 2 3\n", "0 3 2 1\n"), "map rejects clockwise")
+map_reject(replace(square, "v 128 128", "v 32 32"), "map rejects concavity")
+map_reject(replace(square, "0 1 2 3\n", "0 1 1 3\n"), "map rejects zero wall")
+map_reject(replace(square, "0 1 2 3\n", "0 1 2 99\n"), "map rejects vertex index", "vertex index")
+map_reject(square + "s 0 128 1 2 192 0 0 0 1 2 3\n", "map rejects duplicate edge")
+map_reject(pair + "s 0 128 1 2 192 0 0 1 4 5 2\n", "map rejects triple edge")
+ken partial = "BOGMAP 1\nv 0 0\nv 128 0\nv 128 128\nv 0 128\nv 128 32\nv 256 32\nv 256 96\nv 128 96\ns 0 128 1 2 192 0 0 0 1 2 3\ns 0 128 1 2 192 0 0 4 5 6 7\nt 1 64 64 0 0\n"
+map_reject(partial, "map rejects partial edge")
+ken crossing = "BOGMAP 1\nv 0 0\nv 128 0\nv 128 128\nv 0 128\nv 64 -64\nv 192 -64\nv 192 64\nv 64 64\ns 0 128 1 2 192 0 0 0 1 2 3\ns 0 128 1 2 192 0 0 4 5 6 7\nt 1 64 64 0 0\n"
+map_reject(crossing, "map rejects crossed edge")
+ken disconnected = "BOGMAP 1\nv 0 0\nv 128 0\nv 128 128\nv 0 128\nv 256 0\nv 384 0\nv 384 128\nv 256 128\ns 0 128 1 2 192 0 0 0 1 2 3\ns 0 128 1 2 192 0 0 4 5 6 7\nt 1 64 64 0 0\n"
+map_reject(disconnected, "map rejects disconnected geometry")
+map_reject(replace(square, "t 1 64 64 0 0\n", ""), "map rejects missing player")
+map_reject(square + "t 1 32 32 0 0\n", "map rejects second player")
+map_reject(replace(square, "t 1 64 64", "t 1 256 64"), "map rejects outside player")
+ken near_solid_wall = replace(square, "t 1 64 64 0 0", "t 1 15 64 0 0")
+map_reject(near_solid_wall, "map rejects player start inside wall radius", "player start within body radius")
+map_test(map_parse(replace(square, "t 1 64 64 0 0", "t 1 16 64 0 0"))["start_x"] == 16, "map allows start at body radius")
+ken near_open_portal = replace(pair, "t 1 64 64 0 0", "t 1 113 64 0 0")
+map_test(map_parse(near_open_portal)["start_x"] == 113, "map allows start by open portal")
+map_reject(near_open_portal + "w 0 1 0 0 0 0 0 1\n", "map rejects start by blocking portal", "player start within body radius")
+map_reject(replace(near_open_portal, "s 8 80", "s 8 60"), "map rejects start by short portal opening", "player start within body radius")
+map_reject(replace(near_open_portal, "s 8 80", "s 32 128"), "map rejects start by high portal step", "player start within body radius")
+map_reject(replace(square, "t 1 64 64 0", "t 1 64 64 4096"), "map rejects angle")
+map_reject(square + "w 0 4 1 1 1 0 0 0\n", "map rejects wall override index")
+map_reject(square + "w 0 1 1 1 1 0 0 0\nw 0 1 1 1 1 0 0 0\n", "map rejects duplicate override")
+map_reject(replace(square, "s 0 128", "s -32768 128"), "map rejects height bound")
+map_reject(replace(square, "1 2 192", "-1 2 192"), "map rejects floor texture")
+map_reject(replace(square, "192 0 0", "192 0 -1"), "map rejects tag")
+map_reject(replace(square, "t 1 64 64 0 0", "t 0 64 64 0 0"), "map rejects thing type")
+map_reject(replace(square, "t 1 64 64 0 0", "t 1 64 64 0 -1"), "map rejects thing flags")
+map_reject(square + "w 0 1 256 1 1 0 0 0\n", "map rejects wall texture")
+map_reject(square + "w 0 1 1 1 1 32768 0 0\n", "map rejects wall offset")
+map_reject(square + "w 0 1 1 1 1 0 0 -1\n", "map rejects wall flags")
+map_reject(square + "w 1 0 1 1 1 0 0 0\n", "map rejects override sector")
+ken collinear = "BOGMAP 1\nv 0 0\nv 64 0\nv 128 0\nv 128 128\nv 0 128\ns 0 128 1 2 192 0 0 0 1 2 3 4\nt 1 64 64 0 0\n"
+ken collinear_map = map_parse(collinear)
+map_test(collinear_map["wall_count"] == [5] an collinear_map["start_sector"] == 0, "map collinear boundary vertices")
+ken degenerate = "BOGMAP 1\nv 0 0\nv 64 0\nv 128 0\ns 0 128 1 2 192 0 0 0 1 2\nt 1 64 0 0 0\n"
+map_reject(degenerate, "map rejects zero polygon area")
+ken builder = new_map()
+room(builder, [[0, 0], [128, 0], [128, 128], [0, 128]], 0, 128)
+map_thing(builder, 1, 64, 64)
+map_test(validate(builder) == good, "map builder round trip")
+ken concave = new_map()
+ken triangles = split_convex(concave, [[0, 0], [256, 0], [256, 256], [128, 256], [128, 128], [0, 128]], 0, 128)
+map_thing(concave, 1, 32, 32)
+ken split_map = validate(concave)
+map_test(len(triangles) == 4 an len(split_map["floor_h"]) == 4, "map builder concave decomposition")
+ken fixture = load_map("games/bogle/data/test.map")
+map_test(len(fixture["floor_h"]) == 11 an fixture["floor_h"][2] == 16 an fixture["floor_h"][5] == 40 an fixture["ceil_tex"][6] == -1, "map fixture stairs sky concavity")

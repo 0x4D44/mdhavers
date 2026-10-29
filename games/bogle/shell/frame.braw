@@ -1,0 +1,81 @@
+fetch "replay"
+
+ken bogle_game = naething
+ken bogle_fb = naething
+ken bogle_palette = naething
+ken bogle_width = 320
+ken bogle_height = 200
+ken bogle_accumulator = 0
+ken bogle_pending_dx = 0
+ken bogle_record = naething
+
+dae bogle_init(w, h) {
+    bogle_width = w
+    bogle_height = h
+    bogle_fb = bytes(w * h)
+    bogle_palette = make_palette()
+    bogle_game = new_game(load_map(bogle_option("BOGLE_MAP", "games/bogle/data/test.map")))
+    bogle_accumulator = 0
+    bogle_pending_dx = 0
+    bogle_record = env_get("BOGLE_RECORD")
+    ken options = args()
+    fer i in 0..len(options) {
+        gin options[i] == "--record" {
+            gin i + 1 >= len(options) {
+                hurl "--record wants a replay path"
+            }
+            bogle_record = options[i + 1]
+        }
+    }
+    gin bogle_record != naething {
+        scrieve(bogle_record, "")
+    }
+    screen_open(w, h, "Bogle Castle - engine core")
+    screen_grab_mouse(aye)
+}
+
+dae bogle_frame(dt_ms) {
+    gin key_down("escape") {
+        screen_grab_mouse(nae)
+        gie nae
+    }
+    ken keys = 0
+    gin key_down("w") {
+        keys = keys + 1
+    }
+    gin key_down("s") {
+        keys = keys + 2
+    }
+    gin key_down("a") {
+        keys = keys + 4
+    }
+    gin key_down("d") {
+        keys = keys + 8
+    }
+    gin key_down("left") {
+        keys = keys + 16
+    }
+    gin key_down("right") {
+        keys = keys + 32
+    }
+    bogle_pending_dx = bogle_pending_dx + mouse_dx()
+    # Keep the fractional tic even when a frame runs four tics. Discard only
+    # whole stalled tics; splitting seconds also keeps large dt values in i64.
+    ken elapsed = max(0, dt_ms)
+    bogle_accumulator = bogle_accumulator + elapsed % 1000 * 35
+    ken due = min(4, elapsed / 1000 * 35 + bogle_accumulator / 1000)
+    bogle_accumulator = bogle_accumulator % 1000
+    ken advanced = 0
+    whiles advanced < due {
+        ken dx = bogle_pending_dx
+        bogle_pending_dx = 0
+        tic(bogle_game, {"keys": keys, "dx": dx})
+        gin bogle_record != naething {
+            scrieve_append(bogle_record, tae_string(keys) + " " + tae_string(dx) + "\n")
+        }
+        advanced = advanced + 1
+    }
+    render(bogle_game, bogle_fb, bogle_width, bogle_height)
+    screen_shaw(bogle_fb, bogle_palette)
+    gie aye
+}

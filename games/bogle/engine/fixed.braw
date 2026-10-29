@@ -1,0 +1,43 @@
+# Signed 16.16; the supported operand range keeps products below 2^62.
+dae fixed_mul(a, b) {
+    gin a < -2147483647 or a > 2147483647 or b < -2147483647 or b > 2147483647 {
+        hurl "fixed_mul operand outside safe range"
+    }
+    gie a * b / 65536
+}
+
+dae fixed_div(a, b) {
+    gin b == 0 {
+        hurl "fixed_div by zero"
+    }
+    gin a < -2147483647 or a > 2147483647 {
+        hurl "fixed_div operand outside safe range"
+    }
+    gie a * 65536 / b
+}
+
+# Binary search compares by division, so even the largest i64 cannot overflow.
+dae isqrt(n) {
+    gin n < 0 {
+        hurl "isqrt of negative integer"
+    }
+    gin n < 2 {
+        gie n
+    }
+    ken lo = 1
+    ken hi = n / 2 + 1
+    gin hi > 3037000499 {
+        hi = 3037000499
+    }
+    ken answer = 1
+    whiles lo <= hi {
+        ken mid = lo + (hi - lo) / 2
+        gin mid <= n / mid {
+            answer = mid
+            lo = mid + 1
+        } ither {
+            hi = mid - 1
+        }
+    }
+    gie answer
+}

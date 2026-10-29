@@ -1,0 +1,62 @@
+fetch "games/bogle/engine/map"
+fetch "games/bogle/engine/game"
+
+dae frame_hash(fb) {
+    ken hash = 2166136261
+    fer i in 0..bytes_len(fb) {
+        hash = bit_xor(hash, bytes_get(fb, i)) * 16777619 % 4294967296
+    }
+    gie hash
+}
+
+dae replay_inputs(path) {
+    ken inputs = []
+    fer line in split(read_file(path), "\n") {
+        ken clean = wheesht(split(line, "#")[0])
+        gin len(clean) > 0 {
+            ken fields = []
+            fer part in split(clean, " ") {
+                gin len(part) > 0 {
+                    shove(fields, part)
+                }
+            }
+            gin len(fields) != 2 {
+                hurl "Replay wants keys and mouse dx per tic"
+            }
+            ken keys = map_integer(fields[0])
+            ken dx = map_integer(fields[1])
+            gin keys < 0 or keys > 63 {
+                hurl "Replay input oot o range"
+            }
+            shove(inputs, {"keys": keys, "dx": dx})
+        }
+    }
+    gie inputs
+}
+
+dae run_replay(map_path, replay_path, w, h, every) {
+    gin every < 1 {
+        hurl "Replay interval must be positive"
+    }
+    ken game = new_game(load_map(map_path))
+    ken fb = bytes(w * h)
+    ken inputs = replay_inputs(replay_path)
+    ken frame = 0
+    fer input in inputs {
+        tic(game, input)
+        frame = frame + 1
+        gin frame % every == 0 {
+            render(game, fb, w, h)
+            blether tae_string(frame) + " " + tae_string(frame_hash(fb))
+        }
+    }
+    gie game
+}
+
+dae bogle_option(name, fallback) {
+    ken value = env_get(name)
+    gin value == naething {
+        gie fallback
+    }
+    gie value
+}

@@ -1,0 +1,322 @@
+fetch "games/bogle/engine/trig"
+
+# Flat stage: sixteen colour ramps, sixteen entries each. Texture ids select ramps.
+dae make_palette() {
+    ken pal = bytes(768)
+    fer colour in 0..256 {
+        ken ramp = colour / 16
+        ken value = colour % 16 * 17
+        bytes_set(pal, colour * 3, value * (4 + ramp % 3) / 6)
+        bytes_set(pal, colour * 3 + 1, value * (3 + ramp % 5) / 7)
+        bytes_set(pal, colour * 3 + 2, value * (4 + ramp % 7) / 10)
+    }
+    gie pal
+}
+
+dae make_cmap() {
+    ken cmap = bytes(8192)
+    fer level in 0..32 {
+        fer colour in 0..256 {
+            bytes_set(cmap, level * 256 + colour, colour / 16 * 16 + colour % 16 * (31 - level) / 31)
+        }
+    }
+    gie cmap
+}
+
+dae bogle_colour(tex) {
+    gie tex % 16 * 16 + 15
+}
+
+dae bogle_level(light, distance) {
+    gie min(31, max(0, (255 - light) / 8 + distance / 4194304))
+}
+
+# Exact truncating value * numerator / denominator for segment clipping.
+# At opposite map bounds the unscaled product can exceed i64, even though
+# the final intersection fits. Long division keeps its remainder below d.
+dae bogle_clip_delta(value, numerator, denominator) {
+    gin numerator == 0 or value == 0 {
+        gie 0
+    }
+    ken magnitude = abs(value)
+    gin magnitude <= 9223372036854775807 / numerator {
+        gie value * numerator / denominator
+    }
+    ken bit = 1
+    whiles bit <= magnitude / 2 {
+        bit = bit * 2
+    }
+    ken quotient = 0
+    ken remainder = 0
+    whiles bit > 0 {
+        quotient = quotient * 2
+        remainder = remainder * 2
+        gin magnitude / bit % 2 != 0 {
+            remainder = remainder + numerator
+        }
+        quotient = quotient + remainder / denominator
+        remainder = remainder % denominator
+        bit = bit / 2
+    }
+    gin value < 0 {
+        gie 0 - quotient
+    }
+    gie quotient
+}
+
+dae bogle_solid(fb, w, x, top, bottom, ink) {
+    ken at = top * w + x
+    whiles top <= bottom {
+        bytes_set(fb, at, ink)
+        at = at + w
+        top = top + 1
+    }
+}
+
+# Per-column flats: rowscale is focal / abs(row - horizon) in fixed point.
+# A constant texture colour needs distance for lighting but no world texel lookup.
+dae bogle_flat(fb, w, x, top, bottom, colour, light, delta, scales, cmap, sky) {
+    whiles top <= bottom {
+        ken ink = colour
+        gin nae sky {
+            ken distance = abs(delta) * scales[top] / 65536
+            ken level = bogle_level(light, distance)
+            ink = bytes_get(cmap, level * 256 + colour)
+        }
+        bytes_set(fb, top * w + x, ink)
+        top = top + 1
+    }
+}
+
+dae bogle_render(g, fb, w, h) {
+    gin w < 2 or h < 2 or w > 1280 or h > 800 or bytes_len(fb) != w * h {
+        hurl "Bogle render wants a matching framebuffer frae 2 tae 1280 by 800"
+    }
+    ken m = g["map"]
+    ken vx = m["vx"]
+    ken vy = m["vy"]
+    ken va = m["wall_v1"]
+    ken vb = m["wall_v2"]
+    ken floor_h = m["floor_h"]
+    ken ceil_h = m["ceil_h"]
+    ken portal = m["portal"]
+    ken cmap = g["cmap"]
+    ken cosine = bogle_cos(g["sin"], g["angle"])
+    ken sine = bogle_sin(g["sin"], g["angle"])
+    ken px = g["x"]
+    ken py = g["y"]
+    ken eye = g["view_z"]
+    ken focal = w / 2
+    ken horizon = h / 2
+    ken ytop = []
+    ken ybot = []
+    ken scales = []
+    fer x in 0..w {
+        shove(ytop, 0)
+        shove(ybot, h - 1)
+    }
+    fer y in 0..h {
+        shove(scales, focal * 65536 / max(1, abs(y - horizon)))
+    }
+    # Every visible column is filled, including solid fallback at traversal caps.
+    fer i in 0..w * h {
+        bytes_set(fb, i, 0)
+    }
+    ken visits = []
+    ken entries = []
+    fer s in 0..len(floor_h) {
+        shove(visits, 0)
+        shove(entries, 0)
+    }
+    entries[g["sector"]] = 1
+    ken queue_s = [g["sector"]]
+    ken queue_l = [0]
+    ken queue_r = [w - 1]
+    ken cursor = 0
+    ken open_columns = w
+    ken visible = []
+    ken drawsegs = []
+    whiles cursor < len(queue_s) an open_columns > 0 {
+        ken s = queue_s[cursor]
+        ken window_l = queue_l[cursor]
+        ken window_r = queue_r[cursor]
+        cursor = cursor + 1
+        # Reserve re-entries when queueing, before narrowing the opening.
+        # No queued window can then be discarded without filling its pixels.
+        visits[s] = visits[s] + 1
+        gin visits[s] == 1 {
+            shove(visible, s)
+        }
+        ken first = m["wall_first"][s]
+        ken light = m["light"][s]
+        ken floor_colour = bogle_colour(m["floor_tex"][s])
+        ken sky = m["ceil_tex"][s] == -1
+        ken ceil_colour = 175
+        gin nae sky {
+            ceil_colour = bogle_colour(m["ceil_tex"][s])
+        }
+        fer wall in first..first + m["wall_count"][s] {
+            ken ax = vx[va[wall]] * 65536 - px
+            ken ay = vy[va[wall]] * 65536 - py
+            ken bx = vx[vb[wall]] * 65536 - px
+            ken by = vy[vb[wall]] * 65536 - py
+            ken za = (ax * cosine + ay * sine) / 65536
+            ken zb = (bx * cosine + by * sine) / 65536
+            ken xa = (ax * sine - ay * cosine) / 65536
+            ken xb = (bx * sine - by * cosine) / 65536
+            ken neighbour = portal[wall]
+            # Blocking flags affect collision only; the neighbour stays visible.
+            ken can_queue = neighbour >= 0 an entries[neighbour] < 32 an len(queue_s) - cursor < 32
+            gin neighbour >= 0 an (za < 16384 or zb < 16384) {
+                # The near plane removes wall pixels, but must not erase an open
+                # doorway while the eye is crossing it. Intersect the column rays
+                # with the actual segment to carry just that aperture onward.
+                ken edge_x = vx[vb[wall]] - vx[va[wall]]
+                ken edge_y = vy[vb[wall]] - vy[va[wall]]
+                ken numerator = ax * edge_y - ay * edge_x
+                ken near_l = w
+                ken near_r = -1
+                fer column in window_l..window_r + 1 {
+                    ken ray_x = cosine + sine * (column - focal) / focal
+                    ken ray_y = sine - cosine * (column - focal) / focal
+                    ken denominator = ray_x * edge_y - ray_y * edge_x
+                    gin denominator > 0 an numerator >= 0 an numerator * 4 < denominator {
+                        ken along = ax * ray_y - ay * ray_x
+                        gin along >= 0 an along <= denominator * 65536 {
+                            ken opening_top = horizon - (min(ceil_h[s], ceil_h[neighbour]) * 65536 - eye) * focal / 16384
+                            ken opening_bot = horizon - (max(floor_h[s], floor_h[neighbour]) * 65536 - eye) * focal / 16384
+                            ken was_open = ytop[column] <= ybot[column]
+                            gin was_open an nae can_queue {
+                                # Even an aperture nearer than the near plane
+                                # must be sealed when traversal cannot continue.
+                                ken level = bogle_level(light, 16384)
+                                ken ink = bytes_get(cmap, level * 256 + bogle_colour(m["mid_tex"][wall]))
+                                bogle_solid(fb, w, column, ytop[column], ybot[column], ink)
+                                ytop[column] = h
+                                ybot[column] = -1
+                                open_columns = open_columns - 1
+                                near_l = min(near_l, column)
+                                near_r = max(near_r, column)
+                            } ither gin was_open {
+                                ytop[column] = max(ytop[column], opening_top)
+                                ybot[column] = min(ybot[column], opening_bot)
+                                gin ytop[column] > ybot[column] {
+                                    open_columns = open_columns - 1
+                                } ither {
+                                    near_l = min(near_l, column)
+                                    near_r = max(near_r, column)
+                                }
+                            }
+                        }
+                    }
+                }
+                gin near_l <= near_r {
+                    ken near_top = []
+                    ken near_bot = []
+                    fer column in near_l..near_r + 1 {
+                        shove(near_top, ytop[column])
+                        shove(near_bot, ybot[column])
+                    }
+                    shove(drawsegs, [near_l, near_r, 16384, 16384, near_top, near_bot])
+                    gin can_queue {
+                        entries[neighbour] = entries[neighbour] + 1
+                        shove(queue_s, neighbour)
+                        shove(queue_l, near_l)
+                        shove(queue_r, near_r)
+                    }
+                }
+            }
+            gin za < 16384 an zb < 16384 {
+                haud
+            }
+            # Integer segment/near-plane intersection before perspective division.
+            gin za < 16384 {
+                xa = xa + bogle_clip_delta(xb - xa, 16384 - za, zb - za)
+                za = 16384
+            }
+            gin zb < 16384 {
+                xb = xb + bogle_clip_delta(xa - xb, 16384 - zb, za - zb)
+                zb = 16384
+            }
+            ken right = focal + xa * focal / za
+            ken left = focal + xb * focal / zb
+            # CCW edges face the eye when their first endpoint projects to the right.
+            gin left >= right or right < window_l or left > window_r {
+                haud
+            }
+            ken x0 = max(window_l, max(0, left))
+            ken x1 = min(window_r, min(w - 1, right - 1))
+            gin x0 > x1 {
+                haud
+            }
+            # Reciprocal depth has forty fractional bits, retaining far-wall precision.
+            ken inv_l = 1099511627776 / zb
+            ken inv_r = 1099511627776 / za
+            ken open_l = w
+            ken open_r = -1
+            ken clip_top = []
+            ken clip_bot = []
+            ken segment_z0 = 0
+            ken segment_z1 = 0
+            can_queue = neighbour >= 0 an entries[neighbour] < 32 an len(queue_s) - cursor < 32
+            fer x in x0..x1 + 1 {
+                ken inv = inv_l + (inv_r - inv_l) * (x - left) / (right - left)
+                ken z = 1099511627776 / max(1, inv)
+                gin x == x0 {
+                    segment_z0 = z
+                }
+                segment_z1 = z
+                ken top = horizon - (ceil_h[s] * 65536 - eye) * focal / z
+                ken bottom = horizon - (floor_h[s] * 65536 - eye) * focal / z
+                ken old_top = ytop[x]
+                ken old_bot = ybot[x]
+                gin old_top <= old_bot {
+                    bogle_flat(fb, w, x, old_top, min(old_bot, top - 1), ceil_colour, light, ceil_h[s] * 65536 - eye, scales, cmap, sky)
+                    bogle_flat(fb, w, x, max(old_top, bottom + 1), old_bot, floor_colour, light, eye - floor_h[s] * 65536, scales, cmap, nae)
+                    ken level = bogle_level(light, z)
+                    gin neighbour < 0 or nae can_queue {
+                        ken ink = bytes_get(cmap, level * 256 + bogle_colour(m["mid_tex"][wall]))
+                        bogle_solid(fb, w, x, max(old_top, top), min(old_bot, bottom), ink)
+                        ytop[x] = h
+                        ybot[x] = -1
+                        open_columns = open_columns - 1
+                    } ither {
+                        ken next_top = horizon - (ceil_h[neighbour] * 65536 - eye) * focal / z
+                        ken next_bot = horizon - (floor_h[neighbour] * 65536 - eye) * focal / z
+                        gin ceil_h[neighbour] < ceil_h[s] {
+                            ken ink = 175
+                            gin nae sky or m["ceil_tex"][neighbour] != -1 {
+                                ink = bytes_get(cmap, level * 256 + bogle_colour(m["upper_tex"][wall]))
+                            }
+                            bogle_solid(fb, w, x, max(old_top, top), min(old_bot, next_top - 1), ink)
+                        }
+                        gin floor_h[neighbour] > floor_h[s] {
+                            ken ink = bytes_get(cmap, level * 256 + bogle_colour(m["lower_tex"][wall]))
+                            bogle_solid(fb, w, x, max(old_top, next_bot + 1), min(old_bot, bottom), ink)
+                        }
+                        ytop[x] = max(old_top, max(top, next_top))
+                        ybot[x] = min(old_bot, min(bottom, next_bot))
+                        gin ytop[x] > ybot[x] {
+                            open_columns = open_columns - 1
+                        }
+                        gin ytop[x] <= ybot[x] {
+                            open_l = min(open_l, x)
+                            open_r = max(open_r, x)
+                        }
+                    }
+                }
+                shove(clip_top, ytop[x])
+                shove(clip_bot, ybot[x])
+            }
+            shove(drawsegs, [x0, x1, segment_z0, segment_z1, clip_top, clip_bot])
+            gin can_queue an open_l <= open_r {
+                entries[neighbour] = entries[neighbour] + 1
+                shove(queue_s, neighbour)
+                shove(queue_l, open_l)
+                shove(queue_r, open_r)
+            }
+        }
+    }
+    g["visible"] = visible
+    g["drawsegs"] = drawsegs
+}

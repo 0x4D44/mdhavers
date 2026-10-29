@@ -1,0 +1,133 @@
+fetch "../engine/map.braw"
+
+# Builder API: new_map(); room(builder, [[x,y],...], floor, ceiling,
+# floor_tex=1, ceil_tex=2, light=192, kind=0, tag=0) -> sector index.
+# split_convex has the same arguments and returns the triangle sector indices.
+# door(builder, points, floor, ceiling, tag=0) -> sector index.
+# stairs(builder, x,y,width,depth,count,floor,rise,ceiling) grows east.
+# map_thing(builder,type,x,y,angle=0,flags=0); validate(builder); write(builder,path).
+# `thing` is a language keyword for structs, so its builder helper is map_thing.
+# Vertices are interned; every generated sector is checked by the same loader.
+dae new_map() {
+    gie {"vertices": [], "sectors": [], "things": []}
+}
+
+dae builder_vertex(b, p) {
+    map_need(len(p) == 2, "builder point")
+    fer i in 0..len(b["vertices"]) {
+        gin b["vertices"][i] == p {
+            gie i
+        }
+    }
+    shove(b["vertices"], p)
+    gie len(b["vertices"]) - 1
+}
+
+dae room(b, points, floor_h, ceil_h, floor_tex = 1, ceil_tex = 2, light = 192, kind = 0, tag = 0) {
+    ken row = [floor_h, ceil_h, floor_tex, ceil_tex, light, kind, tag]
+    fer p in points {
+        shove(row, builder_vertex(b, p))
+    }
+    shove(b["sectors"], row)
+    gie len(b["sectors"]) - 1
+}
+
+dae builder_cross(a, b, c) {
+    gie map_cross(a[0], a[1], b[0], b[1], c[0], c[1])
+}
+
+dae builder_in_triangle(a, b, c, p) {
+    gie builder_cross(a, b, p) >= 0 an builder_cross(b, c, p) >= 0 an builder_cross(c, a, p) >= 0
+}
+
+dae split_convex(b, points, floor_h, ceil_h, floor_tex = 1, ceil_tex = 2, light = 192, kind = 0, tag = 0) {
+    # Ear clipping of a simple CCW polygon. No rounding and no added vertices.
+    map_need(len(points) >= 3, "split polygon too short")
+    ken pending = []
+    ken sectors = []
+    fer p in points {
+        shove(pending, p)
+    }
+    whiles len(pending) > 3 {
+        ken ear = -1
+        fer i in 0..len(pending) {
+            ken a = pending[(i + len(pending) - 1) % len(pending)]
+            ken c = pending[(i + 1) % len(pending)]
+            gin ear == -1 an builder_cross(a, pending[i], c) > 0 {
+                ken clear = aye
+                fer j in 0..len(pending) {
+                    gin j != i an j != (i + 1) % len(pending) an j != (i + len(pending) - 1) % len(pending) {
+                        gin builder_in_triangle(a, pending[i], c, pending[j]) {
+                            clear = nae
+                        }
+                    }
+                }
+                gin clear {
+                    ear = i
+                }
+            }
+        }
+        map_need(ear >= 0, "no ear: polygon must be simple CCW")
+        ken n = len(pending)
+        shove(sectors, room(b, [pending[(ear + n - 1) % n], pending[ear], pending[(ear + 1) % n]], floor_h, ceil_h, floor_tex, ceil_tex, light, kind, tag))
+        ken remaining = []
+        fer i in 0..n {
+            gin i != ear {
+                shove(remaining, pending[i])
+            }
+        }
+        pending = remaining
+    }
+    map_need(builder_cross(pending[0], pending[1], pending[2]) > 0, "degenerate final ear")
+    shove(sectors, room(b, pending, floor_h, ceil_h, floor_tex, ceil_tex, light, kind, tag))
+    gie sectors
+}
+
+dae door(b, points, floor_h, ceil_h, tag = 0) {
+    gie room(b, points, floor_h, ceil_h, 1, 2, 160, 1, tag)
+}
+
+dae stairs(b, x, y, width, depth, count, floor_h, rise, ceil_h) {
+    map_need(count > 0 an count <= 64 an width > 0 an depth > 0 an rise > 0, "stairs parameters")
+    ken sectors = []
+    fer i in 0..count {
+        ken left = x + i * width
+        shove(sectors, room(b, [[left, y], [left + width, y], [left + width, y + depth], [left, y + depth]], floor_h + (i + 1) * rise, ceil_h))
+    }
+    gie sectors
+}
+
+dae map_thing(b, kind, x, y, angle = 0, flags = 0) {
+    shove(b["things"], [kind, x, y, angle, flags])
+}
+
+dae builder_line(prefix, values) {
+    ken result = prefix
+    fer v in values {
+        result = result + " " + tae_string(v)
+    }
+    gie result + "\n"
+}
+
+dae builder_text(b) {
+    ken text = "BOGMAP 1\n"
+    fer v in b["vertices"] {
+        text = text + builder_line("v", v)
+    }
+    fer s in b["sectors"] {
+        text = text + builder_line("s", s)
+    }
+    fer t in b["things"] {
+        text = text + builder_line("t", t)
+    }
+    gie text
+}
+
+dae validate(b) {
+    gie map_parse(builder_text(b))
+}
+
+dae write(b, path) {
+    validate(b)
+    scrieve(path, builder_text(b))
+}

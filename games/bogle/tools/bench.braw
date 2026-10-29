@@ -1,0 +1,12 @@
+fetch "games/bogle/shell/replay"
+ken bench_game = new_game(load_map("games/bogle/data/test.map"))
+ken bench_fb = bytes(320 * 200)
+ken bench_ns = 0
+fer frame in 0..100 {
+    tic(bench_game, {"keys": 1, "dx": 0})
+    ken start = mono_ns()
+    render(bench_game, bench_fb, 320, 200)
+    bench_ns = bench_ns + mono_ns() - start
+}
+blether "100 frames total ns " + tae_string(bench_ns)
+blether "mean frame ns " + tae_string(bench_ns / 100)

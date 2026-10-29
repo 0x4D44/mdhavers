@@ -1,0 +1,82 @@
+fetch "games/bogle/shell/replay"
+ken render_map = load_map("games/bogle/data/test.map")
+ken render_game = new_game(render_map)
+ken render_fb = bytes(80 * 50)
+mak_siccar bogle_clip_delta(8589410312, 6073814760, 12147629520) == 4294705156
+mak_siccar bogle_clip_delta(-8589410313, 6073814760, 12147629520) == -4294705156
+mak_siccar bogle_clip_delta(-19, 2, 3) == -12
+blether "ok near intersection overflow bounds"
+render(render_game, render_fb, 80, 50)
+ken render_first = frame_hash(render_fb)
+mak_siccar len(render_game["visible"]) >= 3
+mak_siccar len(render_game["drawsegs"]) >= 3
+mak_siccar render_first != frame_hash(bytes(80 * 50))
+render(render_game, render_fb, 80, 50)
+mak_siccar frame_hash(render_fb) == render_first
+blether "ok portal traversal and deterministic frame"
+ken render_colours = []
+fer i in 0..bytes_len(render_fb) {
+    ken colour = bytes_get(render_fb, i)
+    gin nae contains(render_colours, colour) {
+        shove(render_colours, colour)
+    }
+}
+mak_siccar len(render_colours) >= 5
+mak_siccar bytes_get(render_game["cmap"], 31 * 256 + 31) == 16
+mak_siccar bytes_get(render_game["cmap"], 31) == 31
+mak_siccar bogle_level(255, 0) == 0
+mak_siccar bogle_level(0, 2147483647) == 31
+blether "ok flat colours and generated distance lighting"
+# Independent projected rows: near doorway z64, far wall z192, eye41.
+ken clip_map = map_parse("BOGMAP 1\nv 0 0\nv 128 0\nv 128 128\nv 0 128\nv 256 0\nv 256 128\ns 0 128 1 2 192 0 0 0 1 2 3\ns 8 80 1 2 192 0 0 1 4 5 2\nw 0 1 4 5 0 0 0 0\nw 1 1 0 0 6 0 0 0\nt 1 64 64 0 0\n")
+ken clip_game = new_game(clip_map)
+render(clip_game, render_fb, 80, 50)
+mak_siccar bytes_get(render_fb, 40) == 75
+mak_siccar bytes_get(render_fb, 49 * 80 + 40) == 91
+mak_siccar bytes_get(render_fb, 25 * 80 + 40) == 106
+mak_siccar bytes_get(render_fb, 80 + 40) == 43
+mak_siccar bytes_get(render_fb, 45 * 80 + 40) == 27
+clip_map["ceil_tex"][1] = -1
+render(clip_game, render_fb, 80, 50)
+mak_siccar bytes_get(render_fb, 80 + 40) == 175
+blether "ok step lintel flat rows and sky pixels"
+# Diagonal view beside an edge: one endpoint crosses the near plane.
+render_game["x"] = 128 * 65536 - 8192
+render_game["angle"] = 512
+render(render_game, render_fb, 80, 50)
+mak_siccar frame_hash(render_fb) != render_first
+mak_siccar len(render_game["visible"]) > 0
+blether "ok near plane clipping"
+# An opening closer than the near plane must still traverse to the room beyond.
+render_game["angle"] = 0
+render(render_game, render_fb, 80, 50)
+mak_siccar contains(render_game["visible"], 1)
+mak_siccar frame_hash(render_fb) != frame_hash(bytes(80 * 50))
+render_game["x"] = 128 * 65536
+render(render_game, render_fb, 80, 50)
+mak_siccar contains(render_game["visible"], 1)
+mak_siccar frame_hash(render_fb) != frame_hash(bytes(80 * 50))
+blether "ok near portal crossing aperture"
+clip_game["x"] = 128 * 65536 - 8192
+clip_game["angle"] = 512
+render(clip_game, render_fb, 80, 50)
+mak_siccar contains(clip_game["visible"], 1)
+fer i in 0..bytes_len(render_fb) {
+    mak_siccar bytes_get(render_fb, i) > 0
+}
+blether "ok mixed near portal has no clipping holes"
+ken render_small = bytes(2 * 2)
+render(render_game, render_small, 2, 2)
+ken render_bad = 0
+hae_a_bash {
+    render(render_game, bytes(1), 80, 50)
+} gin_it_gangs_wrang e {
+    render_bad = render_bad + 1
+}
+hae_a_bash {
+    render(render_game, bytes(1), 1, 1)
+} gin_it_gangs_wrang e {
+    render_bad = render_bad + 1
+}
+mak_siccar render_bad == 2
+blether "ok framebuffer dimensions and bounds"

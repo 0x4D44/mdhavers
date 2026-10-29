@@ -1,0 +1,29 @@
+dae load_trig() {
+    ken result = []
+    ken lines = split(read_file("games/bogle/data/trig.txt"), "\n")
+    fer line in lines {
+        gin wheesht(line) != "" {
+            shove(result, tae_int(wheesht(line)))
+        }
+    }
+    gin len(result) != 4096 {
+        hurl "Bogle sine table needs 4096 entries"
+    }
+    gie result
+}
+
+dae bogle_angle(angle) {
+    ken a = angle % 4096
+    gin a < 0 {
+        a = a + 4096
+    }
+    gie a
+}
+
+dae bogle_sin(table, angle) {
+    gie table[bogle_angle(angle)]
+}
+
+dae bogle_cos(table, angle) {
+    gie table[bogle_angle(bogle_angle(angle) + 1024)]
+}

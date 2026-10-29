@@ -1,0 +1,5 @@
+ok blocking portal renders far sector and still blocks movement
+ok portal queue cap closes rejected windows
+ok sector visit cap closes rejected windows
+ok near portal queue cap closes rejected windows
+ok differing sky ceilings hide upper wall only between skies

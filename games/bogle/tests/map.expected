@@ -1,0 +1,50 @@
+ok map square
+ok map solid walls
+ok map wall override
+ok map reciprocal portals
+ok map sky and step
+ok map geometric edge pairing
+ok map rejects version
+ok map rejects record arity
+ok map rejects unknown record
+ok map rejects malformed integer
+ok map rejects coordinate bound
+ok map rejects height
+ok map rejects light
+ok map rejects sector kind
+ok map rejects texture
+ok map rejects clockwise
+ok map rejects concavity
+ok map rejects zero wall
+ok map rejects vertex index
+ok map rejects duplicate edge
+ok map rejects triple edge
+ok map rejects partial edge
+ok map rejects crossed edge
+ok map rejects disconnected geometry
+ok map rejects missing player
+ok map rejects second player
+ok map rejects outside player
+ok map rejects player start inside wall radius
+ok map allows start at body radius
+ok map allows start by open portal
+ok map rejects start by blocking portal
+ok map rejects start by short portal opening
+ok map rejects start by high portal step
+ok map rejects angle
+ok map rejects wall override index
+ok map rejects duplicate override
+ok map rejects height bound
+ok map rejects floor texture
+ok map rejects tag
+ok map rejects thing type
+ok map rejects thing flags
+ok map rejects wall texture
+ok map rejects wall offset
+ok map rejects wall flags
+ok map rejects override sector
+ok map collinear boundary vertices
+ok map rejects zero polygon area
+ok map builder round trip
+ok map builder concave decomposition
+ok map fixture stairs sky concavity

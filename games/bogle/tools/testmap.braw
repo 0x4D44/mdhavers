@@ -1,0 +1,14 @@
+fetch "mapbuild.braw"
+# Replay route: start (64,64), angle east; cross the 8-unit step/lintel
+# at x=128 (ceiling 80), four 8-unit stairs at x=256,320,384,448,
+# and the sky room x=512..768. Concave L room runs x=768..1024,
+# y=0..256, with its northwest quarter absent. At (960,64) turn north.
+ken test_builder = new_map()
+room(test_builder, [[0, 0], [128, 0], [128, 128], [0, 128]], 0, 128)
+door(test_builder, [[128, 0], [256, 0], [256, 128], [128, 128]], 8, 80, 1)
+stairs(test_builder, 256, 0, 64, 128, 4, 8, 8, 160)
+room(test_builder, [[512, 0], [768, 0], [768, 128], [512, 128]], 40, 160, 3, -1, 224)
+split_convex(test_builder, [[768, 0], [1024, 0], [1024, 256], [896, 256], [896, 128], [768, 128]], 40, 160, 4, 2, 128)
+map_thing(test_builder, 1, 64, 64)
+write(test_builder, "games/bogle/data/test.map")
+blether "ok test map"

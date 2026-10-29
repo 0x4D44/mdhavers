@@ -1,0 +1,131 @@
+fetch "games/bogle/shell/replay"
+fetch "games/bogle/tools/mapbuild"
+
+dae review_filled(fb) {
+    fer i in 0..bytes_len(fb) {
+        mak_siccar bytes_get(fb, i) != 0
+    }
+}
+
+dae review_blocking() {
+    ken m = map_parse("BOGMAP 1\nv 0 0\nv 128 0\nv 128 128\nv 0 128\nv 256 0\nv 256 128\ns 0 128 1 2 255 0 0 0 1 2 3\ns 0 128 1 2 255 0 0 1 4 5 2\nw 0 1 4 5 9 0 0 1\nw 1 1 0 0 6 0 0 0\nt 1 64 64 0 0\n")
+    ken g = new_game(m)
+    ken fb = bytes(80 * 50)
+    render(g, fb, 80, 50)
+    mak_siccar contains(g["visible"], 1)
+    # The far wall has texture6, rather than the blocking portal's texture9.
+    mak_siccar bytes_get(fb, 25 * 80 + 40) == 109
+    move_body(g, 64 * 65536, 0)
+    mak_siccar g["sector"] == 0 an g["x"] <= 112 * 65536
+    g["x"] = 128 * 65536 - 8192
+    render(g, fb, 80, 50)
+    mak_siccar contains(g["visible"], 1)
+    review_filled(fb)
+    blether "ok blocking portal renders far sector and still blocks movement"
+}
+
+# Collinear split edges are legal BOGMAP geometry. Each is a separate portal
+# window: enough windows into the same room to fill the 32-entry queue.
+dae review_fan(front, branch) {
+    ken b = new_map()
+    ken a = [[0, 0], [128, 0]]
+    fer y in front {
+        shove(a, [128, y])
+    }
+    shove(a, [0, 128])
+    room(b, a, 0, 128, 1, 2, 255)
+    ken far = [[128, 0], [256, 0], [256, 256], [128, 256]]
+    gin branch {
+        shove(far, [128, 192])
+    }
+    fer i in 0..len(front) {
+        shove(far, [128, front[len(front) - 1 - i]])
+    }
+    room(b, far, 0, 128, 1, 2, 255)
+    gin branch {
+        room(b, [[0, 128], [128, 128], [128, 192], [128, 256], [0, 256]], 0, 128, 1, 2, 255)
+    }
+    map_thing(b, 1, 64, 64)
+    gie validate(b)
+}
+
+dae review_queue_cap() {
+    ken b = new_map()
+    ken front = [[0, 0], [128, 0]]
+    fer i in 1..65 {
+        shove(front, [128, i * 2])
+    }
+    shove(front, [0, 128])
+    room(b, front, 0, 128, 1, 2, 255)
+    # Each portal leads to a different strip room, so no sector approaches
+    # its re-entry cap while the 33rd portal fills the pending-queue limit.
+    fer i in 0..64 {
+        ken y = i * 2
+        room(b, [[128, y], [256, y], [256, y + 2], [128, y + 2]], 0, 128, 1, 2, 255)
+    }
+    map_thing(b, 1, 64, 64)
+    ken g = new_game(validate(b))
+    ken fb = bytes(160 * 100)
+    render(g, fb, 160, 100)
+    mak_siccar len(g["drawsegs"]) >= 64
+    review_filled(fb)
+    blether "ok portal queue cap closes rejected windows"
+}
+
+dae review_visit_cap() {
+    ken front = [64, 68]
+    fer i in 35..65 {
+        shove(front, i * 2)
+    }
+    ken g = new_game(review_fan(front, aye))
+    ken fb = bytes(160 * 100)
+    g["angle"] = 512
+    # 31 windows into sector1 precede sector2. Sector2 then offers two more
+    # disjoint windows into sector1: the final one exceeds its re-entry limit.
+    render(g, fb, 160, 100)
+    mak_siccar contains(g["visible"], 2)
+    review_filled(fb)
+    blether "ok sector visit cap closes rejected windows"
+}
+
+dae review_near_cap() {
+    ken front = []
+    fer i in 1..65 {
+        shove(front, i * 2)
+    }
+    ken g = new_game(review_fan(front, aye))
+    ken fb = bytes(160 * 100)
+    g["y"] = 128 * 65536 - 8192
+    # 32 east-facing windows fill the queue before the north portal, which
+    # intersects column rays closer than the quarter-unit near plane.
+    render(g, fb, 160, 100)
+    review_filled(fb)
+    blether "ok near portal queue cap closes rejected windows"
+}
+
+dae review_sky() {
+    ken m = map_parse("BOGMAP 1\nv 0 0\nv 128 0\nv 128 128\nv 0 128\nv 256 0\nv 256 128\ns 0 128 1 -1 192 0 0 0 1 2 3\ns 8 80 1 -1 192 0 0 1 4 5 2\nw 0 1 4 5 0 0 0 0\nt 1 64 64 0 0\n")
+    ken g = new_game(m)
+    ken fb = bytes(80 * 50)
+    render(g, fb, 80, 50)
+    # At z64, the lower neighbouring sky projects to row1. Row0 is the
+    # upper-wall strip between sky ceilings and must be full-bright sky175.
+    mak_siccar bytes_get(fb, 40) == 175
+    mak_siccar contains(g["visible"], 1)
+    m["ceil_tex"][0] = 2
+    render(g, fb, 80, 50)
+    mak_siccar bytes_get(fb, 40) == 75
+    blether "ok differing sky ceilings hide upper wall only between skies"
+}
+
+# Keep independent failures visible in one run before the fixes are applied.
+ken review_failures = 0
+fer check in [review_blocking, review_queue_cap, review_visit_cap, review_near_cap, review_sky] {
+    hae_a_bash {
+        check()
+    } gin_it_gangs_wrang err {
+        blether tae_string(err)
+        review_failures = review_failures + 1
+    }
+}
+mak_siccar review_failures == 0

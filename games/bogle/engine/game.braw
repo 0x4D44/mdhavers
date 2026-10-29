@@ -1,0 +1,74 @@
+fetch "games/bogle/engine/trig"
+fetch "games/bogle/engine/move"
+fetch "games/bogle/engine/render"
+
+dae new_game(map) {
+    ken z = map["floor_h"][map["start_sector"]] * 65536
+    gie {
+        "map": map,
+        "x": map["start_x"] * 65536,
+        "y": map["start_y"] * 65536,
+        "z": z,
+        "view_z": z + 2686976,
+        "vz": 0,
+        "angle": bogle_angle(map["start_angle"]),
+        "sector": map["start_sector"],
+        "seed": 1,
+        "tics": 0,
+        "sin": load_trig(),
+        "cmap": make_cmap(),
+    }
+}
+
+# Park-Miller state remains positive and the product is safely within i64.
+dae game_random(g) {
+    g["seed"] = g["seed"] * 48271 % 2147483647
+    gie g["seed"]
+}
+
+dae tic(g, input) {
+    ken keys = input["keys"]
+    # Reduce mouse input before subtracting: even either i64 endpoint is safe.
+    ken angle = bogle_angle(g["angle"] - bogle_angle(input["dx"]))
+    gin bit_an(keys, 16) != 0 {
+        angle = angle + 32
+    }
+    gin bit_an(keys, 32) != 0 {
+        angle = angle - 32
+    }
+    angle = bogle_angle(angle)
+    g["angle"] = angle
+    ken forward = 0
+    ken sideways = 0
+    gin bit_an(keys, 1) != 0 {
+        forward = forward + 4
+    }
+    gin bit_an(keys, 2) != 0 {
+        forward = forward - 4
+    }
+    gin bit_an(keys, 4) != 0 {
+        sideways = sideways + 4
+    }
+    gin bit_an(keys, 8) != 0 {
+        sideways = sideways - 4
+    }
+    ken cosine = bogle_cos(g["sin"], angle)
+    ken sine = bogle_sin(g["sin"], angle)
+    move_body(g, forward * cosine - sideways * sine, forward * sine + sideways * cosine)
+    ken floor = g["map"]["floor_h"][g["sector"]] * 65536
+    gin g["z"] > floor {
+        g["vz"] = g["vz"] - 65536
+        g["z"] = g["z"] + g["vz"]
+    }
+    gin g["z"] <= floor {
+        g["z"] = floor
+        g["vz"] = 0
+    }
+    ken target = g["z"] + 2686976
+    g["view_z"] = g["view_z"] + (target - g["view_z"]) / 4
+    g["tics"] = g["tics"] + 1
+}
+
+dae render(g, fb, w, h) {
+    bogle_render(g, fb, w, h)
+}

@@ -1,0 +1,17 @@
+# Native: headless <map> <replay> <w> <h> <every>.
+# The interpreter CLI accepts only a source path; BOGLE_* supplies the same inputs.
+fetch "replay"
+ken headless_map = bogle_option("BOGLE_MAP", "games/bogle/data/test.map")
+ken headless_replay = bogle_option("BOGLE_REPLAY", "games/bogle/replays/stage2.txt")
+ken headless_w = bogle_option("BOGLE_W", "80")
+ken headless_h = bogle_option("BOGLE_H", "50")
+ken headless_every = bogle_option("BOGLE_EVERY", "35")
+ken headless_args = args()
+gin len(headless_args) == 6 {
+    headless_map = headless_args[1]
+    headless_replay = headless_args[2]
+    headless_w = headless_args[3]
+    headless_h = headless_args[4]
+    headless_every = headless_args[5]
+}
+run_replay(headless_map, headless_replay, map_integer(headless_w), map_integer(headless_h), map_integer(headless_every))
