@@ -38733,7 +38733,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap();
                     let start_idx = self.types.i64_type.const_int(index, false);
                     let rest_list =
-                        self.compile_list_slice_dynamic(items_ptr, start_idx, slice_end);
+                        self.compile_list_slice_dynamic(list_val, items_ptr, start_idx, slice_end);
                     let alloca = self.create_entry_block_alloca(name);
                     self.store_slot(alloca, rest_list);
                     self.bind_block_local(name, false);
@@ -38783,10 +38783,28 @@ impl<'ctx> CodeGen<'ctx> {
     /// Create a slice of list from start_index to end_index (exclusive)
     fn compile_list_slice_dynamic(
         &mut self,
+        list_val: BasicValueEnum<'ctx>,
         items_ptr: PointerValue<'ctx>,
         start_index: inkwell::values::IntValue<'ctx>,
         end_index: inkwell::values::IntValue<'ctx>,
     ) -> BasicValueEnum<'ctx> {
+        if self.rc_enabled {
+            // The slice owns its elements independently of the source list. The runtime
+            // helper retains each one; a raw memcpy would leave dangling references
+            // when destructuring releases a temporary list of string characters.
+            return self
+                .builder
+                .build_call(
+                    self.libc.list_slice,
+                    &[list_val.into(), start_index.into(), end_index.into()],
+                    "destructure_slice",
+                )
+                .unwrap()
+                .try_as_basic_value()
+                .basic()
+                .unwrap();
+        }
+
         // Calculate slice length
         let slice_len = self
             .builder
