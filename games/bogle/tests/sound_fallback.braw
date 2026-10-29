@@ -1,0 +1,19 @@
+fetch "games/bogle/shell/frame"
+
+# A device that refuses to open leaves the game silent, not stopped.
+dae sound_fallback_refuse(rate, channels) {
+    hurl "couldnae open the audio device"
+}
+mak_siccar bogle_sound_start(sound_fallback_refuse) == naething
+
+# A device that opens gets a fresh mixer at the shell's rate and channels.
+ken sound_fallback_asked = []
+dae sound_fallback_accept(rate, channels) {
+    shove(sound_fallback_asked, [rate, channels])
+}
+ken sound_fallback_mixer = bogle_sound_start(sound_fallback_accept)
+mak_siccar sound_fallback_mixer != naething
+mak_siccar len(sound_fallback_asked) == 1
+mak_siccar sound_fallback_asked[0][0] == 22050
+mak_siccar sound_fallback_asked[0][1] == 1
+blether "sound fallback ok"

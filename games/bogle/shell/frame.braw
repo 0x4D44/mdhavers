@@ -30,10 +30,31 @@ dae bogle_init(w, h) {
     # The native bridge also honours these flags, but avoid even opening its
     # null stream in an offscreen shell. Replay hosts never import frame.braw.
     gin env_get("MDH_SCREEN") != "none" an env_get("MDH_SOUND") != "none" {
-        sound_open(22050, 1)
-        bogle_sound = bogle_audio_new()
-        bogle_sound_frame([])
+        bogle_sound = bogle_sound_start(bogle_open_device)
+        gin bogle_sound != naething {
+            bogle_sound_frame([])
+        }
     }
+}
+
+dae bogle_open_device(rate, channels) {
+    sound_open(rate, channels)
+}
+
+# A missing or busy audio device costs the sound, never the game: report it
+# once and play on silent (bogle_sound stays naething).
+dae bogle_sound_start(opener) {
+    ken opened = aye
+    hae_a_bash {
+        opener(22050, 1)
+    } gin_it_gangs_wrang err {
+        blether "Bogle: nae sound the day, playin on quiet (" + tae_string(err) + ")"
+        opened = nae
+    }
+    gin opened {
+        gie bogle_audio_new()
+    }
+    gie naething
 }
 
 dae bogle_frame(dt_ms) {
