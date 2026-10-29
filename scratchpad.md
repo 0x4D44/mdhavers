@@ -1,5 +1,6 @@
 # Scratchpad
 
+- [ ] 2026-10-29 src/interpreter.rs (22), tests/llvm_rc_toplevel.rs (5), tests/interpreter_misc_coverage.rs (2), src/value.rs, src/parser.rs, src/logging.rs: `cargo clippy --tests -- -D warnings` (cli,llvm,native) reports 32 errors on 0.3.129 that plain `cargo clippy` does not: thread_local initialisers that can be `const` (11), `io::Error::other` (8), let-else to `?` (4), single-arm matches (3), and others. Fix them, then consider making `--tests` part of `make clippy`. Found by the 00213 worker.
 - [ ] 2026-10-29 src/llvm/codegen/rc/slots.rs:429 RC7 C leaves particle_sim's pj owning (R5-8): unlock by a constant tag-set dataflow through phi/select, or an audited list-initialisation store exception (see Revision 5 addendum, R5-7 review).
 
 - [x] 2026-10-29 games/bogle/tools/bake.braw: baked sprites keep a faint purple fringe (visible round the haggis in the stage 3 PPM): antialiased edge pixels between the figure and the #FF00FF key fall outside the 24-per-channel key and quantise to purple. Consider keying by magenta dominance (e.g. r and b both well above g) or a one-pixel despill toward the neighbour colour; re-bless the bake fixtures after. Resolved in stage 4: magenta dominance on sprites/weapons only, with purple texture and fringe regressions; fixtures and sprite hashes re-blessed.
