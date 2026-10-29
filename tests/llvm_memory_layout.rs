@@ -128,10 +128,10 @@ blether b.n
 
 // ---------- R0.3: string literals and class names are immortal objects ----------
 
-/// `{ i64 refcount = IMMORTAL, i32 kind = String, i32 flags = IMMORTAL, chars }` (DES 3.2).
-fn immortal_string_constant(text: &str) -> String {
+/// `{ i64 refcount = IMMORTAL, i32 kind = String, i32 flags, chars }` (DES 3.2).
+fn immortal_string_constant(text: &str, flags: u32) -> String {
     format!(
-        "{{ i64 {}, i32 1, i32 1, [{} x i8] c\"{text}\\00\" }}",
+        "{{ i64 {}, i32 1, i32 {flags}, [{} x i8] c\"{text}\\00\" }}",
         i64::MAX / 2,
         text.len() + 1
     )
@@ -152,27 +152,37 @@ blether w
 blether w.k
 blether f"interp {s}"
 "#;
-    let ir = ir_of(src);
-    for text in ["literal", "Wee", "field", "interp "] {
-        let constant = immortal_string_constant(text);
-        let line = ir
-            .lines()
-            .find(|l| l.contains(&constant))
-            .unwrap_or_else(|| panic!("no immortal constant for {text:?}: want {constant}"));
+    // Flags are IMMORTAL; with counting on (the default) they also carry the header
+    // magic, OBJ_FLAG_MAGIC | OBJ_FLAG_IMMORTAL.
+    for (rc, flags) in [(false, 1), (true, 0x4D44_0001)] {
+        let program = parse(src).expect("parse");
+        let ir = LLVMCompiler::new()
+            .with_refcounting(rc)
+            .compile_to_ir(&program)
+            .expect("ir");
+        for text in ["literal", "Wee", "field", "interp "] {
+            let constant = immortal_string_constant(text, flags);
+            let line = ir
+                .lines()
+                .find(|l| l.contains(&constant))
+                .unwrap_or_else(|| {
+                    panic!("rc={rc}: no immortal constant for {text:?}: want {constant}")
+                });
+            assert!(
+                line.contains(" constant "),
+                "rc={rc}: {text:?} is not read-only: {line}"
+            );
+            assert!(
+                line.contains("align 16"),
+                "rc={rc}: {text:?} is not 16-byte aligned: {line}"
+            );
+        }
+        // Values point at the chars, 16 bytes past the header.
         assert!(
-            line.contains(" constant "),
-            "{text:?} is not read-only: {line}"
-        );
-        assert!(
-            line.contains("align 16"),
-            "{text:?} is not 16-byte aligned: {line}"
+            ir.contains("i64 16)"),
+            "rc={rc}: no pointer to the chars after a header"
         );
     }
-    // Values point at the chars, 16 bytes past the header.
-    assert!(
-        ir.contains("i64 16)"),
-        "no pointer to the chars after a header"
-    );
     assert_eq!(
         run_ok(src),
         vec![
