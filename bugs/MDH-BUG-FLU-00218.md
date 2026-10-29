@@ -1,26 +1,25 @@
 # MDH-BUG-FLU-00218 — Native: snooze, noo and tick in a loop grow the stack every iteration until it overflows
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Must
 - **Severity:** High
 - **Area:** native
 - **Raised:** 2026-10-29T16:53:25Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261029T170202Z-661f2b2b
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00218-run-fix-20261029T170202Z-661f2b2b
-- **Owner base:** e6acf783f9a42bcba4ad2463de3eb56b0ff02a63
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-29T17:02:02Z
-- **Owner until:** 2026-10-29T21:02:02Z
-- **Owner session:** flux/2a9090d7-08f7-48c7-bee8-7b7d1d963ab2 (run fix-20261029T170202Z-661f2b2b)
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-29T16:53:25Z, raised via `deltic bugs new --land`)
+- **State history:** Open (2026-10-29T16:53:25Z, raised via `deltic bugs new --land`) -> Fixed (2026-10-29T18:01:44Z, deltic:auto role=fix run=fix-20261029T170202Z-661f2b2b branch=task/bug-MDH-BUG-FLU-00218-run-fix-20261029T170202Z-661f2b2b code=91d1880 gate=manual)
 
 ## Observation
 
