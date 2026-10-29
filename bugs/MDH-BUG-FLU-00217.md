@@ -1,26 +1,25 @@
 # MDH-BUG-FLU-00217 — Native RC: destructuring a string with a rest pattern releases a dead string
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Must
 - **Severity:** High
 - **Area:** native
 - **Raised:** 2026-10-29T15:20:26Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261029T152036Z-da5d7908
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00217-run-fix-20261029T152036Z-da5d7908
-- **Owner base:** 089d2413a26eb6e759ffb1c794b8a017fb9e4877
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-29T15:20:36Z
-- **Owner until:** 2026-10-29T19:20:36Z
-- **Owner session:** flux/2a9090d7-08f7-48c7-bee8-7b7d1d963ab2 (run fix-20261029T152036Z-da5d7908)
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-29T15:20:26Z, raised via `deltic bugs new --land`)
+- **State history:** Open (2026-10-29T15:20:26Z, raised via `deltic bugs new --land`) -> Fixed (2026-10-29T16:07:23Z, deltic:auto role=fix run=fix-20261029T152036Z-da5d7908 branch=task/bug-MDH-BUG-FLU-00217-run-fix-20261029T152036Z-da5d7908 code=903574b gate=manual)
 
 ## Observation
 
