@@ -1,26 +1,25 @@
 # MDH-BUG-FLU-00219 — Native: build --emit-llvm cannot find a sibling module unless run from the source's directory
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** native
 - **Raised:** 2026-10-29T16:53:47Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261029T191817Z-e909a648
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00219-run-fix-20261029T191817Z-e909a648
-- **Owner base:** 9191228b5b46d2e81199a055efecd3e2e9d3ea51
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-29T19:18:17Z
-- **Owner until:** 2026-10-29T23:18:17Z
-- **Owner session:** flux/2a9090d7-08f7-48c7-bee8-7b7d1d963ab2 (run fix-20261029T191817Z-e909a648)
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-29T16:53:47Z, raised via `deltic bugs new --land`)
+- **State history:** Open (2026-10-29T16:53:47Z, raised via `deltic bugs new --land`) -> Fixed (2026-10-29T19:35:22Z, deltic:auto role=fix run=fix-20261029T191817Z-e909a648 branch=task/bug-MDH-BUG-FLU-00219-run-fix-20261029T191817Z-e909a648 code=8aff615 gate=manual)
 
 ## Observation
 
