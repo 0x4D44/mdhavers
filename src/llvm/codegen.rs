@@ -36741,7 +36741,16 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     fn module_variable_global(&mut self, import_path: &Path, name: &str) -> GlobalValue<'ctx> {
-        let module_id = self.module_unique_ids[import_path].clone();
+        let module_id = match self.module_unique_ids.get(import_path) {
+            Some(id) => id.clone(),
+            None => {
+                let _ = self.declare_module_init(import_path);
+                match self.module_unique_ids.get(import_path).cloned() {
+                    Some(id) => id,
+                    None => "module".to_string(),
+                }
+            }
+        };
         let module_vars = self
             .imported_module_var_globals
             .entry(import_path.to_path_buf())
