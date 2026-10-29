@@ -1,0 +1,47 @@
+# Native builds spawn real workers. The interpreter only spawns builtins:
+# match that specific limitation and run the identical kernel serially there.
+# abs is the interpreter-supported identity for these nonnegative results.
+dae launch(worker, data) {
+    ken handle = naething
+    hae_a_bash {
+        handle = thread_spawn(worker, [data])
+    } gin_it_gangs_wrang error {
+        gin nae contains(tae_string(error), "thread_spawn() only supports native functions in interpreter") {
+            hurl error
+        }
+        handle = thread_spawn(abs, [worker(data)])
+    }
+    gie handle
+}
+
+# 8192 tiny workers in batches of 8; every handle is joined before the next batch.
+# Return integers so cached handle results do not root heap payloads (100134912).
+dae short_task(seed) {
+    ken total = seed
+    ken i = 0
+    whiles i < 128 {
+        total = total + i
+        i = i + 1
+    }
+    gie total
+}
+
+dae run() {
+    ken total = 0
+    ken batch = 0
+    whiles batch < 1024 {
+        ken handles = []
+        ken i = 0
+        whiles i < 8 {
+            shove(handles, launch(short_task, batch * 8 + i))
+            i = i + 1
+        }
+        fer handle in handles {
+            total = total + thread_join(handle)
+        }
+        batch = batch + 1
+    }
+    gie total
+}
+
+blether run()

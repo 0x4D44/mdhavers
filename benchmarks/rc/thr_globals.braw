@@ -1,0 +1,49 @@
+# Native builds spawn real workers. The interpreter only spawns builtins:
+# match that specific limitation and run the identical kernel serially there.
+# abs is the interpreter-supported identity for these nonnegative results.
+dae launch(worker, data) {
+    ken handle = naething
+    hae_a_bash {
+        handle = thread_spawn(worker, [data])
+    } gin_it_gangs_wrang error {
+        gin nae contains(tae_string(error), "thread_spawn() only supports native functions in interpreter") {
+            hurl error
+        }
+        handle = thread_spawn(abs, [worker(data)])
+    }
+    gie handle
+}
+
+# One writer replaces a global string; two readers retain snapshots without a mutex.
+# Every value has length 7, so scheduling cannot affect the checksum (2800000).
+ken shared = "shared0"
+
+dae writer(n) {
+    ken i = 0
+    whiles i < n {
+        shared = "shared" + tae_string(i % 10)
+        i = i + 1
+    }
+    gie 0
+}
+
+dae reader(n) {
+    ken total = 0
+    ken i = 0
+    whiles i < n {
+        ken snapshot = shared
+        total = total + len(snapshot)
+        i = i + 1
+    }
+    gie total
+}
+
+dae run() {
+    ken n = 200000
+    ken a = launch(writer, n)
+    ken b = launch(reader, n)
+    ken c = launch(reader, n)
+    gie thread_join(a) + thread_join(b) + thread_join(c)
+}
+
+blether run()

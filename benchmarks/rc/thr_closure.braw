@@ -1,0 +1,49 @@
+# Native builds spawn real workers. The interpreter only spawns builtins:
+# match that specific limitation and run the identical kernel serially there.
+# abs is the interpreter-supported identity for these nonnegative results.
+dae launch(worker, data) {
+    ken handle = naething
+    hae_a_bash {
+        handle = thread_spawn(worker, [data])
+    } gin_it_gangs_wrang error {
+        gin nae contains(tae_string(error), "thread_spawn() only supports native functions in interpreter") {
+            hurl error
+        }
+        handle = thread_spawn(abs, [worker(data)])
+    }
+    gie handle
+}
+
+# Spawned workers repeatedly read and call heap closures from a shared immutable list.
+# Two workers each do 500000 calls; the checksum is 250004000000.
+dae adder(n) {
+    gie |x| x + n
+}
+
+dae worker(ctx) {
+    ken fs = ctx[0]
+    ken n = ctx[1]
+    ken total = 0
+    ken i = 0
+    whiles i < n {
+        ken f = fs[i % 10]
+        total = total + f(i)
+        i = i + 1
+    }
+    gie total
+}
+
+dae run() {
+    ken fs = []
+    ken i = 0
+    whiles i < 10 {
+        shove(fs, adder(i))
+        i = i + 1
+    }
+    ken ctx = [fs, 500000]
+    ken a = launch(worker, ctx)
+    ken b = launch(worker, ctx)
+    gie thread_join(a) + thread_join(b)
+}
+
+blether run()

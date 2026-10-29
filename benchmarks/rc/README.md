@@ -12,6 +12,34 @@ Pass `--check-baseline` to stop on the first mismatch against section 0. That ch
 
 The 11-source corpus is `closure`, `closure_fn`, `particle_sim`, `method`, `dict`, `fib`, `intloop`, `alloc`, `strbuild`, `list`, and `expr_eval`. `particle_sim.braw` and `expr_eval.braw` are byte-identical to their copies in `benchmarks/applications/large/`.
 
+## Phase 6 threaded fixtures
+
+The runner appends `thr_*.braw` after the original corpus. These rows use exact checksums from `threaded-expected.txt` and are excluded from the section 0 baseline check. The four-column table and original 11 benchmark rows are unchanged. A threaded RC-off checksum mismatch adds `(RC-off output mismatch)` to its row name, retains the instruction counts and computed percentage, and continues. That percentage uses an incorrect-output baseline and needs lead review. Each mismatching run is logged to stderr and a per-variant mismatch log; separate output and instruction logs are retained for every threaded run. RC-on mismatches, failed processes, and missing counters remain fatal.
+
+| Fixture | Work | Expected checksum |
+|---|---|---:|
+| `thr_globals` | 200000 global string replacements, two readers with 200000 snapshots each | 2800000 |
+| `thr_cell` | The same workload through a captured cell | 2800000 |
+| `thr_containers` | 100000 list/dict replacements, two readers with 100000 reads of each container; every access uses one mutex | 2800000 |
+| `thr_closure` | Two workers make one million total calls through a shared closure list | 250004000000 |
+| `thr_chars` | Two workers index ASCII and multibyte Unicode characters one million times | 22769750000 |
+| `thr_spawn` | 8192 short tasks, 128 integer-loop steps each, spawned and joined in batches of eight | 100134912 |
+
+The intended results are independent of scheduling. Workers return nonnegative integers and every handle is joined. The interpreter only supports builtins in `thread_spawn`, so `launch` catches that specific limitation, evaluates the same kernel serially, and wraps its result in a builtin thread handle. Native builds run real worker threads. Unexpected errors are rethrown. Update `threaded-expected.txt` and recheck the interpreter if a work size changes.
+
+Measured on 0.3.125 (RC7 phases 0, A, B, 2b, C and D landed), three runs each, instructions retired:
+
+| Fixture | RC off | RC on | RC cost | RC-off output |
+|---|---:|---:|---:|---|
+| `thr_closure` | 131.6M | 336.3M | +155.6% | correct |
+| `thr_globals` | 351.5M | 623.4M | +77.4% | wrong (MDH-BUG-FLU-00216) |
+| `thr_cell` | 354.8M | 620.9M | +75.0% | wrong (MDH-BUG-FLU-00216) |
+| `thr_containers` | 372.8M | 583.4M | +56.5% | correct |
+| `thr_spawn` | 1,053.3M | 1,094.3M | +3.9% | correct |
+| `thr_chars` | 625.3M | 492.6M | -21.2% | correct |
+
+RC on gives the exact checksum on every fixture, with zero live objects under `MDH_RC_REPORT` (with and without `MDH_RC_NOFREE`). RC off reads torn strings from a global or captured variable that another thread reassigns, so the two 00216 rows compare RC on against an incorrect baseline. Threaded programs get none of the RC7 borrowing (C(a) excludes programs that spawn), which is why their cost is far above the single-threaded corpus.
+
 ## Phase 0 measurement status
 
 Attempted against pristine release compiler `HEAD 6aac928`, built with `--no-default-features --features cli,llvm,native`, using:

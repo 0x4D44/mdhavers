@@ -1,0 +1,62 @@
+# Native builds spawn real workers. The interpreter only spawns builtins:
+# match that specific limitation and run the identical kernel serially there.
+# abs is the interpreter-supported identity for these nonnegative results.
+dae launch(worker, data) {
+    ken handle = naething
+    hae_a_bash {
+        handle = thread_spawn(worker, [data])
+    } gin_it_gangs_wrang error {
+        gin nae contains(tae_string(error), "thread_spawn() only supports native functions in interpreter") {
+            hurl error
+        }
+        handle = thread_spawn(abs, [worker(data)])
+    }
+    gie handle
+}
+
+# One writer and two readers share a list and dict. All accesses use one mutex.
+# Replacement strings always have length 7, independent of interleaving (2800000).
+dae writer(ctx) {
+    ken xs = ctx[0]
+    ken table = ctx[1]
+    ken lock = ctx[2]
+    ken n = ctx[3]
+    ken i = 0
+    whiles i < n {
+        ken value = "shared" + tae_string(i % 10)
+        mutex_lock(lock)
+        xs[0] = value
+        table["value"] = value
+        mutex_unlock(lock)
+        i = i + 1
+    }
+    gie 0
+}
+
+dae reader(ctx) {
+    ken xs = ctx[0]
+    ken table = ctx[1]
+    ken lock = ctx[2]
+    ken n = ctx[3]
+    ken total = 0
+    ken i = 0
+    whiles i < n {
+        mutex_lock(lock)
+        ken a = xs[0]
+        ken b = table["value"]
+        total = total + len(a) + len(b)
+        mutex_unlock(lock)
+        i = i + 1
+    }
+    gie total
+}
+
+dae run() {
+    ken ctx = [["shared0"], {"value": "shared0"}, mutex_new(), 100000]
+    ken a = launch(writer, ctx)
+    ken b = launch(reader, ctx)
+    ken c = launch(reader, ctx)
+    gie thread_join(a) + thread_join(b) + thread_join(c)
+}
+
+blether run()

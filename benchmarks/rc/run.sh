@@ -113,6 +113,20 @@ measure_variant() {
   local minimum=
   local instructions
   local run
+  local threaded_expected=
+  local expected_output=$work_dir/$benchmark-expected.out
+  local timing_log
+  local count_log
+  local mismatch_log=$work_dir/$benchmark-$rc_mode-mismatches.log
+
+  if [[ $benchmark == thr_* ]]; then
+    threaded_expected=$(awk -v name="$benchmark" '$1 == name { print $2 }' "$bench_dir/threaded-expected.txt")
+    if [[ ! $threaded_expected =~ ^[0-9]+$ ]]; then
+      printf 'missing or invalid threaded checksum for %s\n' "$benchmark" >&2
+      return 1
+    fi
+    printf '%s\n' "$threaded_expected" >"$expected_output"
+  fi
 
   if [[ ! -f $source ]]; then
     printf 'missing benchmark source: %s\n' "$source" >&2
@@ -143,18 +157,39 @@ measure_variant() {
 
   for ((run = 1; run <= runs; run++)); do
     printf '  %s RC %s run %d/%d\n' "$benchmark" "$rc_mode" "$run" "$runs" >&2
-    if ! capture_capped "$run_log" env -u MDH_RC -u MDH_RC_NOFREE -u MDH_RC_REPORT \
-      deltic timeout 30 /usr/bin/time -l "$binary"; then
-      printf 'failed to run %s with RC %s (run %d)\n' "$benchmark" "$rc_mode" "$run" >&2
-      sed -E '/^[[:space:]]*[0-9]+([.][0-9]+)? real([[:space:]]|$)/d' "$run_log" >&2
-      return 1
+    if [[ -n $threaded_expected ]]; then
+      # Keep program output separate so the entire checksum can be compared exactly.
+      run_log=$work_dir/$benchmark-$rc_mode-run-$run.log
+      timing_log=$work_dir/$benchmark-$rc_mode-time-$run.log
+      if ! capture_capped "$run_log" env -u MDH_RC -u MDH_RC_NOFREE -u MDH_RC_REPORT \
+        deltic timeout 30 /usr/bin/time -l -o "$timing_log" "$binary"; then
+        printf 'failed to run %s with RC %s (run %d)\n' "$benchmark" "$rc_mode" "$run" >&2
+        cat "$run_log" >&2
+        return 1
+      fi
+      count_log=$timing_log
+      if ! cmp -s "$expected_output" "$run_log"; then
+        printf '    OUTPUT MISMATCH: %s RC %s run %d; expected %s; actual output in %s\n' \
+          "$benchmark" "$rc_mode" "$run" "$threaded_expected" "$run_log" | tee -a "$mismatch_log" >&2
+        if [[ $rc_mode == on ]]; then
+          return 1
+        fi
+      fi
+    else
+      if ! capture_capped "$run_log" env -u MDH_RC -u MDH_RC_NOFREE -u MDH_RC_REPORT \
+        deltic timeout 30 /usr/bin/time -l "$binary"; then
+        printf 'failed to run %s with RC %s (run %d)\n' "$benchmark" "$rc_mode" "$run" >&2
+        sed -E '/^[[:space:]]*[0-9]+([.][0-9]+)? real([[:space:]]|$)/d' "$run_log" >&2
+        return 1
+      fi
+      count_log=$run_log
     fi
 
-    instructions=$(sed -nE 's/^[[:space:]]*([0-9][0-9,]*)[[:space:]]+instructions retired.*$/\1/p' "$run_log" | tr -d ',')
+    instructions=$(sed -nE 's/^[[:space:]]*([0-9][0-9,]*)[[:space:]]+instructions retired.*$/\1/p' "$count_log" | tr -d ',')
     if [[ ! $instructions =~ ^[0-9]+$ ]]; then
       printf 'could not parse the instructions retired count for %s RC %s run %d\n' \
         "$benchmark" "$rc_mode" "$run" >&2
-      sed -E '/^[[:space:]]*[0-9]+([.][0-9]+)? real([[:space:]]|$)/d' "$run_log" >&2
+      sed -E '/^[[:space:]]*[0-9]+([.][0-9]+)? real([[:space:]]|$)/d' "$count_log" >&2
       return 1
     fi
     printf '    instructions retired: %s\n' "$instructions" >&2
@@ -173,6 +208,7 @@ baseline_check() {
   local difference
 
   case $benchmark in
+    thr_*) return 0 ;; # Phase 6 has no section 0 baseline.
     closure) expected=69.3 ;;
     closure_fn) expected=40.1 ;;
     particle_sim) expected=15.4 ;;
@@ -207,6 +243,11 @@ printf '|---|---:|---:|---:|\n'
 
 # Keep section 0's five individually tabulated benchmarks first so a mismatch stops promptly.
 benchmarks=(closure closure_fn particle_sim method dict fib intloop alloc strbuild list expr_eval)
+for source in "$bench_dir"/thr_*.braw; do
+  [[ -f $source ]] || continue
+  benchmark=${source##*/}
+  benchmarks+=("${benchmark%.braw}")
+done
 for benchmark in "${benchmarks[@]}"; do
   printf 'Measuring %s\n' "$benchmark" >&2
   off=$(measure_variant "$benchmark" off)
@@ -216,7 +257,12 @@ for benchmark in "${benchmarks[@]}"; do
   off_m=$(format_millions "$off")
   on_m=$(format_millions "$on")
 
-  printf '| %s | %s | %s | %s%% |\n' "$benchmark" "$off_m" "$on_m" "$displayed_cost"
+  row_name=$benchmark
+  if [[ -s $work_dir/$benchmark-off-mismatches.log ]]; then
+    row_name="$benchmark (RC-off output mismatch)"
+    printf '  WARNING: %s RC cost uses an incorrect-output baseline; counts retained for lead review\n' "$benchmark" >&2
+  fi
+  printf '| %s | %s | %s | %s%% |\n' "$row_name" "$off_m" "$on_m" "$displayed_cost"
   if (( check_baseline )) && ! baseline_check "$benchmark" "$cost"; then
     exit 1
   fi

@@ -1,0 +1,6 @@
+thr_cell	2800000
+thr_chars	22769750000
+thr_closure	250004000000
+thr_containers	2800000
+thr_globals	2800000
+thr_spawn	100134912

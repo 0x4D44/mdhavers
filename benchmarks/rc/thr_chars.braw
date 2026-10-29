@@ -1,0 +1,39 @@
+# Native builds spawn real workers. The interpreter only spawns builtins:
+# match that specific limitation and run the identical kernel serially there.
+# abs is the interpreter-supported identity for these nonnegative results.
+dae launch(worker, data) {
+    ken handle = naething
+    hae_a_bash {
+        handle = thread_spawn(worker, [data])
+    } gin_it_gangs_wrang error {
+        gin nae contains(tae_string(error), "thread_spawn() only supports native functions in interpreter") {
+            hurl error
+        }
+        handle = thread_spawn(abs, [worker(data)])
+    }
+    gie handle
+}
+
+# Two workers index the same ASCII and multibyte characters concurrently.
+# Eight code points span ASCII through four-byte UTF-8; checksum 22769750000.
+dae worker(ctx) {
+    ken text = ctx[0]
+    ken n = ctx[1]
+    ken total = 0
+    ken i = 0
+    whiles i < n {
+        ken character = text[i % 8]
+        total = total + ord(character)
+        i = i + 1
+    }
+    gie total
+}
+
+dae run() {
+    ken ctx = ["Aéλ中😀Bø終", 500000]
+    ken a = launch(worker, ctx)
+    ken b = launch(worker, ctx)
+    gie thread_join(a) + thread_join(b)
+}
+
+blether run()
