@@ -1,26 +1,25 @@
 # MDH-BUG-FLU-00216 — Native RC off: readers of a captured variable reassigned by another thread see torn strings
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Must
 - **Severity:** High
 - **Area:** native
 - **Raised:** 2026-10-29T11:02:29Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261029T143206Z-c3668937
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00216-run-fix-20261029T143206Z-c3668937
-- **Owner base:** 65caa3c1022a1b8c7c753e971b878d568c9eddf0
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-29T14:32:06Z
-- **Owner until:** 2026-10-29T18:32:06Z
-- **Owner session:** flux/2a9090d7-08f7-48c7-bee8-7b7d1d963ab2 (run fix-20261029T143206Z-c3668937)
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-29T11:02:29Z, raised via `deltic bugs new --land`)
+- **State history:** Open (2026-10-29T11:02:29Z, raised via `deltic bugs new --land`) -> Fixed (2026-10-29T15:32:51Z, deltic:auto role=fix run=fix-20261029T143206Z-c3668937 branch=task/bug-MDH-BUG-FLU-00216-run-fix-20261029T143206Z-c3668937 code=e795a6f gate=manual)
 
 ## Observation
 
