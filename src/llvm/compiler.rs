@@ -1120,6 +1120,41 @@ mod tests {
     }
 
     #[test]
+    fn rc7_d_particle_element_reads_have_no_owned_part_after_o2() {
+        let program = parse(include_str!("../../benchmarks/rc/particle_sim.braw")).unwrap();
+        let context = Context::create();
+        let mut codegen = CodeGen::new_with_refcounting(&context, "particle_interned", true);
+        codegen.compile(&program).unwrap();
+        let compiler = LLVMCompiler::new()
+            .with_refcounting(true)
+            .with_optimization(2);
+        let machine = test_target_machine(compiler.opt_level);
+        compiler
+            .run_optimization_passes(codegen.get_module(), &machine)
+            .unwrap();
+        let function = codegen
+            .get_module()
+            .get_function("__mdh_fn_update_velocities")
+            .unwrap();
+        use inkwell::values::AnyValue;
+        let ir = function.print_to_string().to_string();
+        assert!(
+            ir.contains("@__mdh_char_at_interned("),
+            "interned indexing is absent"
+        );
+        assert!(
+            !ir.contains("@__mdh_char_at("),
+            "fresh character helper remains"
+        );
+        assert!(
+            !ir.lines()
+                .any(|line| line.trim_start().starts_with("%rc_owned_part")
+                    && line.contains(" = phi ")),
+            "owned-part phi remains in update_velocities:\n{ir}"
+        );
+    }
+
+    #[test]
     fn test_run_optimization_passes_invalid_module_errors() {
         let context = Context::create();
         let module = context.create_module("bad");

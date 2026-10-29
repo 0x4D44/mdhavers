@@ -83,6 +83,15 @@ blether word[-1]  # "d"
 blether word[-2]  # "n"
 ```
 
+With reference counting enabled in the LLVM runtime, indexed characters are cached as
+immutable strings for the life of the process. Concatenating an indexed character still
+produces the expected separate string; it does not change the source text.
+
+The cache allocates pages and entries as characters are used. Its fixed page-pointer table
+uses about 34 KiB. ASCII-only use adds about 6 KiB for one page and up to 128 character
+entries. Using every Unicode code point can add about 8.5 MiB for pages and 34 MiB for
+entries. Cached memory is kept until the process exits.
+
 ### Iteration
 
 ```scots

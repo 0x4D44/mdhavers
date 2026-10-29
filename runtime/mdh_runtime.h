@@ -251,6 +251,10 @@ uint8_t __mdh_get_tag(MdhValue a);
 void __mdh_type_error(const char *op, uint8_t got1, uint8_t got2);
 MdhValue __mdh_type_of(MdhValue a);
 void __mdh_key_not_found(MdhValue key);
+/* RC-on element reads: immutable process-lifetime strings; no owned reference. */
+MdhValue __mdh_char_at_interned(MdhValue str, MdhValue idx);
+/* Test-only accounting is inert unless MDH_TEST_FAIL_INTERN_ALLOC is set. */
+int64_t __mdh_intern_live_blocks(void);
 
 /* ========== Native Object Operations ========== */
 

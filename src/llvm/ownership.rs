@@ -95,6 +95,7 @@ pub const RUNTIME_OWNERSHIP: &[(&str, &str, Ret)] = &[
     ("__mdh_chan_send", "bs", Ret::None), // value stored in channel buffer
     ("__mdh_chan_try_recv", "b", Ret::Fresh), // R1: +1 on every path
     ("__mdh_char_at", "bb", Ret::Fresh),
+    ("__mdh_char_at_interned", "bb", Ret::Static),
     ("__mdh_chars", "b", Ret::Fresh),
     ("__mdh_chdir", "b", Ret::None),
     ("__mdh_chr", "b", Ret::Fresh),

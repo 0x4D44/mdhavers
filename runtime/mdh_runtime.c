@@ -6856,13 +6856,8 @@ static bool __mdh_utf8_first_codepoint_bytes(MdhValue str, const unsigned char *
     return true;
 }
 
-static MdhValue __mdh_utf8_string_from_codepoint(uint32_t code) {
-    if (code > 0x10FFFF || (code >= 0xD800 && code <= 0xDFFF)) {
-        __mdh_hurl_owned(__mdh_make_string("Invalid Unicode codepoint"));
-        return __mdh_make_string("");
-    }
-
-    unsigned char tmp[4];
+/* Encode a validated Unicode scalar, shared by fresh and interned strings. */
+static size_t __mdh_utf8_encode_one(uint32_t code, unsigned char tmp[4]) {
     size_t len = 0;
 
     if (code <= 0x7F) {
@@ -6885,6 +6880,16 @@ static MdhValue __mdh_utf8_string_from_codepoint(uint32_t code) {
         len = 4;
     }
 
+    return len;
+}
+
+static MdhValue __mdh_utf8_string_from_codepoint(uint32_t code) {
+    if (code > 0x10FFFF || (code >= 0xD800 && code <= 0xDFFF)) {
+        __mdh_hurl_owned(__mdh_make_string("Invalid Unicode codepoint"));
+        return __mdh_make_string("");
+    }
+    unsigned char tmp[4];
+    size_t len = __mdh_utf8_encode_one(code, tmp);
     char *out = __mdh_alloc_text(0, len);
     memcpy(out, tmp, len);
     out[len] = '\0';
@@ -6943,14 +6948,14 @@ MdhValue __mdh_chr(MdhValue num) {
     return __mdh_utf8_string_from_codepoint((uint32_t)n);
 }
 
-MdhValue __mdh_char_at(MdhValue str, MdhValue idx_val) {
+static int __mdh_char_at_codepoint(MdhValue str, MdhValue idx_val, uint32_t *code_out) {
     if (str.tag != MDH_TAG_STRING || idx_val.tag != MDH_TAG_INT) {
         __mdh_type_error("char_at", str.tag, idx_val.tag);
-        return __mdh_make_string("");
+        return 0;
     }
 
     const unsigned char *s = (const unsigned char *)__mdh_get_string(str);
-    if (!s) return __mdh_make_string("");
+    if (!s) return 0;
 
     int64_t idx = idx_val.data;
     if (idx < 0) {
@@ -6974,18 +6979,148 @@ MdhValue __mdh_char_at(MdhValue str, MdhValue idx_val) {
         uint32_t code = 0;
         size_t consumed = 0;
         if (!__mdh_utf8_decode_one(p, &code, &consumed)) goto invalid_utf8;
-        if (pos == idx) return __mdh_utf8_string_from_codepoint(code);
+        if (pos == idx) {
+            *code_out = code;
+            return 1;
+        }
         pos++;
         p += consumed;
     }
 
 oob:
     __mdh_index_oob(idx_val.data, __mdh_utf8_count_codepoints(s));
-    return __mdh_make_string("");
+    return 0;
 
 invalid_utf8:
     __mdh_hurl_owned(__mdh_make_string("Invalid UTF-8 in string"));
-    return __mdh_make_string("");
+    return 0;
+}
+
+MdhValue __mdh_char_at(MdhValue str, MdhValue idx_val) {
+    uint32_t code = 0;
+    if (!__mdh_char_at_codepoint(str, idx_val, &code)) return __mdh_make_string("");
+    return __mdh_utf8_string_from_codepoint(code);
+}
+
+/* RC-on element reads intern one immutable string per Unicode code point. The static
+ * top level is 4352 pointers (34 KiB); 256-pointer pages are allocated lazily (2 KiB).
+ * Entries use a plain malloc block: a 16-byte immortal header plus <=4 UTF-8 bytes and
+ * NUL (normally rounded to 32 bytes by the allocator). ASCII needs one page plus 128
+ * entries, about 6 KiB beyond the top level. All code points would use about 8.5 MiB
+ * of pages and 34 MiB of entries. Published blocks live until process exit and never
+ * enter RC accounting, just like compiled string literals. */
+typedef struct {
+    MdhObjHeader *entries[256];
+} MdhInternPage;
+static MdhInternPage *__mdh_intern_pages[4352];
+
+static MdhValue __mdh_intern_empty(void) {
+    static struct { MdhObjHeader header; char text[1]; } empty = {
+        {MDH_REFCOUNT_IMMORTAL, MDH_KIND_STRING, MDH_OBJ_MAGIC | MDH_OBJ_IMMORTAL}, {0}
+    };
+    return __mdh_string_from_buf(empty.text);
+}
+
+/* Test instrumentation is inert unless MDH_TEST_FAIL_INTERN_ALLOC is set. It is read
+ * once, before the first intern allocation: page/entry fail once, count only counts.
+ * Inject AFTER malloc but BEFORE publication so a real allocated, unpublished block
+ * exercises cleanup before the non-returning raise. An ordinary NULL malloc has no
+ * unpublished block to free. This also lets the raise-before-free mutant be observed.
+ * No test path changes the page/entry publication order or the object header ABI. */
+static int __mdh_intern_test_state;
+static int __mdh_intern_test_enabled;
+static int __mdh_intern_test_fail;
+static int64_t __mdh_intern_test_blocks;
+
+int64_t __mdh_intern_live_blocks(void) {
+    return __atomic_load_n(&__mdh_intern_test_blocks, __ATOMIC_RELAXED);
+}
+
+static void __mdh_intern_test_report(void) {
+    fprintf(stderr, "mdhavers intern: live blocks=%lld\n", (long long)__mdh_intern_live_blocks());
+}
+
+static void __mdh_intern_test_init(void) {
+    if (__atomic_load_n(&__mdh_intern_test_state, __ATOMIC_ACQUIRE) == 2) return;
+    int expected = 0;
+    if (__atomic_compare_exchange_n(&__mdh_intern_test_state, &expected, 1, 0,
+                                    __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) {
+        const char *mode = getenv("MDH_TEST_FAIL_INTERN_ALLOC");
+        __mdh_intern_test_enabled = mode != NULL;
+        if (mode) {
+            __mdh_intern_test_fail = strcmp(mode, "page") == 0 ? 1 : strcmp(mode, "entry") == 0 ? 2 : 0;
+            atexit(__mdh_intern_test_report);
+        }
+        __atomic_store_n(&__mdh_intern_test_state, 2, __ATOMIC_RELEASE);
+    } else {
+        while (__atomic_load_n(&__mdh_intern_test_state, __ATOMIC_ACQUIRE) != 2) {}
+    }
+}
+
+static void __mdh_intern_free_unpublished(void *block) {
+    free(block);
+    if (__mdh_intern_test_enabled) __atomic_fetch_sub(&__mdh_intern_test_blocks, 1, __ATOMIC_RELAXED);
+}
+
+static void *__mdh_intern_alloc(size_t size, int kind) {
+    __mdh_intern_test_init();
+    void *block = malloc(size);
+    if (!block) {
+        __mdh_raise_out_of_memory();
+        return NULL;
+    }
+    if (__mdh_intern_test_enabled) {
+        __atomic_fetch_add(&__mdh_intern_test_blocks, 1, __ATOMIC_RELAXED);
+        int expected = kind;
+        if (__atomic_compare_exchange_n(&__mdh_intern_test_fail, &expected, 0, 0,
+                                        __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) {
+            __mdh_intern_free_unpublished(block);
+            __mdh_raise_out_of_memory();
+            return NULL;
+        }
+    }
+    return block;
+}
+
+MdhValue __mdh_char_at_interned(MdhValue str, MdhValue idx_val) {
+    uint32_t code = 0;
+    if (!__mdh_char_at_codepoint(str, idx_val, &code)) return __mdh_intern_empty();
+    MdhInternPage **page_slot = &__mdh_intern_pages[code >> 8];
+    MdhInternPage *page = __atomic_load_n(page_slot, __ATOMIC_ACQUIRE);
+    if (!page) {
+        MdhInternPage *candidate = __mdh_intern_alloc(sizeof(MdhInternPage), 1);
+        if (!candidate) return __mdh_intern_empty();
+        memset(candidate, 0, sizeof(*candidate));
+        if (__atomic_compare_exchange_n(page_slot, &page, candidate, 0,
+                                        __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) {
+            page = candidate;
+        } else {
+            __mdh_intern_free_unpublished(candidate);
+        }
+    }
+    MdhObjHeader **entry_slot = &page->entries[code & 255];
+    MdhObjHeader *entry = __atomic_load_n(entry_slot, __ATOMIC_ACQUIRE);
+    if (!entry) {
+        unsigned char bytes[4];
+        size_t len = __mdh_utf8_encode_one(code, bytes);
+        MdhObjHeader *candidate = __mdh_intern_alloc(sizeof(MdhObjHeader) + len + 1, 2);
+        if (!candidate) return __mdh_intern_empty();
+        candidate->refcount = MDH_REFCOUNT_IMMORTAL;
+        candidate->kind = MDH_KIND_STRING;
+        candidate->flags = MDH_OBJ_MAGIC | MDH_OBJ_IMMORTAL;
+        char *text = (char *)(candidate + 1);
+        memcpy(text, bytes, len);
+        text[len] = '\0';
+        /* Both header and bytes are complete BEFORE the releasing CAS publishes them.
+         * The acquiring load/CAS-failure observes the winner's complete immutable entry. */
+        if (__atomic_compare_exchange_n(entry_slot, &entry, candidate, 0,
+                                        __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) {
+            entry = candidate;
+        } else {
+            __mdh_intern_free_unpublished(candidate);
+        }
+    }
+    return __mdh_string_from_buf((char *)(entry + 1));
 }
 
 MdhValue __mdh_chars(MdhValue str) {

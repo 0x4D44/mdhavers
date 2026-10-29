@@ -1,0 +1,6 @@
+# RC7 D-1: appending to an indexed character must not mutate the source string.
+ken s = "b"
+ken c = s[0]
+c = c + "x"
+blether c
+blether s[0]

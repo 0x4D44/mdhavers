@@ -904,7 +904,16 @@ impl<'ctx> CodeGen<'ctx> {
         let types = MdhTypes::new(context);
 
         // Declare libc functions
-        let libc = Self::declare_libc_functions(&module, context, &types);
+        let mut libc = Self::declare_libc_functions(&module, context, &types);
+        // RC-off declarations and calls remain byte-identical. RC-on character reads
+        // return immortal strings, so an index phi has no fresh string edge to park.
+        if rc {
+            libc.char_at = module.add_function(
+                "__mdh_char_at_interned",
+                libc.char_at.get_type(),
+                Some(Linkage::External),
+            );
+        }
 
         // Create format strings
         let fmt_int = Self::create_global_string(&module, context, rc, "%lld", "fmt_int");
