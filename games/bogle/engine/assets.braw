@@ -1,0 +1,70 @@
+# Immutable baked assets are shared by every game state.
+ken bogle_asset_cache = {}
+
+dae bogle_asset(path, width, height) {
+    ken data = read_bytes("games/bogle/data/" + path + ".bog")
+    ken header = bytes_from_string("BOG1 " + tae_string(width) + " " + tae_string(height) + "\n")
+    gin bytes_len(data) != bytes_len(header) + width * height {
+        hurl "Bogle asset size: " + path
+    }
+    fer i in 0..bytes_len(header) {
+        gin bytes_get(data, i) != bytes_get(header, i) {
+            hurl "Bogle asset header: " + path
+        }
+    }
+    gie bytes_slice(data, bytes_len(header), bytes_len(data))
+}
+
+dae make_palette() {
+    gin nae contains(bogle_asset_cache, "palette") {
+        ken palette = bytes(768)
+        ken row = 0
+        fer raw in split(read_file("games/bogle/art/palette.txt"), "\n") {
+            ken line = wheesht(raw)
+            gin len(line) > 0 {
+                ken fields = []
+                fer field in split(replace(line, "\t", " "), " ") {
+                    gin len(field) > 0 {
+                        shove(fields, tae_int(field))
+                    }
+                }
+                gin row >= 256 or len(fields) != 3 {
+                    hurl "Bogle palette rows"
+                }
+                fer channel in 0..3 {
+                    bytes_set(palette, row * 3 + channel, fields[channel])
+                }
+                row = row + 1
+            }
+        }
+        gin row != 256 {
+            hurl "Bogle palette size"
+        }
+        bogle_asset_cache["palette"] = palette
+    }
+    gie bogle_asset_cache["palette"]
+}
+
+dae make_cmap() {
+    gin nae contains(bogle_asset_cache, "cmap") {
+        bogle_asset_cache["cmap"] = bogle_asset("colormap", 32, 256)
+    }
+    gie bogle_asset_cache["cmap"]
+}
+
+dae bogle_assets() {
+    gin nae contains(bogle_asset_cache, "textures") {
+        ken textures = []
+        fer name in ["tex_granite", "tex_flagstone_moss", "tex_slate_under", "tex_dungeon_brick", "tex_oak_panel", "tex_tapestry_thistle", "tex_celtic_lintel", "tex_cell_door", "tex_portcullis", "tex_peat_straw"] {
+            shove(textures, bogle_asset(name, 64, 64))
+        }
+        ken sprites = []
+        fer name in ["spr_gamekeeper_idle", "spr_haggis_idle", "spr_tartan_ghost_idle", "spr_midges_idle"] {
+            shove(sprites, bogle_asset(name, 64, 96))
+        }
+        bogle_asset_cache["textures"] = textures
+        bogle_asset_cache["sprite_tex"] = sprites
+        bogle_asset_cache["sky"] = bogle_asset("sky_highlands", 256, 128)
+    }
+    gie bogle_asset_cache
+}

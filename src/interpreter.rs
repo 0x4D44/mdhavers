@@ -7763,6 +7763,43 @@ impl Interpreter {
             }))),
         );
 
+        // read_bytes - read an entire file without decoding it as text
+        globals.borrow_mut().define(
+            "read_bytes".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("read_bytes", 1, |args| {
+                use std::fs;
+                let path = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("read_bytes() needs a file path string".to_string()),
+                };
+                let content =
+                    fs::read(&path).map_err(|e| format!("Couldnae read '{}': {}", path, e))?;
+                Ok(Value::Bytes(Rc::new(RefCell::new(content))))
+            }))),
+        );
+
+        // write_bytes - write bytes without converting them to text
+        globals.borrow_mut().define(
+            "write_bytes".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("write_bytes", 2, |args| {
+                use std::fs::File;
+                use std::io::Write as IoWrite;
+                let path = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("write_bytes() needs a file path string".to_string()),
+                };
+                let bytes = match &args[1] {
+                    Value::Bytes(bytes) => bytes.borrow(),
+                    _ => return Err("write_bytes() needs bytes".to_string()),
+                };
+                let mut file = File::create(&path)
+                    .map_err(|e| format!("Couldnae open '{}' fer writin': {}", path, e))?;
+                file.write_all(&bytes)
+                    .map_err(|e| format!("Couldnae write tae '{}': {}", path, e))?;
+                Ok(Value::Nil)
+            }))),
+        );
+
         // read_lines - read file as list of lines
         globals.borrow_mut().define(
             "read_lines".to_string(),

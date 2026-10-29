@@ -1,0 +1,377 @@
+# Offline Bogle asset baker. Fetching this file defines the API; it never bakes.
+fetch "games/bogle/tools/png"
+
+# bake_palette returns 768 bytes of RGB triples. Palette entry i is stored at
+# bytes [i*3, i*3+1, i*3+2]. Entry 255 is the reserved magenta transparency.
+ken BAKE_ASSETS = [
+    ["tex_cell_door", "texture"],
+    ["tex_celtic_lintel", "texture"],
+    ["tex_dungeon_brick", "texture"],
+    ["tex_flagstone_moss", "texture"],
+    ["tex_granite", "texture"],
+    ["tex_oak_panel", "texture"],
+    ["tex_peat_straw", "texture"],
+    ["tex_portcullis", "texture"],
+    ["tex_slate_under", "texture"],
+    ["tex_tapestry_thistle", "texture"],
+    ["spr_gamekeeper_idle", "sprite"],
+    ["spr_haggis_idle", "sprite"],
+    ["spr_midges_idle", "sprite"],
+    ["spr_tartan_ghost_idle", "sprite"],
+    ["pick_girder_juice", "sprite"],
+    ["pick_haggis_plate", "sprite"],
+    ["pick_key_tartan", "sprite"],
+    ["pick_shortbread", "sprite"],
+    ["wpn_bagpipes_full", "sprite"],
+    ["wpn_mars_bar", "sprite"],
+    ["wpn_sgian_dubh", "sprite"],
+    ["sky_highlands", "sky"],
+]
+
+dae bake_need(ok, message) {
+    gin nae ok {
+        hurl "BAKE: " + message
+    }
+}
+
+dae bake_palette() {
+    ken lines = split(read_file("games/bogle/art/palette.txt"), "\n")
+    ken palette = bytes(768)
+    ken row = 0
+    fer raw in lines {
+        ken line = wheesht(raw)
+        gin len(line) > 0 {
+            ken fields = []
+            fer field in split(replace(line, "\t", " "), " ") {
+                gin len(field) > 0 {
+                    shove(fields, field)
+                }
+            }
+            bake_need(len(fields) == 3, "palette rows must have three RGB values")
+            bake_need(row < 256, "palette has more than 256 rows")
+            fer channel in 0..3 {
+                ken value = tae_int(fields[channel])
+                bake_need(value >= 0 an value <= 255, "palette channel is outside 0..255")
+                bytes_set(palette, row * 3 + channel, value)
+            }
+            row = row + 1
+        }
+    }
+    bake_need(row == 256, "palette must have exactly 256 RGB rows")
+    bake_need(bytes_get(palette, 0) == 0 an bytes_get(palette, 1) == 0 an bytes_get(palette, 2) == 0, "palette index 0 must be black")
+    bake_need(bytes_get(palette, 765) == 255 an bytes_get(palette, 766) == 0 an bytes_get(palette, 767) == 255, "palette index 255 must be magenta")
+    gie palette
+}
+
+dae bake_palette_channels(palette) {
+    ken reds = []
+    ken greens = []
+    ken blues = []
+    fer index in 0..255 {
+        ken at = index * 3
+        shove(reds, bytes_get(palette, at))
+        shove(greens, bytes_get(palette, at + 1))
+        shove(blues, bytes_get(palette, at + 2))
+    }
+    gie {"red": reds, "green": greens, "blue": blues}
+}
+
+dae bake_nearest_channels(channels, red, green, blue) {
+    ken reds = channels["red"]
+    ken greens = channels["green"]
+    ken blues = channels["blue"]
+    ken best = 0
+    ken best_distance = 195076
+    fer index in 0..255 {
+        ken dr = red - reds[index]
+        ken dg = green - greens[index]
+        ken db = blue - blues[index]
+        ken distance = dr * dr + dg * dg + db * db
+        gin distance < best_distance {
+            best = index
+            best_distance = distance
+        }
+    }
+    gie best
+}
+
+dae bake_palette_red_buckets(channels) {
+    ken reds = channels["red"]
+    ken buckets = []
+    fer red in 0..256 {
+        shove(buckets, [])
+    }
+    fer index in 0..255 {
+        shove(buckets[reds[index]], index)
+    }
+    gie buckets
+}
+
+# An existing palette index supplies an upper bound. Only palette entries
+# whose red-channel distance can beat that bound need a full RGB comparison.
+dae bake_nearest_seeded(channels, red_buckets, red, green, blue, seed) {
+    ken reds = channels["red"]
+    ken greens = channels["green"]
+    ken blues = channels["blue"]
+    ken best = seed
+    ken dr = red - reds[seed]
+    ken dg = green - greens[seed]
+    ken db = blue - blues[seed]
+    ken best_distance = dr * dr + dg * dg + db * db
+    ken radius = floor(sqrt(best_distance))
+    ken first_red = max(0, red - radius)
+    ken last_red = min(255, red + radius)
+    fer candidate_red in first_red..last_red + 1 {
+        fer index in red_buckets[candidate_red] {
+            ken candidate_dr = red - reds[index]
+            ken partial = candidate_dr * candidate_dr
+            gin partial <= best_distance {
+                ken candidate_dg = green - greens[index]
+                partial = partial + candidate_dg * candidate_dg
+                gin partial <= best_distance {
+                    ken candidate_db = blue - blues[index]
+                    ken distance = partial + candidate_db * candidate_db
+                    gin distance < best_distance or (distance == best_distance an index < best) {
+                        best = index
+                        best_distance = distance
+                    }
+                }
+            }
+        }
+    }
+    gie best
+}
+
+dae bake_nearest(palette, red, green, blue) {
+    gie bake_nearest_channels(bake_palette_channels(palette), red, green, blue)
+}
+
+dae bake_transparent(red, green, blue, alpha) {
+    gie alpha < 128 or (abs(red - 255) <= 24 an green <= 24 an abs(blue - 255) <= 24)
+}
+
+dae bake_cached_nearest(cache, channels, red_buckets, red, green, blue, seed) {
+    ken key = red * 65536 + green * 256 + blue
+    gin dict_has(cache, key) {
+        gie cache[key]
+    }
+    ken index = bake_nearest_seeded(channels, red_buckets, red, green, blue, seed)
+    cache[key] = index
+    gie index
+}
+
+dae bake_mask(image) {
+    ken width = image["w"]
+    ken height = image["h"]
+    ken rgba = image["rgba"]
+    bake_need(whit_kind(width) == "integer" an width > 0, "image width must be positive")
+    bake_need(whit_kind(height) == "integer" an height > 0, "image height must be positive")
+    bake_need(whit_kind(rgba) == "bytes" an bytes_len(rgba) == width * height * 4, "image RGBA length does not match its dimensions")
+    ken mask = bytes(width * height)
+    fer pixel in 0..width * height {
+        ken at = pixel * 4
+        gin bake_transparent(bytes_get(rgba, at), bytes_get(rgba, at + 1), bytes_get(rgba, at + 2), bytes_get(rgba, at + 3)) {
+            bytes_set(mask, pixel, 0)
+        } ither {
+            bytes_set(mask, pixel, 1)
+        }
+    }
+    gie mask
+}
+
+dae bake_filter(image, mask, palette, left, top, source_width, source_height, output_width, output_height, periodic) {
+    ken image_width = image["w"]
+    ken rgba = image["rgba"]
+    ken output = bytes(output_width * output_height)
+    ken cache = {}
+    ken channels = bake_palette_channels(palette)
+    ken red_buckets = bake_palette_red_buckets(channels)
+    ken previous = 0
+    ken total_weight = source_width * source_height
+    fer y in 0..output_height {
+        ken y_start = y * source_height
+        ken y_end = (y + 1) * source_height
+        ken source_y_start = y_start / output_height
+        ken source_y_end = (y_end + output_height - 1) / output_height
+        fer x in 0..output_width {
+            ken x_start = x * source_width
+            ken x_end = (x + 1) * source_width
+            ken source_x_start = x_start / output_width
+            ken source_x_end = (x_end + output_width - 1) / output_width
+            ken foreground_weight = 0
+            ken red_sum = 0
+            ken green_sum = 0
+            ken blue_sum = 0
+            fer source_y in source_y_start..source_y_end {
+                ken wy = min(y_end, (source_y + 1) * output_height) - max(y_start, source_y * output_height)
+                ken local_y = source_y
+                gin periodic {
+                    local_y = source_y % source_height
+                }
+                fer source_x in source_x_start..source_x_end {
+                    ken wx = min(x_end, (source_x + 1) * output_width) - max(x_start, source_x * output_width)
+                    ken weight = wx * wy
+                    ken local_x = source_x
+                    gin periodic {
+                        local_x = source_x % source_width
+                    }
+                    ken image_x = left + local_x
+                    ken image_y = top + local_y
+                    ken source_pixel = image_y * image_width + image_x
+                    gin bytes_get(mask, source_pixel) != 0 {
+                        ken source_at = source_pixel * 4
+                        foreground_weight = foreground_weight + weight
+                        red_sum = red_sum + bytes_get(rgba, source_at) * weight
+                        green_sum = green_sum + bytes_get(rgba, source_at + 1) * weight
+                        blue_sum = blue_sum + bytes_get(rgba, source_at + 2) * weight
+                    }
+                }
+            }
+            ken ink = 255
+            gin foreground_weight > 0 an foreground_weight * 2 >= total_weight {
+                ken red = red_sum / foreground_weight
+                ken green = green_sum / foreground_weight
+                ken blue = blue_sum / foreground_weight
+                ink = bake_cached_nearest(cache, channels, red_buckets, red, green, blue, previous)
+                previous = ink
+            }
+            bytes_set(output, y * output_width + x, ink)
+        }
+    }
+    gie output
+}
+
+dae bake_make_bog(width, height, payload) {
+    ken result = bytes_from_string("BOG1 " + tae_string(width) + " " + tae_string(height) + "\n")
+    bytes_append(result, payload)
+    gie result
+}
+
+dae bake_column_major(width, height, row_major) {
+    ken output = bytes(width * height)
+    fer x in 0..width {
+        fer y in 0..height {
+            bytes_set(output, x * height + y, bytes_get(row_major, y * width + x))
+        }
+    }
+    gie output
+}
+
+dae bake_image(image, kind, palette) {
+    bake_need(kind == "texture" or kind == "sprite" or kind == "sky", "kind must be texture, sprite, or sky")
+    bake_need(whit_kind(palette) == "bytes" an bytes_len(palette) == 768, "palette must be 768 RGB bytes")
+    ken width = image["w"]
+    ken height = image["h"]
+    ken mask = bake_mask(image)
+    gin kind == "texture" {
+        ken pixels = bake_filter(image, mask, palette, 0, 0, width, height, 64, 64, aye)
+        gie bake_make_bog(64, 64, bake_column_major(64, 64, pixels))
+    }
+    gin kind == "sky" {
+        ken pixels = bake_filter(image, mask, palette, 0, 0, width, height, 256, 128, nae)
+        gie bake_make_bog(256, 128, bake_column_major(256, 128, pixels))
+    }
+
+    ken min_x = width
+    ken min_y = height
+    ken max_x = -1
+    ken max_y = -1
+    fer y in 0..height {
+        fer x in 0..width {
+            gin bytes_get(mask, y * width + x) != 0 {
+                min_x = min(min_x, x)
+                min_y = min(min_y, y)
+                max_x = max(max_x, x)
+                max_y = max(max_y, y)
+            }
+        }
+    }
+
+    ken canvas = bytes(64 * 96)
+    fer i in 0..64 * 96 {
+        bytes_set(canvas, i, 255)
+    }
+    gin max_x == -1 {
+        gie bake_make_bog(64, 96, bake_column_major(64, 96, canvas))
+    }
+
+    ken crop_width = max_x - min_x + 1
+    ken crop_height = max_y - min_y + 1
+    ken scaled_width = 64
+    ken scaled_height = 96
+    gin crop_width * 96 >= crop_height * 64 {
+        scaled_width = 64
+        scaled_height = max(1, crop_height * 64 / crop_width)
+    } ither {
+        scaled_width = max(1, crop_width * 96 / crop_height)
+        scaled_height = 96
+    }
+    ken pixels = bake_filter(image, mask, palette, min_x, min_y, crop_width, crop_height, scaled_width, scaled_height, nae)
+    ken last_visible = -1
+    fer y in 0..scaled_height {
+        fer x in 0..scaled_width {
+            gin bytes_get(pixels, y * scaled_width + x) != 255 {
+                last_visible = y
+            }
+        }
+    }
+    gin last_visible >= 0 {
+        ken offset_x = (64 - scaled_width) / 2
+        ken offset_y = 95 - last_visible
+        fer y in 0..last_visible + 1 {
+            fer x in 0..scaled_width {
+                bytes_set(canvas, (offset_y + y) * 64 + offset_x + x, bytes_get(pixels, y * scaled_width + x))
+            }
+        }
+    }
+    gie bake_make_bog(64, 96, bake_column_major(64, 96, canvas))
+}
+
+dae bake_source(path, kind, palette) {
+    gie bake_image(png_decode(read_bytes(path)), kind, palette)
+}
+
+dae bake_colormap(palette) {
+    # BOG1 32x256 is column-major: payload[level * 256 + colour]. Level 0
+    # keeps full brightness; level 31 keeps 1/32. Transparent index 255 stays 255.
+    bake_need(whit_kind(palette) == "bytes" an bytes_len(palette) == 768, "palette must be 768 RGB bytes")
+    ken payload = bytes(32 * 256)
+    ken channels = bake_palette_channels(palette)
+    ken red_buckets = bake_palette_red_buckets(channels)
+    ken previous = []
+    fer colour in 0..256 {
+        shove(previous, 0)
+    }
+    fer level in 0..32 {
+        fer colour in 0..256 {
+            ken ink = 255
+            gin colour != 255 {
+                ken at = colour * 3
+                ken red = bytes_get(palette, at) * (32 - level) / 32
+                ken green = bytes_get(palette, at + 1) * (32 - level) / 32
+                ken blue = bytes_get(palette, at + 2) * (32 - level) / 32
+                gin level == 0 {
+                    ink = bake_nearest_channels(channels, red, green, blue)
+                } ither {
+                    ink = bake_nearest_seeded(channels, red_buckets, red, green, blue, previous[colour])
+                }
+                previous[colour] = ink
+            }
+            bytes_set(payload, level * 256 + colour, ink)
+        }
+    }
+    gie bake_make_bog(32, 256, payload)
+}
+
+dae bake_all() {
+    ken palette = bake_palette()
+    write_bytes("games/bogle/data/colormap.bog", bake_colormap(palette))
+    fer asset in BAKE_ASSETS {
+        ken name = asset[0]
+        ken kind = asset[1]
+        ken source = "games/bogle/art/src/" + name + ".png"
+        ken destination = "games/bogle/data/" + name + ".bog"
+        write_bytes(destination, bake_source(source, kind, palette))
+    }
+    gie len(BAKE_ASSETS) + 1
+}

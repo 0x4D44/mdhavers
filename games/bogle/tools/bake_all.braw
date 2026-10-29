@@ -1,0 +1,4 @@
+fetch "games/bogle/tools/bake"
+
+ken baked_count = bake_all()
+blether "Baked " + tae_string(baked_count) + " Bogle images and colour maps"

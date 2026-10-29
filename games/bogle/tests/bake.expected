@@ -1,0 +1,6 @@
+ok fixed palette nearest RGB colours
+ok inclusive magenta key and alpha threshold
+ok box sampling and column major texture
+ok sprite aspect padding and feet anchor
+ok transparent sprite padding
+ok thirty two colour maps and transparent exemption

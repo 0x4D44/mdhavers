@@ -311,6 +311,8 @@ const RUNTIME_BINDINGS: &[&str] = &[
     "scrieve_append",
     "append_file",
     "read_file",
+    "read_bytes",
+    "write_bytes",
     "read_lines",
     "file_exists",
     "file_delete",

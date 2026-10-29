@@ -1,0 +1,69 @@
+fetch "games/bogle/tools/bake"
+
+dae bake_test_header(data, text, size) {
+    ken header = bytes_from_string(text)
+    mak_siccar bytes_len(data) == bytes_len(header) + size
+    mak_siccar bytes_slice(data, 0, bytes_len(header)) == header
+    gie bytes_len(header)
+}
+
+ken bake_pal = bake_palette()
+mak_siccar bytes_len(bake_pal) == 768
+mak_siccar bake_nearest(bake_pal, 0, 0, 0) == 0
+mak_siccar bake_nearest(bake_pal, 255, 255, 255) == 15
+mak_siccar bake_nearest(bake_pal, 128, 128, 128) == 10
+mak_siccar bake_nearest(bake_pal, 255, 0, 0) == 106
+mak_siccar bake_nearest(bake_pal, 0, 255, 0) == 43
+mak_siccar bake_nearest(bake_pal, 0, 0, 255) == 58
+mak_siccar bake_nearest(bake_pal, 100, 0, 200) == 251
+blether "ok fixed palette nearest RGB colours"
+mak_siccar bake_transparent(255, 0, 255, 255)
+mak_siccar bake_transparent(231, 24, 231, 255)
+mak_siccar nae bake_transparent(230, 24, 231, 255)
+mak_siccar nae bake_transparent(231, 25, 231, 255)
+mak_siccar nae bake_transparent(231, 24, 230, 255)
+mak_siccar bake_transparent(1, 2, 3, 127)
+mak_siccar nae bake_transparent(1, 2, 3, 128)
+blether "ok inclusive magenta key and alpha threshold"
+ken bake_rgba = bytes(16)
+fer pixel in 0..4 {
+    fer channel in 0..3 {
+        bytes_set(bake_rgba, pixel * 4 + channel, bytes_get(bake_pal, pixel * 3 + channel))
+    }
+    bytes_set(bake_rgba, pixel * 4 + 3, 255)
+}
+ken bake_tiny = {"w": 2, "h": 2, "rgba": bake_rgba}
+ken bake_tex = bake_image(bake_tiny, "texture", bake_pal)
+ken bake_at = bake_test_header(bake_tex, "BOG1 64 64\n", 4096)
+mak_siccar bytes_get(bake_tex, bake_at + 31 * 64 + 31) == 0
+mak_siccar bytes_get(bake_tex, bake_at + 32 * 64 + 31) == 1
+mak_siccar bytes_get(bake_tex, bake_at + 31 * 64 + 32) == 2
+mak_siccar bytes_get(bake_tex, bake_at + 32 * 64 + 32) == 3
+blether "ok box sampling and column major texture"
+ken bake_spr = bake_image(bake_tiny, "sprite", bake_pal)
+bake_at = bake_test_header(bake_spr, "BOG1 64 96\n", 6144)
+mak_siccar bytes_get(bake_spr, bake_at + 31) == 255
+mak_siccar bytes_get(bake_spr, bake_at + 32) == 0
+mak_siccar bytes_get(bake_spr, bake_at + 95) == 2
+mak_siccar bytes_get(bake_spr, bake_at + 63 * 96 + 95) == 3
+blether "ok sprite aspect padding and feet anchor"
+bytes_set(bake_rgba, 0, 255)
+bytes_set(bake_rgba, 1, 0)
+bytes_set(bake_rgba, 2, 255)
+ken bake_empty = bake_image({"w": 1, "h": 1, "rgba": bytes_slice(bake_rgba, 0, 4)}, "sprite", bake_pal)
+bake_at = bake_test_header(bake_empty, "BOG1 64 96\n", 6144)
+fer i in bake_at..bytes_len(bake_empty) {
+    mak_siccar bytes_get(bake_empty, i) == 255
+}
+blether "ok transparent sprite padding"
+ken bake_maps = bake_colormap(bake_pal)
+bake_at = bake_test_header(bake_maps, "BOG1 32 256\n", 8192)
+mak_siccar bytes_get(bake_maps, bake_at + 31) == 31
+mak_siccar bytes_get(bake_maps, bake_at + 16 * 256 + 31) == 217
+mak_siccar bytes_get(bake_maps, bake_at + 31 * 256 + 31) == 16
+mak_siccar bytes_get(bake_maps, bake_at + 31 * 256 + 15) == 16
+fer level in 0..32 {
+    mak_siccar bytes_get(bake_maps, bake_at + level * 256 + 255) == 255
+}
+mak_siccar bake_maps == read_bytes("games/bogle/data/colormap.bog")
+blether "ok thirty two colour maps and transparent exemption"

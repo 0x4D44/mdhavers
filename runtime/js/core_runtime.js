@@ -1577,6 +1577,25 @@ const __havers_core = (() => {
       needPath(p, "read_file() needs a file path string");
       return readText("read_file", p);
     },
+    read_bytes: (p) => {
+      needPath(p, "read_bytes() needs a file path string");
+      const data = fsCall(
+        "read_bytes",
+        (m) => `Couldnae read '${p}': ${m}`,
+        (fs) => new Uint8Array(fs.readFileSync(p)),
+      );
+      return new MdhBytes(data);
+    },
+    write_bytes: (p, content) => {
+      needPath(p, "write_bytes() needs a file path string");
+      needBytes(content, "write_bytes() needs bytes");
+      fsCall(
+        "write_bytes",
+        (m) => `Couldnae open '${p}' fer writin': ${m}`,
+        (fs) => fs.writeFileSync(p, content.a),
+      );
+      return null;
+    },
     read_lines: (p) => {
       needPath(p, "read_lines() needs a file path string");
       return builtins.lines(readText("read_lines", p));

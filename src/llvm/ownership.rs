@@ -316,6 +316,7 @@ pub const RUNTIME_OWNERSHIP: &[(&str, &str, Ret)] = &[
     ("__mdh_rc_enable", "", Ret::None),
     ("__mdh_rc_release_obj", "-", Ret::None),
     ("__mdh_rc_retain_obj", "-", Ret::None),
+    ("__mdh_read_bytes", "b", Ret::Fresh),
     ("__mdh_redd_up", "b", Ret::Fresh), // shares elements of arg 1
     ("__mdh_regex_match", "bb", Ret::Fresh),
     ("__mdh_regex_match_all", "bb", Ret::Fresh),
@@ -446,6 +447,7 @@ pub const RUNTIME_OWNERSHIP: &[(&str, &str, Ret)] = &[
     ("__mdh_window", "bb", Ret::Fresh),
     ("__mdh_words", "b", Ret::Fresh),
     ("__mdh_wrang_sort", "bb", Ret::None),
+    ("__mdh_write_bytes", "bb", Ret::None),
 ];
 
 /// The ownership row of a runtime symbol: its arg codes and result.

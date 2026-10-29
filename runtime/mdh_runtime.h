@@ -493,6 +493,8 @@ MdhValue __mdh_list_dir(MdhValue path);
 MdhValue __mdh_make_dir(MdhValue path);
 MdhValue __mdh_is_dir(MdhValue path);
 MdhValue __mdh_slurp(MdhValue path);
+MdhValue __mdh_read_bytes(MdhValue path);
+MdhValue __mdh_write_bytes(MdhValue path, MdhValue bytes);
 MdhValue __mdh_scrieve(MdhValue path, MdhValue content);
 MdhValue __mdh_scrieve_append(MdhValue path, MdhValue content);
 MdhValue __mdh_lines(MdhValue str);

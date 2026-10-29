@@ -1,0 +1,37 @@
+# Synthetic assets keep geometry regression pixels independent of source art.
+dae fixture_fill(size, colour) {
+    ken data = bytes(size)
+    fer i in 0..size {
+        bytes_set(data, i, colour)
+    }
+    gie data
+}
+
+dae fixture_identity(g) {
+    ken cmap = bytes(8192)
+    fer level in 0..32 {
+        fer colour in 0..256 {
+            bytes_set(cmap, level * 256 + colour, colour)
+        }
+    }
+    g["cmap"] = cmap
+    g["textures"] = []
+    fer i in 0..10 {
+        shove(g["textures"], fixture_fill(4096, 7))
+    }
+    g["sky"] = fixture_fill(32768, 175)
+    g["sprite_tex"] = [fixture_fill(6144, 100), fixture_fill(6144, 160), fixture_fill(6144, 100), fixture_fill(6144, 100)]
+    g["sprite_fullbright"] = [nae, nae, aye, nae]
+}
+
+dae fixture_stage2(g) {
+    fixture_identity(g)
+    fer level in 0..32 {
+        fer colour in 0..256 {
+            bytes_set(g["cmap"], level * 256 + colour, colour / 16 * 16 + colour % 16 * (31 - level) / 31)
+        }
+    }
+    fer i in 0..10 {
+        g["textures"][i] = fixture_fill(4096, i * 16 + 15)
+    }
+}

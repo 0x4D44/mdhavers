@@ -1,0 +1,9 @@
+ok wall u offsets wrap and fixed point vertical stepping
+ok per column floor and ceiling world texels
+ok wall and flat sector and distance colour maps
+ok sprites sort far to near and transparent holes reveal rear sprite
+ok screen clipping preserves sprite source coordinates
+ok nearer step drawsegs clip rear gamekeeper feet
+ok full bright sprite bypasses colour map
+ok sky follows view angle and remains full bright
+ok low sector ceiling clips sprite without shifting its texture

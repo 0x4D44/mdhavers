@@ -1,0 +1,12 @@
+fetch "games/bogle/tools/bake"
+ken bake_sprite_result = bake_source("games/bogle/art/src/spr_gamekeeper_idle.png", "sprite", bake_palette())
+mak_siccar bake_sprite_result == read_bytes("games/bogle/data/spr_gamekeeper_idle.bog")
+ken bake_sprite_header = bytes_len(bytes_from_string("BOG1 64 96\n"))
+ken bake_feet = nae
+fer x in 0..64 {
+    gin bytes_get(bake_sprite_result, bake_sprite_header + x * 96 + 95) != 255 {
+        bake_feet = aye
+    }
+}
+mak_siccar bake_feet
+blether "ok gamekeeper sprite rebakes byte for byte with feet at bottom"

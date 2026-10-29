@@ -1,0 +1,19 @@
+# Run the native build from the repo root. Clock and output stay outside engine/.
+fetch "games/bogle/shell/replay"
+ken picture_game = new_game(load_map("games/bogle/data/stage3.map"))
+ken picture_fb = bytes(320 * 200)
+ken picture_start = mono_ns()
+render(picture_game, picture_fb, 320, 200)
+blether "frame_ns " + tae_string(mono_ns() - picture_start)
+blether "frame_hash " + tae_string(frame_hash(picture_fb))
+ken picture_palette = make_palette()
+ken picture_ppm = bytes_from_string("P6\n320 200\n255\n")
+ken picture_rgb = bytes(320 * 200 * 3)
+fer pixel in 0..320 * 200 {
+    ken colour = bytes_get(picture_fb, pixel)
+    fer channel in 0..3 {
+        bytes_set(picture_rgb, pixel * 3 + channel, bytes_get(picture_palette, colour * 3 + channel))
+    }
+}
+bytes_append(picture_ppm, picture_rgb)
+write_bytes(".scratch/bogle-stage3.ppm", picture_ppm)

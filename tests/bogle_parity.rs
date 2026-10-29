@@ -200,13 +200,12 @@ fn configure_headless(command: &mut Command, rc: bool, repo: &Path, map: &Path, 
         .env("BOGLE_EVERY", "35");
 }
 
-#[test]
-fn headless_replay_hashes_match_interpreter_and_native_rc_modes() {
+fn check_replay(map_name: &str, replay_name: &str, rows: usize, check_positional: bool) {
     let repo = root();
     let script = repo.join("games/bogle/shell/headless.braw");
-    let map = repo.join("games/bogle/data/test.map");
-    let replay = repo.join("games/bogle/replays/stage2.txt");
-    let expected_path = repo.join("games/bogle/replays/stage2.hashes");
+    let map = repo.join(format!("games/bogle/data/{map_name}.map"));
+    let replay = repo.join(format!("games/bogle/replays/{replay_name}.txt"));
+    let expected_path = repo.join(format!("games/bogle/replays/{replay_name}.hashes"));
     for path in [&script, &map, &replay, &expected_path] {
         assert!(path.is_file(), "missing parity input {}", path.display());
     }
@@ -216,8 +215,8 @@ fn headless_replay_hashes_match_interpreter_and_native_rc_modes() {
         .unwrap_or_else(|error| panic!("{} is not UTF-8: {error}", expected_path.display()));
     assert_eq!(
         expected_text.lines().count(),
-        10,
-        "stage2.hashes must contain one row for each 35th frame of the 350-tic replay"
+        rows,
+        "{replay_name}.hashes must contain one row for each sampled frame"
     );
 
     let mut interpreter = Command::new(env!("CARGO_BIN_EXE_mdhavers"));
@@ -226,11 +225,9 @@ fn headless_replay_hashes_match_interpreter_and_native_rc_modes() {
     let interpreted = run_command(interpreter, RUN_TIMEOUT, "Bogle parity interpreter replay");
     assert_success(&interpreted, "interpreter replay");
     assert_clean_stderr(&interpreted, "interpreter replay");
-    assert_eq!(
-        interpreted.stdout.bytes, expected,
-        "interpreter hashes differ from committed stage2.hashes"
-    );
 
+    let mut native_outputs = Vec::new();
+    let mut positional_output = None;
     for rc in [false, true] {
         let native = NativeExecutable::build(&script, rc);
         let output = native.run(rc, &repo, &map, &replay);
@@ -238,14 +235,10 @@ fn headless_replay_hashes_match_interpreter_and_native_rc_modes() {
         assert_success(&output, &format!("native replay with {mode}"));
         assert_clean_stderr(&output, &format!("native replay with {mode}"));
         assert_eq!(
-            output.stdout.bytes, expected,
-            "native hashes with {mode} differ from committed stage2.hashes"
-        );
-        assert_eq!(
             output.stdout.bytes, interpreted.stdout.bytes,
             "native hashes with {mode} differ from interpreter hashes"
         );
-        if !rc {
+        if !rc && check_positional {
             let positional = native.run_positional_with_invalid_dimension_env(&repo, &map, &replay);
             assert_success(
                 &positional,
@@ -253,9 +246,41 @@ fn headless_replay_hashes_match_interpreter_and_native_rc_modes() {
             );
             assert_clean_stderr(&positional, "native positional replay");
             assert_eq!(
-                positional.stdout.bytes, expected,
+                positional.stdout.bytes, interpreted.stdout.bytes,
                 "positional replay arguments did not take precedence over invalid dimension env"
             );
+            positional_output = Some(positional.stdout.bytes);
         }
+        native_outputs.push((rc, output.stdout.bytes));
     }
+    // Compare backends before consulting the golden, so a rendering change can
+    // only be blessed after all three executions agree.
+    assert_eq!(
+        interpreted.stdout.bytes, expected,
+        "interpreter hashes differ from committed {replay_name}.hashes"
+    );
+    for (rc, output) in native_outputs {
+        assert_eq!(
+            output,
+            expected,
+            "native hashes with MDH_RC={} differ from committed {replay_name}.hashes",
+            u8::from(rc)
+        );
+    }
+    if let Some(output) = positional_output {
+        assert_eq!(
+            output, expected,
+            "positional replay arguments did not take precedence over invalid dimension env"
+        );
+    }
+}
+
+#[test]
+fn headless_replay_hashes_match_interpreter_and_native_rc_modes() {
+    check_replay("test", "stage2", 10, true);
+}
+
+#[test]
+fn textured_room_replay_matches_interpreter_and_native_rc_modes() {
+    check_replay("stage3", "stage3", 2, false);
 }

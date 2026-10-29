@@ -3,7 +3,8 @@
 //! Goal: catch basic semantic drift between the interpreter and other backends.
 
 use mdhavers::Interpreter;
-use std::process::Command;
+use std::io::Write;
+use std::process::{Command, Stdio};
 
 fn run_interpreter(source: &str) -> Result<String, String> {
     let program = mdhavers::parse(source).map_err(|e| format!("{e}"))?;
@@ -40,6 +41,344 @@ fn run_js_with_prelude(prelude: &str, source: &str) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&output.stdout)
         .trim_end_matches('\n')
         .to_string())
+}
+
+/// Run compiled JS wi' Node's `process` and `require` hidden, as a browser does.
+fn run_js_browser_like(source: &str) -> Result<String, String> {
+    let js = mdhavers::compile_to_js(source).map_err(|e| format!("{e}"))?;
+    let mut child = Command::new("node")
+        .arg("-e")
+        .arg("new Function('process','require', require('fs').readFileSync(0,'utf8'))(undefined, undefined)")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Failed to run node: {e}"))?;
+    child
+        .stdin
+        .take()
+        .ok_or_else(|| "Failed to open node stdin".to_string())?
+        .write_all(js.as_bytes())
+        .map_err(|e| format!("Failed to send JS to node: {e}"))?;
+    let output = child
+        .wait_with_output()
+        .map_err(|e| format!("Failed to wait for node: {e}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "node exited with {:?}: {}",
+            output.status.code(),
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout)
+        .trim_end_matches('\n')
+        .to_string())
+}
+
+const READ_BYTES_FIXTURE: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/tests/golden/fixtures/read_bytes_fixture.bin"
+);
+const READ_BYTES_MISSING: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/.scratch/read_bytes_missing_fixture.bin"
+);
+
+fn read_bytes_program() -> String {
+    let fixture = braw_string(READ_BYTES_FIXTURE);
+    let missing = braw_string(READ_BYTES_MISSING);
+    format!(
+        r#"ken loader = read_bytes
+ken data = loader({fixture})
+blether bytes_len(data)
+blether bytes_get(data, 0)
+blether bytes_get(data, 1)
+hae_a_bash {{
+    loader({missing})
+}} gin_it_gangs_wrang err {{
+    blether err
+}}
+"#
+    )
+}
+
+fn braw_string(value: &str) -> String {
+    let mut literal = String::from("\"");
+    for ch in value.chars() {
+        match ch {
+            '\\' => literal.push_str("\\\\"),
+            '"' => literal.push_str("\\\""),
+            '\n' => literal.push_str("\\n"),
+            '\r' => literal.push_str("\\r"),
+            '\t' => literal.push_str("\\t"),
+            other => literal.push(other),
+        }
+    }
+    literal.push('"');
+    literal
+}
+
+fn assert_read_bytes_output(output: &str) {
+    let mut lines = output.lines();
+    assert_eq!(lines.next(), Some("2"));
+    assert_eq!(lines.next(), Some("0"));
+    assert_eq!(lines.next(), Some("255"));
+    let error = lines.collect::<Vec<_>>().join("\n");
+    assert!(
+        error.contains(&format!("Couldnae read '{READ_BYTES_MISSING}':")),
+        "missing-file error should use read_file wording, got {error:?}"
+    );
+}
+
+fn write_bytes_program(path: &str, missing_parent_path: &str) -> String {
+    let path = braw_string(path);
+    let missing_parent_path = braw_string(missing_parent_path);
+    format!(
+        r#"ken writer = write_bytes
+ken data = bytes(2)
+bytes_set(data, 0, 0)
+bytes_set(data, 1, 255)
+ken alias_result = writer({path}, data)
+blether alias_result == naething
+blether bytes_get(read_bytes({path}), 0)
+blether bytes_get(read_bytes({path}), 1)
+ken direct_result = write_bytes({path}, data)
+blether direct_result == naething
+hae_a_bash {{
+    write_bytes({missing_parent_path}, data)
+}} gin_it_gangs_wrang err {{
+    blether err
+}}
+hae_a_bash {{
+    write_bytes(1, data)
+}} gin_it_gangs_wrang err {{
+    blether err
+}}
+hae_a_bash {{
+    write_bytes({path}, "no bytes")
+}} gin_it_gangs_wrang err {{
+    blether err
+}}
+"#
+    )
+}
+
+fn assert_write_bytes_output(output: &str, missing_parent_path: &str) {
+    let mut lines = output.lines();
+    assert_eq!(lines.next(), Some("aye"), "writer should return naething");
+    assert_eq!(lines.next(), Some("0"));
+    assert_eq!(lines.next(), Some("255"));
+    assert_eq!(
+        lines.next(),
+        Some("aye"),
+        "direct writer should return naething"
+    );
+    let errors = lines.collect::<Vec<_>>();
+    assert!(
+        errors[0].contains(&format!(
+            "Couldnae open '{missing_parent_path}' fer writin':"
+        )),
+        "write error should use scrieve wording, got {:?}",
+        errors[0]
+    );
+    assert!(
+        errors[1].contains("write_bytes() needs a file path string"),
+        "path type error should name write_bytes, got {:?}",
+        errors[1]
+    );
+    assert!(
+        errors[2].contains("write_bytes() needs bytes"),
+        "bytes type error should name write_bytes, got {:?}",
+        errors[2]
+    );
+}
+
+#[test]
+fn write_bytes_interpreter_roundtrips_binary_and_reports_errors() {
+    let dir = tempfile::tempdir().expect("write_bytes test tempdir");
+    let path = dir.path().join("write_bytes.bin");
+    let missing_parent_path = dir.path().join("missing-parent/output.bin");
+    assert!(!missing_parent_path.parent().unwrap().exists());
+    let source = write_bytes_program(
+        path.to_str().expect("UTF-8 temp path"),
+        missing_parent_path.to_str().expect("UTF-8 temp path"),
+    );
+    let output = run_interpreter(&source).expect("interpret write_bytes program");
+    assert_write_bytes_output(
+        &output,
+        missing_parent_path.to_str().expect("UTF-8 temp path"),
+    );
+    assert_eq!(std::fs::read(path).expect("read written bytes"), [0, 255]);
+}
+
+#[test]
+fn write_bytes_js_roundtrips_binary_and_reports_errors() {
+    if !node_available() {
+        return;
+    }
+    let dir = tempfile::tempdir().expect("write_bytes JS test tempdir");
+    let path = dir.path().join("write_bytes.bin");
+    let missing_parent_path = dir.path().join("missing-parent/output.bin");
+    assert!(!missing_parent_path.parent().unwrap().exists());
+    let source = write_bytes_program(
+        path.to_str().expect("UTF-8 temp path"),
+        missing_parent_path.to_str().expect("UTF-8 temp path"),
+    );
+    let output = run_js(&source).expect("run JS write_bytes program");
+    assert_write_bytes_output(
+        &output,
+        missing_parent_path.to_str().expect("UTF-8 temp path"),
+    );
+    assert_eq!(std::fs::read(path).expect("read written bytes"), [0, 255]);
+}
+
+#[test]
+fn write_bytes_js_reports_browser_filesystem_error() {
+    if !node_available() {
+        return;
+    }
+    let source = r#"hae_a_bash {
+    write_bytes("unused.bin", bytes(0))
+} gin_it_gangs_wrang err {
+    blether err
+}
+"#;
+    let output = run_js_browser_like(source).expect("run browser-like JS write_bytes program");
+    assert_eq!(
+        output.trim(),
+        "Jings! Something went awfy wrang: write_bytes() needs Node fer the file system - there's nae such thing in a browser, pal"
+    );
+}
+
+#[cfg(feature = "wasm_runner")]
+#[test]
+fn write_bytes_wasm_host_roundtrips_binary_and_reports_errors() {
+    use mdhavers::wasm_compiler::compile_to_wat;
+    use mdhavers::wasm_runner::run_wat_captured;
+
+    let dir = tempfile::tempdir().expect("write_bytes WASM test tempdir");
+    let path = dir.path().join("write_bytes.bin");
+    let missing_parent_path = dir.path().join("missing-parent/output.bin");
+    assert!(!missing_parent_path.parent().unwrap().exists());
+    let source = write_bytes_program(
+        path.to_str().expect("UTF-8 temp path"),
+        missing_parent_path.to_str().expect("UTF-8 temp path"),
+    );
+    let wat = compile_to_wat(&source).expect("compile WASM write_bytes program");
+    let output = run_wat_captured(&wat).expect("run WASM write_bytes program");
+    assert!(output.error.is_none(), "WASM error: {:?}", output.error);
+    assert_write_bytes_output(
+        &output.stdout,
+        missing_parent_path.to_str().expect("UTF-8 temp path"),
+    );
+    assert_eq!(std::fs::read(path).expect("read written bytes"), [0, 255]);
+}
+
+#[cfg(feature = "llvm")]
+#[test]
+fn write_bytes_native_roundtrips_binary_and_reports_errors() {
+    let dir = tempfile::tempdir().expect("write_bytes native test tempdir");
+    let path = dir.path().join("write_bytes.bin");
+    let missing_parent_path = dir.path().join("missing-parent/output.bin");
+    assert!(!missing_parent_path.parent().unwrap().exists());
+    let source = write_bytes_program(
+        path.to_str().expect("UTF-8 temp path"),
+        missing_parent_path.to_str().expect("UTF-8 temp path"),
+    );
+    let program = mdhavers::parse(&source).expect("parse write_bytes program");
+    let source_path = dir.path().join("write_bytes.braw");
+    std::fs::write(&source_path, &source).expect("write native source");
+    let executable = dir.path().join("write_bytes");
+    mdhavers::LLVMCompiler::new()
+        .compile_to_native_with_source(&program, &executable, 2, Some(&source_path))
+        .expect("compile native write_bytes program");
+    let output = Command::new(&executable)
+        .stdin(Stdio::null())
+        .output()
+        .expect("run native write_bytes program");
+    assert!(
+        output.status.success(),
+        "native stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_write_bytes_output(
+        &String::from_utf8_lossy(&output.stdout),
+        missing_parent_path.to_str().expect("UTF-8 temp path"),
+    );
+    assert_eq!(std::fs::read(path).expect("read written bytes"), [0, 255]);
+}
+
+#[test]
+fn read_bytes_interpreter_returns_binary_and_missing_file_error() {
+    assert!(!std::path::Path::new(READ_BYTES_MISSING).exists());
+    let output = run_interpreter(&read_bytes_program()).expect("interpret read_bytes program");
+    assert_read_bytes_output(&output);
+}
+
+#[test]
+fn read_bytes_js_returns_binary_and_missing_file_error() {
+    if !node_available() {
+        return;
+    }
+    assert!(!std::path::Path::new(READ_BYTES_MISSING).exists());
+    let output = run_js(&read_bytes_program()).expect("run JS read_bytes program");
+    assert_read_bytes_output(&output);
+}
+
+#[test]
+fn read_bytes_js_reports_browser_filesystem_error() {
+    if !node_available() {
+        return;
+    }
+    let source = r#"hae_a_bash {
+    read_bytes("unused.bin")
+} gin_it_gangs_wrang err {
+    blether err
+}
+"#;
+    let output = run_js_browser_like(source).expect("run browser-like JS read_bytes program");
+    assert_eq!(
+        output.trim(),
+        "Jings! Something went awfy wrang: read_bytes() needs Node fer the file system - there's nae such thing in a browser, pal"
+    );
+}
+
+#[cfg(feature = "wasm_runner")]
+#[test]
+fn read_bytes_wasm_host_returns_binary_and_missing_file_error() {
+    use mdhavers::wasm_compiler::compile_to_wat;
+    use mdhavers::wasm_runner::run_wat_captured;
+
+    assert!(!std::path::Path::new(READ_BYTES_MISSING).exists());
+    let wat = compile_to_wat(&read_bytes_program()).expect("compile WASM read_bytes program");
+    let output = run_wat_captured(&wat).expect("run WASM read_bytes program");
+    assert!(output.error.is_none(), "WASM error: {:?}", output.error);
+    assert_read_bytes_output(&output.stdout);
+}
+
+#[cfg(feature = "llvm")]
+#[test]
+fn read_bytes_native_returns_binary_and_missing_file_error() {
+    assert!(!std::path::Path::new(READ_BYTES_MISSING).exists());
+    let dir = tempfile::tempdir().expect("native test tempdir");
+    let source = read_bytes_program();
+    let program = mdhavers::parse(&source).expect("parse read_bytes program");
+    let source_path = dir.path().join("read_bytes.braw");
+    std::fs::write(&source_path, &source).expect("write native source");
+    let executable = dir.path().join("read_bytes");
+    mdhavers::LLVMCompiler::new()
+        .compile_to_native_with_source(&program, &executable, 2, Some(&source_path))
+        .expect("compile native read_bytes program");
+    let output = Command::new(&executable)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("run native read_bytes program");
+    assert!(
+        output.status.success(),
+        "native stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_read_bytes_output(&String::from_utf8_lossy(&output.stdout));
 }
 
 #[test]

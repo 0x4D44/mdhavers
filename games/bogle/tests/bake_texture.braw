@@ -1,0 +1,4 @@
+fetch "games/bogle/tools/bake"
+ken bake_texture_result = bake_source("games/bogle/art/src/tex_granite.png", "texture", bake_palette())
+mak_siccar bake_texture_result == read_bytes("games/bogle/data/tex_granite.bog")
+blether "ok granite texture rebakes byte for byte"

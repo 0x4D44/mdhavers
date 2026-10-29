@@ -1,0 +1,497 @@
+# PNG and zlib/deflate reader for the Bogle asset baker. This stays in mdhavers
+# so the baker has the same behaviour in the interpreter and compiled runners.
+
+ken PNG_POW2 = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576, 2097152, 4194304, 8388608, 16777216, 33554432, 67108864, 134217728, 268435456, 536870912, 1073741824, 2147483648]
+
+dae png_need(ok, message) {
+    gin nae ok {
+        hurl "PNG: " + message
+    }
+}
+
+dae png_list(value, count) {
+    ken result = []
+    whiles len(result) < count {
+        shove(result, value)
+    }
+    gie result
+}
+
+dae png_u32(data, at) {
+    png_need(at >= 0 an at + 4 <= bytes_len(data), "truncated integer")
+    gie bytes_read_u32be(data, at)
+}
+
+dae png_huff(lengths, allow_empty = nae) {
+    ken counts = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    ken max_len = 0
+    ken nonzero = 0
+    fer symbol in 0..len(lengths) {
+        ken bits = lengths[symbol]
+        png_need(bits >= 0 an bits <= 15, "bad Huffman length")
+        gin bits > 0 {
+            counts[bits] = counts[bits] + 1
+            nonzero = nonzero + 1
+            gin bits > max_len {
+                max_len = bits
+            }
+        }
+    }
+    png_need(nonzero > 0 or allow_empty, "empty Huffman tree")
+
+    ken left = 1
+    fer bits in 1..16 {
+        left = left * 2 - counts[bits]
+        png_need(left >= 0, "oversubscribed Huffman tree")
+    }
+
+    ken first = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    ken next_code = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    ken offsets = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    ken code = 0
+    ken cursor = 0
+    fer bits in 1..16 {
+        code = (code + counts[bits - 1]) * 2
+        first[bits] = code
+        next_code[bits] = code
+        offsets[bits] = cursor
+        cursor = cursor + counts[bits]
+    }
+
+    ken symbols = png_list(0, nonzero)
+    fer symbol in 0..len(lengths) {
+        ken bits = lengths[symbol]
+        gin bits > 0 {
+            ken slot = next_code[bits]
+            symbols[offsets[bits] + slot - first[bits]] = symbol
+            next_code[bits] = next_code[bits] + 1
+        }
+    }
+
+    ken fast_symbols = png_list(-1, 512)
+    ken fast_lengths = png_list(0, 512)
+    ken fast_next = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    code = 0
+    fer bits in 1..16 {
+        code = (code + counts[bits - 1]) * 2
+        fast_next[bits] = code
+    }
+    fer symbol in 0..len(lengths) {
+        ken bits = lengths[symbol]
+        gin bits > 0 {
+            code = fast_next[bits]
+            fast_next[bits] = fast_next[bits] + 1
+            gin bits <= 9 {
+                ken reversed = 0
+                ken copy = code
+                fer j in 0..bits {
+                    reversed = reversed * 2 + (copy % 2)
+                    copy = copy / 2
+                }
+                ken index = reversed
+                whiles index < 512 {
+                    fast_symbols[index] = symbol
+                    fast_lengths[index] = bits
+                    index = index + PNG_POW2[bits]
+                }
+            }
+        }
+    }
+
+    gie {"counts": counts, "first": first, "offsets": offsets, "symbols": symbols, "max": max_len, "fast_symbols": fast_symbols, "fast_lengths": fast_lengths}
+}
+
+dae png_ensure9(reader) {
+    whiles reader["available"] < 9 an reader["pos"] < reader["end"] {
+        ken byte = bytes_get(reader["data"], reader["pos"])
+        reader["buffer"] = reader["buffer"] + byte * PNG_POW2[reader["available"]]
+        reader["available"] = reader["available"] + 8
+        reader["pos"] = reader["pos"] + 1
+    }
+}
+
+dae png_drop_bits(reader, count) {
+    png_need(count >= 0 an count <= reader["available"], "truncated deflate stream")
+    reader["buffer"] = reader["buffer"] / PNG_POW2[count]
+    reader["available"] = reader["available"] - count
+    reader["total_bits"] = reader["total_bits"] + count
+}
+
+dae png_bits(reader, count) {
+    png_need(count >= 0 an count <= 16, "bad bit count")
+    whiles reader["available"] < count {
+        png_need(reader["pos"] < reader["end"], "truncated deflate stream")
+        ken byte = bytes_get(reader["data"], reader["pos"])
+        reader["buffer"] = reader["buffer"] + byte * PNG_POW2[reader["available"]]
+        reader["available"] = reader["available"] + 8
+        reader["pos"] = reader["pos"] + 1
+    }
+    ken value = reader["buffer"] % PNG_POW2[count]
+    png_drop_bits(reader, count)
+    gie value
+}
+
+dae png_symbol(reader, tree) {
+    png_ensure9(reader)
+    ken index = reader["buffer"] % 512
+    ken bits = tree["fast_lengths"][index]
+    gin bits > 0 an bits <= reader["available"] {
+        ken symbol = tree["fast_symbols"][index]
+        png_drop_bits(reader, bits)
+        gie symbol
+    }
+
+    ken code = 0
+    fer bits in 1..tree["max"] + 1 {
+        code = code * 2 + png_bits(reader, 1)
+        ken first = tree["first"][bits]
+        ken count = tree["counts"][bits]
+        gin code >= first an code < first + count {
+            ken at = tree["offsets"][bits] + code - first
+            gie tree["symbols"][at]
+        }
+    }
+    png_need(nae, "invalid Huffman code")
+    gie 0
+}
+
+dae png_paeth(left, up, upper_left) {
+    ken p = left + up - upper_left
+    ken dl = abs(p - left)
+    ken du = abs(p - up)
+    ken dul = abs(p - upper_left)
+    gin dl <= du an dl <= dul {
+        gie left
+    }
+    gin du <= dul {
+        gie up
+    }
+    gie upper_left
+}
+
+dae png_inflate(zlib_bytes, expected_size) {
+    png_need(whit_kind(zlib_bytes) == "bytes", "inflate needs bytes")
+    png_need(whit_kind(expected_size) == "integer" an expected_size >= 0 an expected_size <= 67108864, "bad inflate output size")
+    ken input_len = bytes_len(zlib_bytes)
+    png_need(input_len >= 6, "short zlib stream")
+    ken cmf = bytes_get(zlib_bytes, 0)
+    ken flg = bytes_get(zlib_bytes, 1)
+    png_need(cmf % 16 == 8 an cmf / 16 <= 7, "unsupported zlib header")
+    png_need((cmf * 256 + flg) % 31 == 0, "bad zlib header check")
+    png_need(flg / 32 % 2 == 0, "zlib preset dictionary is nae supported")
+
+    ken reader = {"data": zlib_bytes, "pos": 2, "end": input_len - 4, "buffer": 0, "available": 0, "total_bits": 0}
+    ken output = bytes(expected_size)
+    ken written = 0
+    ken adler_a = 1
+    ken adler_b = 0
+
+    ken fixed_lit_lengths = []
+    fer symbol in 0..288 {
+        gin symbol <= 143 {
+            shove(fixed_lit_lengths, 8)
+        }
+        gin symbol >= 144 an symbol <= 255 {
+            shove(fixed_lit_lengths, 9)
+        }
+        gin symbol >= 256 an symbol <= 279 {
+            shove(fixed_lit_lengths, 7)
+        }
+        gin symbol >= 280 {
+            shove(fixed_lit_lengths, 8)
+        }
+    }
+    ken fixed_dist_lengths = png_list(5, 32)
+    ken fixed_lit = png_huff(fixed_lit_lengths)
+    ken fixed_dist = png_huff(fixed_dist_lengths)
+
+    ken length_base = [3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258]
+    ken length_extra = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0]
+    ken dist_base = [1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577]
+    ken dist_extra = [0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13]
+
+    ken final_block = 0
+    whiles final_block == 0 {
+        final_block = png_bits(reader, 1)
+        ken block_type = png_bits(reader, 2)
+        gin block_type == 0 {
+            ken pad = (8 - (reader["total_bits"] % 8)) % 8
+            png_need(pad <= reader["available"], "truncated stored block")
+            png_drop_bits(reader, pad)
+            ken block_len = png_bits(reader, 16)
+            ken inverse_len = png_bits(reader, 16)
+            png_need(block_len + inverse_len == 65535, "bad stored block length")
+            png_need(written + block_len <= expected_size, "inflate output exceeds expected size")
+            fer j in 0..block_len {
+                ken value = png_bits(reader, 8)
+                bytes_set(output, written, value)
+                written = written + 1
+                adler_a = (adler_a + value) % 65521
+                adler_b = (adler_b + adler_a) % 65521
+            }
+            haud
+        }
+
+        ken lit_tree = fixed_lit
+        ken dist_tree = fixed_dist
+        gin block_type == 2 {
+            ken hlit = png_bits(reader, 5) + 257
+            ken hdist = png_bits(reader, 5) + 1
+            ken hclen = png_bits(reader, 4) + 4
+            png_need(hlit <= 286, "reserved literal count")
+            ken order = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15]
+            ken code_lengths = png_list(0, 19)
+            fer j in 0..hclen {
+                code_lengths[order[j]] = png_bits(reader, 3)
+            }
+            ken code_tree = png_huff(code_lengths)
+            ken total_codes = hlit + hdist
+            ken all_lengths = []
+            whiles len(all_lengths) < total_codes {
+                ken code = png_symbol(reader, code_tree)
+                gin code <= 15 {
+                    shove(all_lengths, code)
+                } ither gin code == 16 {
+                    png_need(len(all_lengths) > 0, "repeat code has nae previous length")
+                    ken repeat = png_bits(reader, 2) + 3
+                    png_need(len(all_lengths) + repeat <= total_codes, "Huffman repeat overruns table")
+                    ken previous = all_lengths[len(all_lengths) - 1]
+                    fer j in 0..repeat {
+                        shove(all_lengths, previous)
+                    }
+                } ither gin code == 17 {
+                    ken repeat = png_bits(reader, 3) + 3
+                    png_need(len(all_lengths) + repeat <= total_codes, "Huffman zero repeat overruns table")
+                    fer j in 0..repeat {
+                        shove(all_lengths, 0)
+                    }
+                } ither gin code == 18 {
+                    ken repeat = png_bits(reader, 7) + 11
+                    png_need(len(all_lengths) + repeat <= total_codes, "Huffman long repeat overruns table")
+                    fer j in 0..repeat {
+                        shove(all_lengths, 0)
+                    }
+                } ither {
+                    png_need(nae, "invalid code-length symbol")
+                }
+            }
+            ken lit_lengths = []
+            ken dist_lengths = []
+            fer j in 0..hlit {
+                shove(lit_lengths, all_lengths[j])
+            }
+            fer j in 0..hdist {
+                shove(dist_lengths, all_lengths[hlit + j])
+            }
+            png_need(lit_lengths[256] > 0, "missing end-of-block code")
+            lit_tree = png_huff(lit_lengths)
+            dist_tree = png_huff(dist_lengths, aye)
+        } ither {
+            png_need(block_type == 1, "reserved deflate block type")
+        }
+
+        ken done = nae
+        whiles nae done {
+            ken symbol = png_symbol(reader, lit_tree)
+            gin symbol < 256 {
+                png_need(written < expected_size, "inflate output exceeds expected size")
+                bytes_set(output, written, symbol)
+                written = written + 1
+                adler_a = (adler_a + symbol) % 65521
+                adler_b = (adler_b + adler_a) % 65521
+            } ither gin symbol == 256 {
+                done = aye
+            } ither {
+                png_need(symbol >= 257 an symbol <= 285, "reserved length code")
+                ken length_index = symbol - 257
+                ken length = length_base[length_index] + png_bits(reader, length_extra[length_index])
+                png_need(dist_tree["max"] > 0, "back reference has nae distance codes")
+                ken distance_symbol = png_symbol(reader, dist_tree)
+                png_need(distance_symbol < 30, "reserved distance code")
+                ken distance = dist_base[distance_symbol] + png_bits(reader, dist_extra[distance_symbol])
+                png_need(distance <= 32768 an distance <= written, "invalid back reference")
+                png_need(written + length <= expected_size, "inflate output exceeds expected size")
+                fer j in 0..length {
+                    ken value = bytes_get(output, written - distance)
+                    bytes_set(output, written, value)
+                    written = written + 1
+                    adler_a = (adler_a + value) % 65521
+                    adler_b = (adler_b + adler_a) % 65521
+                }
+            }
+        }
+    }
+
+    png_need(written == expected_size, "inflate output size mismatch")
+    png_need((reader["total_bits"] + 7) / 8 == reader["end"] - 2, "trailing or truncated deflate data")
+    ken expected_adler = png_u32(zlib_bytes, input_len - 4)
+    png_need(expected_adler == adler_b * 65536 + adler_a, "Adler-32 checksum failed")
+    gie output
+}
+
+dae png_decode(data) {
+    png_need(whit_kind(data) == "bytes", "decoder needs bytes")
+    ken file_len = bytes_len(data)
+    png_need(file_len >= 8, "short PNG signature")
+    png_need(bytes_get(data, 0) == 137 an bytes_get(data, 1) == 80 an bytes_get(data, 2) == 78 an bytes_get(data, 3) == 71 an bytes_get(data, 4) == 13 an bytes_get(data, 5) == 10 an bytes_get(data, 6) == 26 an bytes_get(data, 7) == 10, "bad signature")
+
+    ken pos = 8
+    ken saw_header = nae
+    ken saw_palette = nae
+    ken saw_idat = nae
+    ken ended_idat = nae
+    ken saw_end = nae
+    ken width = 0
+    ken height = 0
+    ken channels = 0
+    ken colour = -1
+    ken palette = bytes(0)
+    ken idat = bytes(0)
+    ken palette_count = 0
+
+    whiles pos < file_len an nae saw_end {
+        png_need(file_len - pos >= 12, "truncated chunk header")
+        ken chunk_len = png_u32(data, pos)
+        png_need(chunk_len <= file_len - pos - 12, "truncated chunk data")
+        ken kind = pos + 4
+        fer j in 0..4 {
+            ken letter = bytes_get(data, kind + j)
+            png_need((letter >= 65 an letter <= 90) or (letter >= 97 an letter <= 122), "invalid chunk type")
+        }
+        ken payload = pos + 8
+        ken next_pos = payload + chunk_len + 4
+        ken is_ihdr = bytes_get(data, kind) == 73 an bytes_get(data, kind + 1) == 72 an bytes_get(data, kind + 2) == 68 an bytes_get(data, kind + 3) == 82
+        ken is_plte = bytes_get(data, kind) == 80 an bytes_get(data, kind + 1) == 76 an bytes_get(data, kind + 2) == 84 an bytes_get(data, kind + 3) == 69
+        ken is_idat = bytes_get(data, kind) == 73 an bytes_get(data, kind + 1) == 68 an bytes_get(data, kind + 2) == 65 an bytes_get(data, kind + 3) == 84
+        ken is_iend = bytes_get(data, kind) == 73 an bytes_get(data, kind + 1) == 69 an bytes_get(data, kind + 2) == 78 an bytes_get(data, kind + 3) == 68
+
+        gin is_ihdr {
+            png_need(nae saw_header an pos == 8 an chunk_len == 13, "bad IHDR placement or length")
+            width = png_u32(data, payload)
+            height = png_u32(data, payload + 4)
+            ken depth = bytes_get(data, payload + 8)
+            colour = bytes_get(data, payload + 9)
+            ken compression = bytes_get(data, payload + 10)
+            ken filter_method = bytes_get(data, payload + 11)
+            ken interlace = bytes_get(data, payload + 12)
+            png_need(width > 0 an height > 0 an width <= 16777216 an height <= 16777216 an width * height <= 16777216, "image dimensions are too large")
+            png_need(depth == 8, "only 8-bit PNGs are supported")
+            png_need(compression == 0 an filter_method == 0, "unsupported PNG method")
+            png_need(interlace == 0, "interlace is nae supported")
+            gin colour == 0 {
+                channels = 1
+            } ither gin colour == 2 {
+                channels = 3
+            } ither gin colour == 3 {
+                channels = 1
+            } ither gin colour == 6 {
+                channels = 4
+            } ither {
+                png_need(nae, "unsupported colour type")
+            }
+            saw_header = aye
+        } ither gin is_plte {
+            png_need(saw_header an nae saw_idat an nae saw_palette, "bad PLTE placement")
+            png_need(chunk_len > 0 an chunk_len <= 768 an chunk_len % 3 == 0, "bad palette length")
+            palette = bytes_slice(data, payload, payload + chunk_len)
+            palette_count = chunk_len / 3
+            saw_palette = aye
+        } ither gin is_idat {
+            png_need(saw_header an nae ended_idat, "bad IDAT placement")
+            saw_idat = aye
+            bytes_append(idat, bytes_slice(data, payload, payload + chunk_len))
+        } ither gin is_iend {
+            png_need(saw_header an saw_idat an chunk_len == 0, "bad IEND")
+            saw_end = aye
+        } ither {
+            png_need(saw_header, "IHDR must be first")
+            gin saw_idat {
+                ended_idat = aye
+            }
+            ken first_char = bytes_get(data, kind)
+            png_need(first_char % 64 >= 32, "unknown critical chunk")
+        }
+        pos = next_pos
+    }
+
+    png_need(saw_header an saw_idat an saw_end, "missing PNG chunk")
+    png_need(pos == file_len, "trailing data after IEND")
+    gin colour == 3 {
+        png_need(saw_palette an palette_count <= 256, "indexed PNG needs a palette")
+    }
+    ken row_bytes = width * channels
+    ken inflated_size = (row_bytes + 1) * height
+    png_need(inflated_size <= 67108864, "image data is too large")
+    ken raw = png_inflate(idat, inflated_size)
+
+    ken row_stride = row_bytes + 1
+    fer y in 0..height {
+        ken row = y * row_stride
+        ken filter = bytes_get(raw, row)
+        png_need(filter >= 0 an filter <= 4, "invalid row filter")
+        fer x in 0..row_bytes {
+            ken left = 0
+            ken up = 0
+            ken upper_left = 0
+            gin x >= channels {
+                left = bytes_get(raw, row + x - channels + 1)
+            }
+            gin y > 0 {
+                ken prior_row = row - row_stride
+                up = bytes_get(raw, prior_row + x + 1)
+                gin x >= channels {
+                    upper_left = bytes_get(raw, prior_row + x - channels + 1)
+                }
+            }
+            ken predictor = 0
+            gin filter == 1 {
+                predictor = left
+            } ither gin filter == 2 {
+                predictor = up
+            } ither gin filter == 3 {
+                predictor = (left + up) / 2
+            } ither gin filter == 4 {
+                predictor = png_paeth(left, up, upper_left)
+            }
+            ken value = (bytes_get(raw, row + x + 1) + predictor) % 256
+            bytes_set(raw, row + x + 1, value)
+        }
+    }
+
+    ken pixels = width * height
+    ken rgba = bytes(pixels * 4)
+    fer pixel in 0..pixels {
+        ken source = (pixel / width) * row_stride + 1 + (pixel % width) * channels
+        ken target = pixel * 4
+        gin colour == 0 {
+            ken grey = bytes_get(raw, source)
+            bytes_set(rgba, target, grey)
+            bytes_set(rgba, target + 1, grey)
+            bytes_set(rgba, target + 2, grey)
+            bytes_set(rgba, target + 3, 255)
+        } ither gin colour == 2 {
+            bytes_set(rgba, target, bytes_get(raw, source))
+            bytes_set(rgba, target + 1, bytes_get(raw, source + 1))
+            bytes_set(rgba, target + 2, bytes_get(raw, source + 2))
+            bytes_set(rgba, target + 3, 255)
+        } ither gin colour == 3 {
+            ken index = bytes_get(raw, source)
+            png_need(index < palette_count, "palette index oot o' bounds")
+            ken palette_at = index * 3
+            bytes_set(rgba, target, bytes_get(palette, palette_at))
+            bytes_set(rgba, target + 1, bytes_get(palette, palette_at + 1))
+            bytes_set(rgba, target + 2, bytes_get(palette, palette_at + 2))
+            bytes_set(rgba, target + 3, 255)
+        } ither {
+            bytes_set(rgba, target, bytes_get(raw, source))
+            bytes_set(rgba, target + 1, bytes_get(raw, source + 1))
+            bytes_set(rgba, target + 2, bytes_get(raw, source + 2))
+            bytes_set(rgba, target + 3, bytes_get(raw, source + 3))
+        }
+    }
+    gie {"w": width, "h": height, "rgba": rgba}
+}
+
+dae png_load(path) {
+    gie png_decode(read_bytes(path))
+}

@@ -1,0 +1,38 @@
+fetch "games/bogle/tools/png"
+
+dae png_test_exact(actual, expected) {
+    # Bytes equality compares the complete payload, on both backends.
+    mak_siccar actual == expected
+}
+
+dae png_test_image(name, w, h) {
+    ken prefix = "games/bogle/tests/png/" + name
+    ken image = png_decode(read_bytes(prefix + ".png"))
+    mak_siccar image["w"] == w an image["h"] == h
+    png_test_exact(image["rgba"], read_bytes(prefix + ".rgba"))
+}
+
+fer filter in 0..5 {
+    png_test_image("filter" + tae_string(filter), 3, 3)
+    blether "ok PNG filter " + tae_string(filter)
+}
+png_test_image("grey", 2, 2)
+png_test_image("indexed", 3, 2)
+png_test_image("rgba", 2, 3)
+blether "ok PNG grey indexed RGB and RGBA exact pixels"
+fer block in ["stored", "fixed", "dynamic", "literal_only"] {
+    ken prefix = "games/bogle/tests/png/" + block
+    ken expected = read_bytes(prefix + ".raw")
+    png_test_exact(png_inflate(read_bytes(prefix + ".zlib"), bytes_len(expected)), expected)
+    blether "ok inflate " + block
+}
+fer bad in ["bad_adler", "interlaced", "bad_depth", "bad_colour", "bad_filter", "bad_index", "bad_signature", "truncated"] {
+    ken rejected = nae
+    hae_a_bash {
+        png_decode(read_bytes("games/bogle/tests/png/" + bad + ".png"))
+    } gin_it_gangs_wrang err {
+        rejected = contains(tae_string(err), "PNG")
+    }
+    mak_siccar rejected
+    blether "ok PNG rejects " + bad
+}

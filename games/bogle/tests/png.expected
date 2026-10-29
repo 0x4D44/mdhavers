@@ -1,0 +1,18 @@
+ok PNG filter 0
+ok PNG filter 1
+ok PNG filter 2
+ok PNG filter 3
+ok PNG filter 4
+ok PNG grey indexed RGB and RGBA exact pixels
+ok inflate stored
+ok inflate fixed
+ok inflate dynamic
+ok inflate literal_only
+ok PNG rejects bad_adler
+ok PNG rejects interlaced
+ok PNG rejects bad_depth
+ok PNG rejects bad_colour
+ok PNG rejects bad_filter
+ok PNG rejects bad_index
+ok PNG rejects bad_signature
+ok PNG rejects truncated

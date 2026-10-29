@@ -1,0 +1,196 @@
+fetch "games/bogle/shell/replay"
+fetch "games/bogle/tools/mapbuild"
+fetch "games/bogle/tools/render_fixtures"
+
+dae textured_room() {
+    ken b = new_map()
+    room(b, [[0, 0], [512, 0], [512, 256], [0, 256]], 0, 128, 1, 2, 255)
+    map_thing(b, 1, 64, 128)
+    gie b
+}
+
+dae textured_game(b) {
+    ken g = new_game(validate(b))
+    fixture_identity(g)
+    gie g
+}
+
+dae texture_columns() {
+    ken g = textured_game(textured_room())
+    ken fb = bytes(4000)
+    fer u in 0..64 {
+        fer v in 0..64 {
+            bytes_set(g["textures"][0], u * 64 + v, 20 + u)
+        }
+    }
+    render(g, fb, 80, 50)
+    mak_siccar bytes_get(fb, 25 * 80 + 40) == 20
+    g["map"]["x_off"][1] = 7
+    render(g, fb, 80, 50)
+    mak_siccar bytes_get(fb, 25 * 80 + 40) == 27
+    g["map"]["x_off"][1] = -1
+    render(g, fb, 80, 50)
+    mak_siccar bytes_get(fb, 25 * 80 + 40) == 83
+    fer u in 0..64 {
+        fer v in 0..64 {
+            bytes_set(g["textures"][0], u * 64 + v, 20 + v)
+        }
+    }
+    render(g, fb, 80, 50)
+    mak_siccar bytes_get(fb, 18 * 80 + 40) == 20
+    mak_siccar bytes_get(fb, 25 * 80 + 40) == 60
+    mak_siccar bytes_get(fb, 28 * 80 + 40) == 78
+    g["map"]["y_off"][1] = 5
+    render(g, fb, 80, 50)
+    mak_siccar bytes_get(fb, 25 * 80 + 40) == 65
+    blether "ok wall u offsets wrap and fixed point vertical stepping"
+}
+
+dae textured_flats() {
+    ken g = textured_game(textured_room())
+    ken fb = bytes(4000)
+    fer u in 0..64 {
+        fer v in 0..64 {
+            ken colour = 20 + (u + 2 * v) % 100
+            bytes_set(g["textures"][1], u * 64 + v, colour)
+            bytes_set(g["textures"][2], u * 64 + v, colour)
+        }
+    }
+    render(g, fb, 80, 50)
+    mak_siccar bytes_get(fb, 49 * 80 + 40) == 24
+    mak_siccar bytes_get(fb, 49 * 80 + 41) == 48
+    mak_siccar bytes_get(fb, 40) == 31
+    blether "ok per column floor and ceiling world texels"
+}
+
+dae textured_lighting() {
+    ken g = textured_game(textured_room())
+    ken fb = bytes(4000)
+    g["map"]["light"][0] = 192
+    fer i in 0..10 {
+        g["textures"][i] = fixture_fill(4096, 40)
+    }
+    fer level in 0..32 {
+        fer colour in 0..256 {
+            bytes_set(g["cmap"], level * 256 + colour, (colour + level) % 255)
+        }
+    }
+    render(g, fb, 80, 50)
+    mak_siccar bytes_get(fb, 25 * 80 + 40) == 54
+    mak_siccar bytes_get(fb, 49 * 80 + 40) == 48
+    mak_siccar bytes_get(fb, 40) == 49
+    blether "ok wall and flat sector and distance colour maps"
+}
+
+dae sprite_sort() {
+    ken b = textured_room()
+    map_thing(b, 3, 192, 128)
+    map_thing(b, 2, 320, 128)
+    ken g = textured_game(b)
+    fer u in 24..40 {
+        fer v in 32..64 {
+            bytes_set(g["sprite_tex"][1], u * 96 + v, 255)
+        }
+    }
+    ken fb = bytes(4000)
+    render(g, fb, 80, 50)
+    mak_siccar bytes_get(fb, 20 * 80 + 37) == 160
+    mak_siccar bytes_get(fb, 25 * 80 + 40) == 100
+    blether "ok sprites sort far to near and transparent holes reveal rear sprite"
+}
+
+dae sprite_screen() {
+    ken b = textured_room()
+    map_thing(b, 2, 128, 192)
+    ken g = textured_game(b)
+    g["view_z"] = 48 * 65536
+    fer u in 0..64 {
+        fer v in 0..96 {
+            bytes_set(g["sprite_tex"][0], u * 96 + v, 20 + u + v)
+        }
+    }
+    ken fb = bytes(4000)
+    render(g, fb, 80, 50)
+    mak_siccar bytes_get(fb, 0) == 60
+    mak_siccar bytes_get(fb, 49 * 80 + 19) == 168
+    mak_siccar bytes_get(fb, 49 * 80 + 20) == 7
+    blether "ok screen clipping preserves sprite source coordinates"
+}
+
+dae sprite_step() {
+    ken b = new_map()
+    room(b, [[0, 0], [128, 0], [128, 128], [0, 128]], 0, 128, 1, 2, 255)
+    room(b, [[128, 0], [192, 0], [192, 128], [128, 128]], 32, 128, 1, 2, 255)
+    room(b, [[192, 0], [384, 0], [384, 128], [192, 128]], 0, 128, 1, 2, 255)
+    map_thing(b, 1, 64, 64)
+    map_thing(b, 2, 256, 64)
+    ken g = textured_game(b)
+    ken fb = bytes(4000)
+    render(g, fb, 80, 50)
+    mak_siccar contains(g["visible"], 2)
+    mak_siccar bytes_get(fb, 27 * 80 + 40) == 100
+    mak_siccar bytes_get(fb, 28 * 80 + 40) == 7
+    blether "ok nearer step drawsegs clip rear gamekeeper feet"
+}
+
+dae sprite_fullbright() {
+    ken b = textured_room()
+    map_thing(b, 2, 192, 128)
+    ken g = textured_game(b)
+    g["map"]["light"][0] = 0
+    fer colour in 0..256 {
+        bytes_set(g["cmap"], 31 * 256 + colour, (colour + 31) % 255)
+    }
+    ken fb = bytes(4000)
+    render(g, fb, 80, 50)
+    mak_siccar bytes_get(fb, 20 * 80 + 40) == 131
+    g["map"]["thing_type"][1] = 4
+    render(g, fb, 80, 50)
+    mak_siccar bytes_get(fb, 20 * 80 + 40) == 100
+    blether "ok full bright sprite bypasses colour map"
+}
+
+dae textured_sky() {
+    ken b = new_map()
+    room(b, [[-2048, -2048], [2048, -2048], [2048, 2048], [-2048, 2048]], 0, 128, 1, -1, 0)
+    map_thing(b, 1, 0, 0)
+    ken g = textured_game(b)
+    fer u in 0..256 {
+        fer v in 0..128 {
+            bytes_set(g["sky"], u * 128 + v, 20 + u % 200)
+        }
+    }
+    ken fb = bytes(4000)
+    render(g, fb, 80, 50)
+    mak_siccar bytes_get(fb, 40) == 20
+    g["angle"] = 1024
+    render(g, fb, 80, 50)
+    mak_siccar bytes_get(fb, 40) == 84
+    blether "ok sky follows view angle and remains full bright"
+}
+
+dae sprite_ceiling() {
+    ken b = textured_room()
+    b["sectors"][0][1] = 64
+    map_thing(b, 2, 192, 128)
+    ken g = textured_game(b)
+    ken fb = bytes(4000)
+    bytes_set(g["sprite_tex"][0], 32 * 96 + 33, 201)
+    render(g, fb, 80, 50)
+    # At sprite z128, ceiling64 and eye41 project to row18. The sprite's
+    # source top projects to row8, but rows above its own ceiling stay plane7.
+    mak_siccar bytes_get(fb, 17 * 80 + 40) == 7
+    mak_siccar bytes_get(fb, 18 * 80 + 40) == 201
+    blether "ok low sector ceiling clips sprite without shifting its texture"
+}
+
+ken textured_failures = 0
+fer check in [texture_columns, textured_flats, textured_lighting, sprite_sort, sprite_screen, sprite_step, sprite_fullbright, textured_sky, sprite_ceiling] {
+    hae_a_bash {
+        check()
+    } gin_it_gangs_wrang err {
+        blether tae_string(err)
+        textured_failures = textured_failures + 1
+    }
+}
+mak_siccar textured_failures == 0

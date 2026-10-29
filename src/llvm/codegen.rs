@@ -323,6 +323,8 @@ struct LibcFunctions<'ctx> {
     make_dir: FunctionValue<'ctx>,
     is_dir: FunctionValue<'ctx>,
     slurp: FunctionValue<'ctx>,
+    read_bytes: FunctionValue<'ctx>,
+    write_bytes: FunctionValue<'ctx>,
     scrieve: FunctionValue<'ctx>,
     scrieve_append: FunctionValue<'ctx>,
     lines: FunctionValue<'ctx>,
@@ -3104,6 +3106,20 @@ impl<'ctx> CodeGen<'ctx> {
         let slurp_type = types.value_type.fn_type(&[types.value_type.into()], false);
         let slurp = module.add_function("__mdh_slurp", slurp_type, Some(Linkage::External));
 
+        // __mdh_read_bytes(path) -> MdhValue (bytes)
+        let read_bytes =
+            module.add_function("__mdh_read_bytes", slurp_type, Some(Linkage::External));
+
+        // __mdh_write_bytes(path, bytes) -> MdhValue (nil)
+        let write_bytes_type = types
+            .value_type
+            .fn_type(&[types.value_type.into(), types.value_type.into()], false);
+        let write_bytes = module.add_function(
+            "__mdh_write_bytes",
+            write_bytes_type,
+            Some(Linkage::External),
+        );
+
         // __mdh_scrieve(path, content) -> MdhValue (bool)
         let scrieve_type = types
             .value_type
@@ -4244,6 +4260,8 @@ impl<'ctx> CodeGen<'ctx> {
             make_dir,
             is_dir,
             slurp,
+            read_bytes,
+            write_bytes,
             scrieve,
             scrieve_append,
             lines,
@@ -20258,6 +20276,26 @@ impl<'ctx> CodeGen<'ctx> {
                         "read_file",
                         "read_file_result",
                         "slurp returned void",
+                    );
+                }
+                "read_bytes" => {
+                    return self.compile_runtime_call_value_with_arity_call_name(
+                        self.libc.read_bytes,
+                        args,
+                        1,
+                        "read_bytes",
+                        "read_bytes_result",
+                        "read_bytes returned void",
+                    );
+                }
+                "write_bytes" => {
+                    return self.compile_runtime_call_value_with_arity_call_name(
+                        self.libc.write_bytes,
+                        args,
+                        2,
+                        "write_bytes",
+                        "write_bytes_result",
+                        "write_bytes returned void",
                     );
                 }
                 "muckle" => {

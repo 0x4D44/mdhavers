@@ -1,0 +1,9 @@
+fetch "games/bogle/tools/mapbuild"
+ken stage3 = new_map()
+room(stage3, [[0, 0], [256, 0], [256, 384], [0, 384]], 0, 160, 1, 2, 224)
+room(stage3, [[256, 0], [320, 0], [320, 384], [256, 384]], 32, 160, 9, 2, 192)
+room(stage3, [[320, 0], [768, 0], [768, 384], [320, 384]], 0, 160, 1, -1, 208)
+map_thing(stage3, 1, 96, 192)
+map_thing(stage3, 2, 512, 224)
+map_thing(stage3, 3, 208, 112)
+write(stage3, "games/bogle/data/stage3.map")

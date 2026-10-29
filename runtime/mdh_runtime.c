@@ -5533,6 +5533,106 @@ MdhValue __mdh_slurp(MdhValue path) {
     return __mdh_string_from_buf(buf);
 }
 
+static MdhValue __mdh_read_bytes_error(const char *path, int err) {
+    char msg[256];
+    if (err == 0) {
+        err = EIO;
+    }
+    snprintf(msg, sizeof(msg), "Couldnae read '%s': %s (os error %d)", path, strerror(err),
+             err);
+    __mdh_builtin_error(msg);
+    return __mdh_make_nil();
+}
+
+MdhValue __mdh_read_bytes(MdhValue path) {
+    if (path.tag != MDH_TAG_STRING) {
+        __mdh_builtin_error("read_bytes() needs a file path string");
+        return __mdh_make_nil();
+    }
+    const char *p = (const char *)(intptr_t)path.data;
+    FILE *f = fopen(p, "rb");
+    if (!f) {
+        return __mdh_read_bytes_error(p, errno);
+    }
+    if (fseek(f, 0, SEEK_END) != 0) {
+        int err = errno;
+        fclose(f);
+        return __mdh_read_bytes_error(p, err);
+    }
+    long file_size = ftell(f);
+    if (file_size < 0) {
+        int err = errno;
+        fclose(f);
+        return __mdh_read_bytes_error(p, err);
+    }
+    if (fseek(f, 0, SEEK_SET) != 0) {
+        int err = errno;
+        fclose(f);
+        return __mdh_read_bytes_error(p, err);
+    }
+    if ((uint64_t)file_size > SIZE_MAX) {
+        fclose(f);
+        __mdh_raise_too_big();
+        return __mdh_make_nil();
+    }
+
+    MdhValue result;
+    if (!__mdh_bytes_new_try((int64_t)file_size, &result)) {
+        fclose(f);
+        __mdh_raise_too_big();
+        return __mdh_make_nil();
+    }
+    MdhBytes *bytes = __mdh_get_bytes(result);
+    size_t read_count = file_size > 0 ? fread(bytes->data, 1, (size_t)file_size, f) : 0;
+    int read_error = ferror(f);
+    int err = errno;
+    fclose(f);
+    if (read_error) {
+        __mdh_release(result);
+        return __mdh_read_bytes_error(p, err);
+    }
+    bytes->length = (int64_t)read_count;
+    return result;
+}
+
+MdhValue __mdh_write_bytes(MdhValue path, MdhValue bytes_val) {
+    if (path.tag != MDH_TAG_STRING) {
+        __mdh_builtin_error("write_bytes() needs a file path string");
+        return __mdh_make_nil();
+    }
+    if (bytes_val.tag != MDH_TAG_BYTES) {
+        __mdh_builtin_error("write_bytes() needs bytes");
+        return __mdh_make_nil();
+    }
+    const char *p = (const char *)(intptr_t)path.data;
+    MdhBytes *bytes = __mdh_get_bytes(bytes_val);
+    char msg[256];
+    FILE *f = fopen(p, "wb");
+    if (!f) {
+        int err = errno;
+        snprintf(msg, sizeof(msg), "Couldnae open '%s' fer writin': %s (os error %d)", p,
+                 strerror(err), err);
+        __mdh_builtin_error(msg);
+        return __mdh_make_nil();
+    }
+    int bad = bytes->length > 0 &&
+              fwrite(bytes->data, 1, (size_t)bytes->length, f) != (size_t)bytes->length;
+    int err = errno;
+    if (fclose(f) != 0) {
+        bad = 1;
+        err = errno;
+    }
+    if (bad) {
+        if (err == 0) {
+            err = EIO;
+        }
+        snprintf(msg, sizeof(msg), "Couldnae write tae '%s': %s (os error %d)", p,
+                 strerror(err), err);
+        __mdh_builtin_error(msg);
+    }
+    return __mdh_make_nil();
+}
+
 /* scrieve(path, content): the interpreter's file write. The content is shown as blether
  * would show it; a bad path or a failed open or write raises, and the result is naething. */
 MdhValue __mdh_scrieve(MdhValue path, MdhValue content) {

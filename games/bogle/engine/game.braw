@@ -3,6 +3,7 @@ fetch "games/bogle/engine/move"
 fetch "games/bogle/engine/render"
 
 dae new_game(map) {
+    ken assets = bogle_assets()
     ken z = map["floor_h"][map["start_sector"]] * 65536
     gie {
         "map": map,
@@ -17,6 +18,10 @@ dae new_game(map) {
         "tics": 0,
         "sin": load_trig(),
         "cmap": make_cmap(),
+        "textures": assets["textures"],
+        "sky": assets["sky"],
+        "sprite_tex": assets["sprite_tex"],
+        "sprite_fullbright": [nae, nae, aye, nae],
     }
 }
 

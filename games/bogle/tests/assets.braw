@@ -1,0 +1,23 @@
+fetch "games/bogle/shell/replay"
+ken asset_game = new_game(load_map("games/bogle/data/stage3.map"))
+ken asset_names = ["granite", "flagstone_moss", "slate_under", "dungeon_brick", "oak_panel", "tapestry_thistle", "celtic_lintel", "cell_door", "portcullis", "peat_straw"]
+fer i in 0..10 {
+    ken data = read_bytes("games/bogle/data/tex_" + asset_names[i] + ".bog")
+    mak_siccar asset_game["textures"][i] == bytes_slice(data, 11, bytes_len(data))
+}
+ken asset_sprites = ["gamekeeper", "haggis", "tartan_ghost", "midges"]
+fer i in 0..4 {
+    ken data = read_bytes("games/bogle/data/spr_" + asset_sprites[i] + "_idle.bog")
+    mak_siccar asset_game["sprite_tex"][i] == bytes_slice(data, 11, bytes_len(data))
+}
+ken asset_sky = read_bytes("games/bogle/data/sky_highlands.bog")
+mak_siccar asset_game["sky"] == bytes_slice(asset_sky, 13, bytes_len(asset_sky))
+mak_siccar bytes_len(asset_game["cmap"]) == 8192
+ken asset_palette = make_palette()
+mak_siccar bytes_len(asset_palette) == 768
+mak_siccar bytes_get(asset_palette, 0) == 0
+mak_siccar bytes_get(asset_palette, 765) == 255
+mak_siccar bytes_get(asset_palette, 766) == 0
+mak_siccar bytes_get(asset_palette, 767) == 255
+mak_siccar asset_game["cmap"] == bytes_slice(read_bytes("games/bogle/data/colormap.bog"), 12, 8204)
+blether "ok baked texture table sprite sky palette and colour map assets load"

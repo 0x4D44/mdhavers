@@ -1,0 +1,20 @@
+fetch "games/bogle/tools/bake"
+# A lone bottom source pixel extends the crop, then disappears below the 50%
+# box-filter threshold. Reanchoring the visible feet must not copy past row95.
+ken sparse_rgba = bytes(256 * 20 * 4)
+fer pixel in 0..256 * 16 {
+    fer channel in 0..4 {
+        bytes_set(sparse_rgba, pixel * 4 + channel, 255)
+    }
+}
+fer channel in 0..4 {
+    bytes_set(sparse_rgba, 19 * 256 * 4 + channel, 255)
+}
+ken sparse_bog = bake_image({"w": 256, "h": 20, "rgba": sparse_rgba}, "sprite", bake_palette())
+mak_siccar bytes_len(sparse_bog) == 6155
+fer x in 0..64 {
+    mak_siccar bytes_get(sparse_bog, 11 + x * 96 + 91) == 255
+    mak_siccar bytes_get(sparse_bog, 11 + x * 96 + 92) == 15
+    mak_siccar bytes_get(sparse_bog, 11 + x * 96 + 95) == 15
+}
+blether "ok filtered transparent bottom rows retain feet without canvas overflow"
