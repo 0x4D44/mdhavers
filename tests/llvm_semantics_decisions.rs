@@ -373,6 +373,11 @@ ken malloc = [1, 2]
 dae f() {
     gie main + printf
 }
+# Naming every variable in a function keeps them all globals (RC7 phase B
+# makes a top-level name no function mentions a local of `main`).
+dae keep_global() {
+    gie [main, stdout, printf, malloc]
+}
 blether main
 blether stdout
 blether f()

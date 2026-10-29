@@ -1,4 +1,4 @@
-//! Conservative, syntax-only eligibility for RC-owned slots in `main`.
+//! Conservative, syntax-only eligibility for local slots in `main`.
 //!
 //! A name mentioned anywhere in a callable or class (including defaults and nested
 //! declarations) cannot become a main-local. Shadowing deliberately does not matter.

@@ -639,8 +639,8 @@ pub struct CodeGen<'ctx> {
     /// Global variable storage (name -> global pointer) - accessible from all functions
     globals: HashMap<String, PointerValue<'ctx>>,
 
-    /// RC-only entry-module declarations that no callable/class can name. They use
-    /// main's ordinary owning slots; imports disable this AST-proven optimisation.
+    /// Entry-module declarations that no callable/class can name. They use main's
+    /// ordinary local slots; imports disable this AST-proven optimisation.
     main_local_names: HashSet<String>,
 
     /// Shadow i64 storage for integer variables (optimization)
@@ -5248,9 +5248,7 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     fn compile_program(&mut self, program: &Program) -> Result<(), HaversError> {
-        if self.rc_enabled {
-            self.main_local_names = toplevel::main_local_names(program);
-        }
+        self.main_local_names = toplevel::main_local_names(program);
         // First pass: declare all functions/struct ctors and store default parameter values
         for stmt in &program.statements {
             match stmt {
@@ -14075,8 +14073,7 @@ impl<'ctx> CodeGen<'ctx> {
                 // Track the inferred type for optimization. A name whose type differs
                 // between its bindings stays Unknown, so it never gets shadow caches
                 // (MDH-BUG-FLU-00048).
-                let main_local = self.rc_enabled
-                    && self.main_local_names.contains(name)
+                let main_local = self.main_local_names.contains(name)
                     && self
                         .current_function
                         .is_some_and(|f| f.get_name().to_bytes() == b"main")
@@ -28345,9 +28342,7 @@ impl<'ctx> CodeGen<'ctx> {
             let is_top_level = !self.in_user_function
                 && self.current_class.is_none()
                 && self.loop_stack.is_empty()
-                && !(self.rc_enabled
-                    && self.main_local_names.contains(name)
-                    && !self.boxed_vars.contains(name));
+                && !(self.main_local_names.contains(name) && !self.boxed_vars.contains(name));
             let ptr = if is_top_level {
                 self.block_global_counter += 1;
                 let symbol = format!(

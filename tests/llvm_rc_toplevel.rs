@@ -1,6 +1,6 @@
 #![cfg(feature = "llvm")]
 
-/// Round 7 Change B: eligible entry-module globals become main locals under RC.
+/// Round 7 Change B: eligible entry-module globals become main locals with RC on or off.
 use std::fs;
 use std::io::Read;
 use std::path::Path;
@@ -24,19 +24,52 @@ struct Run {
     output_too_large: bool,
 }
 
-/// Runs with RC enabled, bounds the child at 30 seconds and 1 MiB combined output, and
-/// keeps stdin closed. Reader threads continue draining after the cap so a noisy child
-/// cannot block on a full pipe before the parent kills it.
-fn run_bounded(executable: &Path) -> Run {
-    let mut child = Command::new(executable)
+#[derive(Clone, Copy, Debug)]
+enum RcMode {
+    Off,
+    On,
+}
+
+/// Creates independently selectable tests for each compiler/runtime RC mode.
+macro_rules! rc_mode_test {
+    ($off_test:ident, $on_test:ident, $case:ident) => {
+        #[test]
+        fn $off_test() {
+            $case(RcMode::Off);
+        }
+
+        #[test]
+        fn $on_test() {
+            $case(RcMode::On);
+        }
+    };
+}
+
+/// Bounds the child at 30 seconds and 1 MiB combined output, and keeps stdin closed.
+/// Reader threads continue draining after the cap so a noisy child cannot block on a
+/// full pipe before the parent kills it. RC-related environment is set explicitly for
+/// each mode so the caller's environment cannot select or alter the test mode.
+fn run_bounded(executable: &Path, mode: RcMode) -> Run {
+    let mut command = Command::new(executable);
+    command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .env("MDH_RC", "1")
-        .env("MDH_RC_NOFREE", "1")
-        .env("MDH_RC_REPORT", "1")
-        .spawn()
-        .expect("spawn native test program");
+        .stderr(Stdio::piped());
+    match mode {
+        RcMode::On => {
+            command
+                .env("MDH_RC", "1")
+                .env("MDH_RC_NOFREE", "1")
+                .env("MDH_RC_REPORT", "1");
+        }
+        RcMode::Off => {
+            command
+                .env("MDH_RC", "0")
+                .env_remove("MDH_RC_NOFREE")
+                .env_remove("MDH_RC_REPORT");
+        }
+    }
+    let mut child = command.spawn().expect("spawn native test program");
 
     let output_bytes = Arc::new(AtomicUsize::new(0));
     let too_large = Arc::new(AtomicBool::new(false));
@@ -104,7 +137,7 @@ fn drain_output<R: Read + Send + 'static>(
     })
 }
 
-fn run_native(source: &str, modules: &[(&str, &str)]) -> Run {
+fn run_native(source: &str, modules: &[(&str, &str)], mode: RcMode) -> Run {
     let scratch = Path::new(env!("CARGO_MANIFEST_DIR")).join(".scratch");
     fs::create_dir_all(&scratch).expect("create worktree scratch directory");
     let dir = Builder::new()
@@ -120,48 +153,53 @@ fn run_native(source: &str, modules: &[(&str, &str)]) -> Run {
     let executable = dir.path().join("rc_toplevel_exe");
 
     LLVMCompiler::new()
-        .with_refcounting(true)
+        .with_refcounting(matches!(mode, RcMode::On))
         .compile_to_native_with_source(&program, &executable, 2, Some(&main_path))
-        .expect("compile RC-enabled native program at -O2");
-    let run = run_bounded(&executable);
+        .expect("compile native program at -O2");
+    let run = run_bounded(&executable, mode);
 
     // TempDir removes the executable and generated object/source files beside it here.
     drop(dir);
     run
 }
 
-fn assert_exact_run(source: &str, modules: &[(&str, &str)], expected: &str) {
-    let run = run_native(source, modules);
-    assert!(!run.timed_out, "native test program exceeded 30 seconds");
+fn assert_exact_run(source: &str, modules: &[(&str, &str)], expected: &str, mode: RcMode) {
+    let run = run_native(source, modules, mode);
+    assert!(
+        !run.timed_out,
+        "native test program exceeded 30 seconds with {mode:?}"
+    );
     assert!(
         !run.output_too_large,
-        "native test program exceeded 1 MiB output"
+        "native test program exceeded 1 MiB output with {mode:?}"
     );
-    assert_eq!(run.code, Some(0), "{}", run.stderr);
-    assert_eq!(run.stdout, expected, "{}", run.stderr);
-    let report = run
-        .stderr
-        .lines()
-        .find(|line| line.starts_with("mdhavers rc: live at exit:"))
-        .unwrap_or_else(|| panic!("no RC report in stderr: {}", run.stderr));
-    let total = report
-        .split(" total=")
-        .nth(1)
-        .and_then(|tail| tail.split_whitespace().next())
-        .unwrap_or_else(|| panic!("no total in RC report: {report}"));
-    assert_eq!(total, "0", "{}", run.stderr);
+    assert_eq!(run.code, Some(0), "mode: {mode:?}\n{}", run.stderr);
+    assert_eq!(run.stdout, expected, "mode: {mode:?}\n{}", run.stderr);
+    if matches!(mode, RcMode::On) {
+        let report = run
+            .stderr
+            .lines()
+            .find(|line| line.starts_with("mdhavers rc: live at exit:"))
+            .unwrap_or_else(|| panic!("no RC report in stderr: {}", run.stderr));
+        let total = report
+            .split(" total=")
+            .nth(1)
+            .and_then(|tail| tail.split_whitespace().next())
+            .unwrap_or_else(|| panic!("no total in RC report: {report}"));
+        assert_eq!(total, "0", "{}", run.stderr);
+    }
 }
 
-fn compile_ir(source: &str) -> String {
+fn compile_ir(source: &str, mode: RcMode) -> String {
     let program = parse(source).expect("parse source for IR assertion");
     LLVMCompiler::new()
-        .with_refcounting(true)
+        .with_refcounting(matches!(mode, RcMode::On))
         .compile_to_ir(&program)
-        .expect("compile source to RC-enabled IR")
+        .expect("compile source to IR")
 }
 
-fn assert_top_level_global(source: &str, name: &str) {
-    let ir = compile_ir(source);
+fn assert_top_level_global(source: &str, name: &str, mode: RcMode) {
+    let ir = compile_ir(source, mode);
     assert!(
         ir.contains(&format!("@__mdh_global_{name}")),
         "a top-level variable referenced outside main must remain global: {name}"
@@ -313,8 +351,7 @@ fn int_shadow_sync_reaches_entry_value_slot(body: &str, load_prefix: &str) -> bo
     })
 }
 
-#[test]
-fn b1_functions_that_read_and_write_a_top_level_binding_keep_it_shared() {
+fn b1_functions_that_read_and_write_a_top_level_binding_keep_it_shared(mode: RcMode) {
     let source = r#"
 ken message = "old" + ""
 dae read_message() { gie message }
@@ -323,12 +360,16 @@ blether read_message()
 write_message("new" + "")
 blether read_message()
 "#;
-    assert_top_level_global(source, "message");
-    assert_exact_run(source, &[], "old\nnew\n");
+    assert_top_level_global(source, "message", mode);
+    assert_exact_run(source, &[], "old\nnew\n", mode);
 }
+rc_mode_test!(
+    b1_functions_that_read_and_write_a_top_level_binding_keep_it_shared_rc_off,
+    b1_functions_that_read_and_write_a_top_level_binding_keep_it_shared_rc_on,
+    b1_functions_that_read_and_write_a_top_level_binding_keep_it_shared
+);
 
-#[test]
-fn b2_a_top_level_binding_captured_by_a_lambda_stays_shared() {
+fn b2_a_top_level_binding_captured_by_a_lambda_stays_shared(mode: RcMode) {
     let source = r#"
 ken message = "old" + ""
 ken read_message = || { gie message }
@@ -336,12 +377,16 @@ blether read_message()
 message = "new" + ""
 blether read_message()
 "#;
-    assert_top_level_global(source, "message");
-    assert_exact_run(source, &[], "old\nnew\n");
+    assert_top_level_global(source, "message", mode);
+    assert_exact_run(source, &[], "old\nnew\n", mode);
 }
+rc_mode_test!(
+    b2_a_top_level_binding_captured_by_a_lambda_stays_shared_rc_off,
+    b2_a_top_level_binding_captured_by_a_lambda_stays_shared_rc_on,
+    b2_a_top_level_binding_captured_by_a_lambda_stays_shared
+);
 
-#[test]
-fn b3_a_thread_function_can_read_a_top_level_binding() {
+fn b3_a_thread_function_can_read_a_top_level_binding(mode: RcMode) {
     let source = r#"
 ken message = "from-main" + ""
 dae worker() {
@@ -350,12 +395,16 @@ dae worker() {
 }
 blether thread_join(thread_spawn(worker, []))
 "#;
-    assert_top_level_global(source, "message");
-    assert_exact_run(source, &[], "from-main\n7\n");
+    assert_top_level_global(source, "message", mode);
+    assert_exact_run(source, &[], "from-main\n7\n", mode);
 }
+rc_mode_test!(
+    b3_a_thread_function_can_read_a_top_level_binding_rc_off,
+    b3_a_thread_function_can_read_a_top_level_binding_rc_on,
+    b3_a_thread_function_can_read_a_top_level_binding
+);
 
-#[test]
-fn b4_a_method_can_read_a_top_level_binding() {
+fn b4_a_method_can_read_a_top_level_binding(mode: RcMode) {
     let source = r#"
 ken material = "oak" + ""
 kin Reader {
@@ -366,12 +415,16 @@ blether reader.read()
 material = "pine" + ""
 blether reader.read()
 "#;
-    assert_top_level_global(source, "material");
-    assert_exact_run(source, &[], "oak\npine\n");
+    assert_top_level_global(source, "material", mode);
+    assert_exact_run(source, &[], "oak\npine\n", mode);
 }
+rc_mode_test!(
+    b4_a_method_can_read_a_top_level_binding_rc_off,
+    b4_a_method_can_read_a_top_level_binding_rc_on,
+    b4_a_method_can_read_a_top_level_binding
+);
 
-#[test]
-fn b5_function_parameter_defaults_resolve_in_the_callee_globals() {
+fn b5_function_parameter_defaults_resolve_in_the_callee_globals(mode: RcMode) {
     assert_exact_run(
         r#"
 ken default_name = "before" + ""
@@ -382,11 +435,16 @@ blether choose()
 "#,
         &[],
         "before\nafter\n",
+        mode,
     );
 }
+rc_mode_test!(
+    b5_function_parameter_defaults_resolve_in_the_callee_globals_rc_off,
+    b5_function_parameter_defaults_resolve_in_the_callee_globals_rc_on,
+    b5_function_parameter_defaults_resolve_in_the_callee_globals
+);
 
-#[test]
-fn b5_method_parameter_defaults_resolve_in_the_callee_globals() {
+fn b5_method_parameter_defaults_resolve_in_the_callee_globals(mode: RcMode) {
     assert_exact_run(
         r#"
 ken default_name = "before" + ""
@@ -400,11 +458,16 @@ blether reader.read()
 "#,
         &[],
         "before\nafter\n",
+        mode,
     );
 }
+rc_mode_test!(
+    b5_method_parameter_defaults_resolve_in_the_callee_globals_rc_off,
+    b5_method_parameter_defaults_resolve_in_the_callee_globals_rc_on,
+    b5_method_parameter_defaults_resolve_in_the_callee_globals
+);
 
-#[test]
-fn b5_constructor_parameter_defaults_resolve_in_the_callee_globals() {
+fn b5_constructor_parameter_defaults_resolve_in_the_callee_globals(mode: RcMode) {
     assert_exact_run(
         r#"
 ken default_name = "before" + ""
@@ -420,11 +483,16 @@ blether second.read()
 "#,
         &[],
         "before\nafter\n",
+        mode,
     );
 }
+rc_mode_test!(
+    b5_constructor_parameter_defaults_resolve_in_the_callee_globals_rc_off,
+    b5_constructor_parameter_defaults_resolve_in_the_callee_globals_rc_on,
+    b5_constructor_parameter_defaults_resolve_in_the_callee_globals
+);
 
-#[test]
-fn b5_function_value_defaults_resolve_in_the_callee_globals() {
+fn b5_function_value_defaults_resolve_in_the_callee_globals(mode: RcMode) {
     assert_exact_run(
         r#"
 ken default_name = "before" + ""
@@ -436,11 +504,16 @@ blether indirect()
 "#,
         &[],
         "before\nafter\n",
+        mode,
     );
 }
+rc_mode_test!(
+    b5_function_value_defaults_resolve_in_the_callee_globals_rc_off,
+    b5_function_value_defaults_resolve_in_the_callee_globals_rc_on,
+    b5_function_value_defaults_resolve_in_the_callee_globals
+);
 
-#[test]
-fn b6_a_top_level_local_written_before_an_error_is_current_in_handler_and_after() {
+fn b6_a_top_level_local_written_before_an_error_is_current_in_handler_and_after(mode: RcMode) {
     assert_exact_run(
         r#"
 ken message = "before" + ""
@@ -455,11 +528,16 @@ blether message
 "#,
         &[],
         "written\nwritten\n",
+        mode,
     );
 }
+rc_mode_test!(
+    b6_a_top_level_local_written_before_an_error_is_current_in_handler_and_after_rc_off,
+    b6_a_top_level_local_written_before_an_error_is_current_in_handler_and_after_rc_on,
+    b6_a_top_level_local_written_before_an_error_is_current_in_handler_and_after
+);
 
-#[test]
-fn b7_fetch_keeps_importer_bindings_shared_with_module_initialization_and_functions() {
+fn b7_fetch_keeps_importer_bindings_shared_with_module_initialization_and_functions(mode: RcMode) {
     let modules = [(
         "reader.braw",
         r#"
@@ -481,11 +559,18 @@ blether reader.read_entry_message()
 "#,
         &modules,
         "init:from-entry\nfrom-entry\nupdated-entry\n",
+        mode,
     );
 }
+rc_mode_test!(
+    b7_fetch_keeps_importer_bindings_shared_with_module_initialization_and_functions_rc_off,
+    b7_fetch_keeps_importer_bindings_shared_with_module_initialization_and_functions_rc_on,
+    b7_fetch_keeps_importer_bindings_shared_with_module_initialization_and_functions
+);
 
-#[test]
-fn b8_imported_bindings_share_writes_both_ways_and_preserve_cache_and_name_collisions() {
+fn b8_imported_bindings_share_writes_both_ways_and_preserve_cache_and_name_collisions(
+    mode: RcMode,
+) {
     let modules = [
         (
             "alpha.braw",
@@ -532,12 +617,19 @@ blether alpha.get()
         &modules,
         "alpha-init:from-entry\nalpha-zero\nbeta-zero\nalpha-zero\nfrom-entry\nfrom-module\nfrom-module\n\
          beta-zero\nshadow\nfrom-module\nbeta-updated\nfrom-module\n",
+        mode,
     );
 }
+rc_mode_test!(
+    b8_imported_bindings_share_writes_both_ways_and_preserve_cache_and_name_collisions_rc_off,
+    b8_imported_bindings_share_writes_both_ways_and_preserve_cache_and_name_collisions_rc_on,
+    b8_imported_bindings_share_writes_both_ways_and_preserve_cache_and_name_collisions
+);
 
-#[test]
-fn eligible_closure_benchmark_bindings_are_main_allocas_and_function_references_are_globals() {
-    let ir = compile_ir(include_str!("../benchmarks/rc/closure.braw"));
+fn eligible_closure_benchmark_bindings_are_main_allocas_and_function_references_are_globals(
+    mode: RcMode,
+) {
+    let ir = compile_ir(include_str!("../benchmarks/rc/closure.braw"), mode);
     let main = function_body(&ir, "main");
     for name in ["fs", "s", "r", "f"] {
         assert!(
@@ -559,10 +651,17 @@ fn eligible_closure_benchmark_bindings_are_main_allocas_and_function_references_
         int_shadow_sync_reaches_entry_value_slot(main, "r_sync"),
         "r's int-shadow sync does not reach its MdhValue entry alloca:\n{main}"
     );
-    assert!(
-        list_value_entry_store_count(main) >= 2,
-        "fs's list value is not stored in both its temporary and owned main slot:\n{main}"
-    );
+    let fs_list_value_stores = list_value_entry_store_count(main);
+    match mode {
+        RcMode::On => assert!(
+            fs_list_value_stores >= 2,
+            "RC-on fs's list value is not stored in both its temporary and owned main slot:\n{main}"
+        ),
+        RcMode::Off => assert!(
+            fs_list_value_stores >= 1,
+            "RC-off fs's list value is not stored in its main binding alloca:\n{main}"
+        ),
+    }
 
     let shared_ir = compile_ir(
         r#"
@@ -570,15 +669,20 @@ ken shared_message = "global"
 dae read_message() { gie shared_message }
 blether read_message()
 "#,
+        mode,
     );
     assert!(
         shared_ir.contains("@__mdh_global_shared_message"),
         "a top-level variable referenced by a function must remain global"
     );
 }
+rc_mode_test!(
+    eligible_closure_benchmark_bindings_are_main_allocas_and_function_references_are_globals_rc_off,
+    eligible_closure_benchmark_bindings_are_main_allocas_and_function_references_are_globals_rc_on,
+    eligible_closure_benchmark_bindings_are_main_allocas_and_function_references_are_globals
+);
 
-#[test]
-fn deeply_nested_defaults_and_assignment_targets_keep_their_top_level_name_global() {
+fn deeply_nested_defaults_and_assignment_targets_keep_their_top_level_name_global(mode: RcMode) {
     let ir = compile_ir(
         r#"
 ken guarded_name = "global" + ""
@@ -594,9 +698,15 @@ dae outer() {
 }
 blether guarded_name
 "#,
+        mode,
     );
     assert!(
         ir.contains("@__mdh_global_guarded_name"),
         "a deep nested default and assignment target must retain the global binding"
     );
 }
+rc_mode_test!(
+    deeply_nested_defaults_and_assignment_targets_keep_their_top_level_name_global_rc_off,
+    deeply_nested_defaults_and_assignment_targets_keep_their_top_level_name_global_rc_on,
+    deeply_nested_defaults_and_assignment_targets_keep_their_top_level_name_global
+);
