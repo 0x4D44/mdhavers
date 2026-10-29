@@ -19,6 +19,19 @@ dae init_doors(g) {
             shove(g["doors"], {"sector": s, "target": max(m["floor_h"][s], target), "state": "closed", "timer": 0})
         }
     }
+    # A closed door is the upper wall band on the room side of its portal.
+    # Give both approaches a face, while preserving explicitly authored art.
+    # Iron-key gallery doors use the cell door; courtyard/battlement gates bars.
+    fer wall in 0..len(m["portal"]) {
+        ken next = m["portal"][wall]
+        gin next >= 0 an m["kind"][next] == 1 an m["upper_tex"][wall] == 0 {
+            ken face = 8
+            gin m["tag"][next] == 1 {
+                face = 7
+            }
+            m["upper_tex"][wall] = face
+        }
+    }
     # Compute every target before closing any neighbouring door.
     fer d in g["doors"] {
         m["ceil_h"][d["sector"]] = m["floor_h"][d["sector"]]
@@ -51,16 +64,24 @@ dae door_occupied(g, sector) {
     gie nae
 }
 
+# The use target is shared with the shell hint, including the 64-unit endpoint.
+# This trace reads game state without opening a door or changing its message.
+dae bogle_use_sector(g) {
+    ken m = g["map"]
+    ken tx = g["x"] + 64 * bogle_cos(g["sin"], g["angle"])
+    ken ty = g["y"] + 64 * bogle_sin(g["sin"], g["angle"])
+    ken hit = bogle_trace(g, g["x"], g["y"], g["view_z"], g["sector"], tx, ty, g["view_z"], aye)
+    ken selected = hit[0]
+    gin hit[1] >= 0 {
+        selected = m["portal"][hit[1]]
+    }
+    gie selected
+}
+
 dae doors_tick(g, use) {
     ken m = g["map"]
     gin use {
-        ken tx = g["x"] + 64 * bogle_cos(g["sin"], g["angle"])
-        ken ty = g["y"] + 64 * bogle_sin(g["sin"], g["angle"])
-        ken hit = bogle_trace(g, g["x"], g["y"], g["view_z"], g["sector"], tx, ty, g["view_z"], aye)
-        ken selected = hit[0]
-        gin hit[1] >= 0 {
-            selected = m["portal"][hit[1]]
-        }
+        ken selected = bogle_use_sector(g)
         fer d in g["doors"] {
             gin d["sector"] == selected {
                 ken lock = m["tag"][selected]

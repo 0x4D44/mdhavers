@@ -1,4 +1,4 @@
-//! Engine unit fixtures must agree in the interpreter and LLVM native backend.
+//! Engine and front-end unit fixtures must agree in the interpreter and LLVM native backend.
 
 #![cfg(feature = "cli")]
 
@@ -471,6 +471,19 @@ floor
         6,
         "forbidden tokens were not all reported: {findings:?}"
     );
+}
+
+#[test]
+fn frontend_state_and_render_sources_stay_pure_integer_and_headless() {
+    for name in ["frontend", "onboarding"] {
+        let path = root().join(format!("games/bogle/shell/{name}.braw"));
+        let source = std::fs::read_to_string(&path).expect("read front-end source");
+        let violations = bogle_scan_braw_source(&source, &path.display().to_string());
+        assert!(
+            violations.is_empty(),
+            "front-end must be host-independent: {violations:?}"
+        );
+    }
 }
 
 #[test]

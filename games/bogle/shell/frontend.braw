@@ -1,0 +1,254 @@
+# Pure front end. Hosts supply held menu bits (up1/down2/accept4/back8/any16),
+# replay gameplay keys and mouse dx. No bridge or clock calls belong here.
+fetch "replay"
+fetch "onboarding"
+
+dae bogle_front_new(map_path) {
+    gie {
+        "screen": "splash",
+        "selection": 0,
+        "return": "title",
+        "map_path": map_path,
+        "game": naething,
+        "last_menu": 0,
+        "blocked_keys": 0,
+        "accumulator": 0,
+        "pending_dx": 0,
+        "run": 0,
+        "consumed": [],
+    }
+}
+
+dae bogle_front_screen(ui, screen) {
+    ui["screen"] = screen
+    ui["selection"] = 0
+    ui["accumulator"] = 0
+    ui["pending_dx"] = 0
+}
+
+dae bogle_front_start(ui) {
+    # Reload pristine geometry: doors mutate their map's ceiling heights.
+    ui["game"] = new_game(load_map(ui["map_path"]))
+    ui["run"] = ui["run"] + 1
+    bogle_front_screen(ui, "play")
+}
+
+dae bogle_front_items(screen) {
+    gin screen == "title" {
+        gie ["New Game", "Controls", "Quit"]
+    }
+    gin screen == "pause" {
+        gie ["Resume", "Restart Level", "Controls", "Quit"]
+    }
+    gin screen == "dead" {
+        gie ["Restart", "Back to Title"]
+    }
+    gin screen == "complete" {
+        gie ["Restart", "Back to Title"]
+    }
+    gie []
+}
+
+dae bogle_front_step(ui, dt_ms, input) {
+    ui["consumed"] = []
+    ken menu = input["menu"]
+    ken pressed = bit_an(menu, bit_xor(ui["last_menu"], 31))
+    ui["last_menu"] = menu
+    ken keys = input["keys"]
+    ui["blocked_keys"] = bit_an(ui["blocked_keys"], keys)
+    gin ui["screen"] == "quit" {
+        gie nae
+    }
+    gin ui["screen"] != "play" {
+        # A held Space or mouse button used in a menu must be released to fire.
+        ui["blocked_keys"] = bit_or(ui["blocked_keys"], keys)
+        gin ui["screen"] == "splash" {
+            gin pressed != 0 {
+                bogle_front_screen(ui, "title")
+            }
+            gie aye
+        }
+        gin ui["screen"] == "controls" {
+            gin bit_an(pressed, 12) != 0 {
+                bogle_front_screen(ui, ui["return"])
+            }
+            gie aye
+        }
+        gin bit_an(pressed, 8) != 0 {
+            gin ui["screen"] == "pause" {
+                bogle_front_screen(ui, "play")
+            } ither gin ui["screen"] == "dead" or ui["screen"] == "complete" {
+                bogle_front_screen(ui, "title")
+            }
+            gie aye
+        }
+        ken items = bogle_front_items(ui["screen"])
+        gin bit_an(pressed, 1) != 0 {
+            ui["selection"] = (ui["selection"] + len(items) - 1) % len(items)
+        }
+        gin bit_an(pressed, 2) != 0 {
+            ui["selection"] = (ui["selection"] + 1) % len(items)
+        }
+        gin bit_an(pressed, 4) != 0 {
+            ken action = items[ui["selection"]]
+            gin action == "New Game" or action == "Restart" or action == "Restart Level" {
+                bogle_front_start(ui)
+            } ither gin action == "Resume" {
+                bogle_front_screen(ui, "play")
+            } ither gin action == "Controls" {
+                ui["return"] = ui["screen"]
+                bogle_front_screen(ui, "controls")
+            } ither gin action == "Back to Title" {
+                bogle_front_screen(ui, "title")
+            } ither gin action == "Quit" {
+                bogle_front_screen(ui, "quit")
+            }
+        }
+        gie ui["screen"] != "quit"
+    }
+    ken g = ui["game"]
+    gin g["health"] <= 0 {
+        bogle_front_screen(ui, "dead")
+        gie aye
+    }
+    gin g["won"] {
+        bogle_front_screen(ui, "complete")
+        gie aye
+    }
+    gin bit_an(pressed, 8) != 0 {
+        ui["blocked_keys"] = bit_or(ui["blocked_keys"], keys)
+        bogle_front_screen(ui, "pause")
+        gie aye
+    }
+    keys = bit_an(keys, bit_xor(ui["blocked_keys"], 4095))
+    # Keep queued rotation bounded even across frames with no due tic.
+    ui["pending_dx"] = bogle_angle(ui["pending_dx"] + bogle_angle(input["dx"]))
+    ken elapsed = max(0, dt_ms)
+    ui["accumulator"] = ui["accumulator"] + elapsed % 1000 * 35
+    ken due = min(4, elapsed / 1000 * 35 + ui["accumulator"] / 1000)
+    ui["accumulator"] = ui["accumulator"] % 1000
+    fer i in 0..due {
+        ken sample = {"keys": keys, "dx": ui["pending_dx"]}
+        ui["pending_dx"] = 0
+        tic(g, sample)
+        shove(ui["consumed"], sample)
+        gin g["health"] <= 0 {
+            bogle_front_screen(ui, "dead")
+            brak
+        }
+        gin g["won"] {
+            bogle_front_screen(ui, "complete")
+            brak
+        }
+    }
+    gie aye
+}
+
+# Menus are laid out at the game's 320x200 design size, then nearest-scaled
+# for small headless buffers. They use the same font and indexed palette.
+dae bogle_front_box(fb, left, top, width, height, ink) {
+    fer y in top..top + height {
+        fer x in left..left + width {
+            bytes_set(fb, y * 320 + x, ink)
+        }
+    }
+}
+
+dae bogle_front_text(fb, y, text, ink = 15, scale = 1) {
+    ken left = max(0, (320 - (len(text) * 4 - 1) * scale) / 2)
+    bogle_text(fb, 320, 200, left, y, text, ink, scale)
+}
+
+dae bogle_front_render(ui, fb, w, h) {
+    ken screen = ui["screen"]
+    gin screen == "play" {
+        render(ui["game"], fb, w, h)
+        ken prompt = bogle_door_prompt(ui["game"])
+        gin len(prompt) > 0 {
+            ken scale = max(1, min(w / 320, h / 200))
+            ken left = max(0, (w - (len(prompt) * 4 - 1) * scale) / 2)
+            # Above the crosshair and the highest weapon tip at 320x200.
+            ken top = max(2 * scale, h / 2 - 28 * scale)
+            fer y in top - 2 * scale..top + 7 * scale {
+                fer x in left..min(w, left + len(prompt) * 4 * scale) {
+                    gin y >= 0 an y < h {
+                        bytes_set(fb, y * w + x, 0)
+                    }
+                }
+            }
+            bogle_text(fb, w, h, left, top, prompt, 15, scale)
+        } ither gin ui["game"]["tics"] < 210 {
+            bogle_text(fb, w, h, 4, 15, "FIND THE GATE. E OPENS DOORS.", 15, 1)
+        }
+        gie naething
+    }
+    ken canvas = bytes(320 * 200)
+    gin screen == "splash" or screen == "title" {
+        gin nae contains(bogle_asset_cache, "title") {
+            bogle_asset_cache["title"] = bogle_asset("title_castle", 160, 100)
+        }
+        ken art = bogle_asset_cache["title"]
+        fer y in 0..200 {
+            fer x in 0..320 {
+                bytes_set(canvas, y * 320 + x, bytes_get(art, (x / 2) * 100 + y / 2))
+            }
+        }
+        bogle_front_box(canvas, 58, 12, 204, 30, 0)
+        bogle_front_text(canvas, 20, "BOGLE CASTLE", 15, 3)
+    } ither {
+        bogle_front_box(canvas, 12, 10, 296, 180, 2)
+        bogle_front_box(canvas, 15, 13, 290, 174, 0)
+    }
+    gin screen == "splash" {
+        bogle_front_box(canvas, 80, 167, 160, 18, 0)
+        bogle_front_text(canvas, 173, "Press ony key", 15, 2)
+    } ither gin screen == "controls" {
+        bogle_front_text(canvas, 24, "CONTROLS", 15, 2)
+        ken lines = ["WASD - MOVE", "MOUSE OR LEFT RIGHT - TURN", "E - OPEN DOORS AND USE EXIT", "SPACE OR LEFT MOUSE - FIRE", "1-4 - SELECT OWNED WEAPON", "BAGPIPES - HOLD FIRE THEN RELEASE", "ESCAPE - PAUSE OR RESUME", "MENUS - ARROWS OR W S", "ENTER OR SPACE - CHOOSE"]
+        ken y = 48
+        fer line in lines {
+            bogle_front_text(canvas, y, line)
+            y = y + 12
+        }
+        bogle_front_text(canvas, 168, "ENTER SPACE OR ESCAPE - BACK", 13)
+    } ither {
+        ken heading = "THE GATEHOUSE"
+        gin screen == "pause" {
+            heading = "PAUSED"
+        }
+        gin screen == "dead" {
+            heading = "YE'RE DEID!"
+        }
+        gin screen == "complete" {
+            heading = "GATEHOUSE COMPLETE!"
+        }
+        gin screen != "title" {
+            bogle_front_text(canvas, 28, heading, 15, 2)
+        }
+        gin screen == "dead" or screen == "complete" {
+            bogle_front_text(canvas, 52, "TIME " + tae_string(ui["game"]["tics"] / 35) + " SECONDS", 13)
+        }
+        ken items = bogle_front_items(screen)
+        ken y = 80
+        gin screen == "title" {
+            bogle_front_box(canvas, 82, 70, 156, 86, 0)
+        }
+        fer i in 0..len(items) {
+            ken label = items[i]
+            ken ink = 13
+            gin i == ui["selection"] {
+                label = "- " + label + " -"
+                ink = 15
+            }
+            bogle_front_text(canvas, y, label, ink, 2)
+            y = y + 22
+        }
+        bogle_front_box(canvas, 54, 176, 212, 13, 0)
+        bogle_front_text(canvas, 180, "ARROWS OR W S - ENTER OR SPACE", 15)
+    }
+    fer y in 0..h {
+        fer x in 0..w {
+            bytes_set(fb, y * w + x, bytes_get(canvas, (y * 200 / h) * 320 + x * 320 / w))
+        }
+    }
+}

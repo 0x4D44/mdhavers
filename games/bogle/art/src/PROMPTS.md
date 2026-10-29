@@ -2272,3 +2272,63 @@ Broad simple uneven granite-like blocks with softly chipped corners and broad op
 One file made: `tex_chapel_stone.png`, accepted attempt 4, opaque 256×256 PNG. One rejection: attempt 3 retained the mismatched top-bottom masonry join. Two images generated in total; no further generation was needed. All 44 manifest source-art files now exist; zero manifest lines remain.
 
 Every pre-existing art file is unchanged, verified against starting SHA-256 hashes, and the prior prompt log is preserved as an unchanged prefix. No cargo or git write commands were run, and code was written only under `.scratch`. Full prompts and source-edge measurements are preserved in `.scratch/art2-session10-*`. The design section 4.4 baked-64×64 and 3×3 tiled-preview review remains for the lead before committing textures; no baker was run in this source-art session.
+
+### Session 11 title-screen art — 2026-10-29
+
+Two built-in imagegen outputs were generated: a first castle scene and a targeted style edit. Both were opaque and composed as wide 8:5 title backgrounds with open upper-centre sky. The first output was rejected because its fine realistic stonework and detailed painterly rendering did not match the game's chunky outlined art. The second output was accepted after copying it to `title_castle.png`, reducing it to 320×200 with `sips`, and reviewing that saved reduced copy.
+
+### title_castle.png
+
+Attempt 1 — rejected (refined by attempt 2).
+
+Review: The 320×200 reduction had a clear central castle, loch and open sky for the title overlay, with no text. Its detailed realistic stonework and painterly rendering were too fine for the project's chunky comic style at the intended small display size.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+Wide 8:5 landscape title-screen background for a friendly spooky Scottish castle game. A single
+large, crooked but welcoming Scottish stone castle dominates the middle distance, with chunky
+granite walls, a broad central keep, a few squat uneven towers and simple roof silhouettes.
+Set it among low Highland hills beneath a deep indigo and heather-purple twilight sky, with a
+simple dark loch and rocky foreground. Keep the castle silhouette bold and readable when the
+whole image is reduced to 160x100 pixels. Leave a broad, visually calm patch of open twilight
+sky across the upper centre for the game title to be overlaid later. Match the project's chunky
+hand-painted game-art look with broad colour facets and thick charcoal outlines; use clear
+large shapes and restrained detail. Opaque edge-to-edge illustration. No people, creatures,
+weapons, lettering, symbols, logos, border, signature or watermark.
+~~~
+
+Attempt 2 — accepted (targeted style edit).
+
+Review: Reviewed the saved 320×200 source. The castle silhouette, open upper-centre title area, Highland hills and loch remain clear at reduced size. Broad painted facets and bold dark outlines now match the game's comic style. The image is opaque and has no lettering, border or signature.
+
+Full prompt (verbatim):
+
+~~~text
+Edit Image 1, preserving its wide 8:5 composition and the same general arrangement: a central
+Scottish castle on a rocky island above a loch, low Highland hills, and open twilight sky across
+the upper centre for a title overlay. Change the rendering style only. Match this style exactly:
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+Simplify the castle, hills, loch and foreground into broad, flat painted colour shapes with bold
+charcoal outlines and only a few large facets. Make the castle crooked and welcoming, with a
+friendly spooky mood. Keep the complete castle silhouette readable at 160x100 pixels and the
+upper centre sky calm enough for a title to be overlaid. Remove realistic texture, tiny windows,
+fine stonework, photographic detail, dramatic lighting and painterly gradients. Opaque,
+edge-to-edge game illustration. No lettering, people, creatures, symbols, border, signature or
+watermark.
+~~~
+
+Baked output: `games/bogle/data/title_castle.bog`, 160×100 BOG1 with column-major payload. Rebuild with `games/bogle/tools/bake_title.braw`.

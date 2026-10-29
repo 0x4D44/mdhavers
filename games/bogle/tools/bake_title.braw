@@ -1,0 +1,11 @@
+# Offline title-art baker. Fetch this file to access the shared BOG helpers.
+fetch "games/bogle/tools/bake"
+
+ken image = png_decode(read_bytes("games/bogle/art/src/title_castle.png"))
+ken palette = bake_palette()
+ken mask = bake_mask(image, nae)
+ken pixels = bake_filter(image, mask, palette, 0, 0, image["w"], image["h"], 160, 100, nae)
+ken baked = bake_make_bog(160, 100, bake_column_major(160, 100, pixels))
+
+write_bytes("games/bogle/data/title_castle.bog", baked)
+blether "Baked title_castle.bog at 160x100"

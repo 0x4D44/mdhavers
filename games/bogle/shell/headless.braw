@@ -1,6 +1,6 @@
 # Native: headless <map> <replay> <w> <h> <every>.
 # The interpreter CLI accepts only a source path; BOGLE_* supplies the same inputs.
-fetch "replay"
+fetch "frontend_replay"
 ken headless_map = bogle_option("BOGLE_MAP", "games/bogle/data/test.map")
 ken headless_replay = bogle_option("BOGLE_REPLAY", "games/bogle/replays/stage2.txt")
 ken headless_w = bogle_option("BOGLE_W", "80")
@@ -14,12 +14,16 @@ gin len(headless_args) == 6 {
     headless_h = headless_args[4]
     headless_every = headless_args[5]
 }
-ken headless_game = run_replay(headless_map, headless_replay, map_integer(headless_w), map_integer(headless_h), map_integer(headless_every), map_integer(bogle_option("BOGLE_LIMIT", "0")))
-gin bogle_option("BOGLE_REQUIRE_EXIT", "0") == "1" {
-    mak_siccar headless_game["won"]
-    mak_siccar headless_game["health"] > 0
-    mak_siccar headless_game["keys"] == 3
-    fer owned in headless_game["owned"] {
-        mak_siccar owned
+gin bogle_option("BOGLE_FRONTEND", "0") == "1" {
+    bogle_front_replay(headless_map, headless_replay, map_integer(headless_w), map_integer(headless_h))
+} ither {
+    ken headless_game = run_replay(headless_map, headless_replay, map_integer(headless_w), map_integer(headless_h), map_integer(headless_every), map_integer(bogle_option("BOGLE_LIMIT", "0")))
+    gin bogle_option("BOGLE_REQUIRE_EXIT", "0") == "1" {
+        mak_siccar headless_game["won"]
+        mak_siccar headless_game["health"] > 0
+        mak_siccar headless_game["keys"] == 3
+        fer owned in headless_game["owned"] {
+            mak_siccar owned
+        }
     }
 }

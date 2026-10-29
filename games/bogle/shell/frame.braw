@@ -1,12 +1,10 @@
-fetch "replay"
+fetch "frontend"
 
-ken bogle_game = naething
+ken bogle_ui = naething
 ken bogle_fb = naething
 ken bogle_palette = naething
 ken bogle_width = 320
 ken bogle_height = 200
-ken bogle_accumulator = 0
-ken bogle_pending_dx = 0
 ken bogle_record = naething
 
 dae bogle_init(w, h) {
@@ -14,9 +12,7 @@ dae bogle_init(w, h) {
     bogle_height = h
     bogle_fb = bytes(w * h)
     bogle_palette = make_palette()
-    bogle_game = new_game(load_map(bogle_option("BOGLE_MAP", "games/bogle/data/e1m1.map")))
-    bogle_accumulator = 0
-    bogle_pending_dx = 0
+    bogle_ui = bogle_front_new(bogle_option("BOGLE_MAP", "games/bogle/data/e1m1.map"))
     bogle_record = env_get("BOGLE_RECORD")
     ken options = args()
     fer i in 0..len(options) {
@@ -27,18 +23,11 @@ dae bogle_init(w, h) {
             bogle_record = options[i + 1]
         }
     }
-    gin bogle_record != naething {
-        scrieve(bogle_record, "")
-    }
     screen_open(w, h, "Bogle Castle - The Gatehouse")
-    screen_grab_mouse(aye)
+    screen_grab_mouse(nae)
 }
 
 dae bogle_frame(dt_ms) {
-    gin key_down("escape") {
-        screen_grab_mouse(nae)
-        gie nae
-    }
     ken keys = 0
     gin key_down("w") {
         keys = keys + 1
@@ -69,24 +58,52 @@ dae bogle_frame(dt_ms) {
             keys = keys + 128 * bogle_pow2(weapon)
         }
     }
-    bogle_pending_dx = bogle_pending_dx + mouse_dx()
-    # Keep the fractional tic even when a frame runs four tics. Discard only
-    # whole stalled tics; splitting seconds also keeps large dt values in i64.
-    ken elapsed = max(0, dt_ms)
-    bogle_accumulator = bogle_accumulator + elapsed % 1000 * 35
-    ken due = min(4, elapsed / 1000 * 35 + bogle_accumulator / 1000)
-    bogle_accumulator = bogle_accumulator % 1000
-    ken advanced = 0
-    whiles advanced < due {
-        ken dx = bogle_pending_dx
-        bogle_pending_dx = 0
-        tic(bogle_game, {"keys": keys, "dx": dx})
-        gin bogle_record != naething {
-            scrieve_append(bogle_record, tae_string(keys) + " " + tae_string(dx) + "\n")
-        }
-        advanced = advanced + 1
+    ken menu = 0
+    gin key_down("up") or key_down("w") {
+        menu = menu + 1
     }
-    render(bogle_game, bogle_fb, bogle_width, bogle_height)
-    screen_shaw(bogle_fb, bogle_palette)
-    gie aye
+    gin key_down("down") or key_down("s") {
+        menu = menu + 2
+    }
+    gin key_down("enter") or key_down("space") {
+        menu = menu + 4
+    }
+    gin key_down("escape") {
+        menu = menu + 8
+    }
+    gin bogle_ui["screen"] == "splash" {
+        ken any_key = nae
+        fer name in "abcdefghijklmnopqrstuvwxyz0123456789" {
+            gin key_down(name) {
+                any_key = aye
+            }
+        }
+        fer name in ["up", "down", "left", "right", "space", "enter", "escape", "shift", "ctrl", "alt", "tab"] {
+            gin key_down(name) {
+                any_key = aye
+            }
+        }
+        gin any_key {
+            menu = bit_or(menu, 16)
+        }
+    }
+    ken before = bogle_ui["screen"]
+    ken run = bogle_ui["run"]
+    ken keep = bogle_front_step(bogle_ui, dt_ms, {"menu": menu, "keys": keys, "dx": mouse_dx()})
+    gin before != bogle_ui["screen"] {
+        screen_grab_mouse(bogle_ui["screen"] == "play")
+    }
+    gin bogle_record != naething {
+        gin run != bogle_ui["run"] {
+            scrieve(bogle_record, "")
+        }
+        fer input in bogle_ui["consumed"] {
+            scrieve_append(bogle_record, tae_string(input["keys"]) + " " + tae_string(input["dx"]) + "\n")
+        }
+    }
+    gin keep {
+        bogle_front_render(bogle_ui, bogle_fb, bogle_width, bogle_height)
+        screen_shaw(bogle_fb, bogle_palette)
+    }
+    gie keep
 }

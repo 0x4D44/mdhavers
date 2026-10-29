@@ -1,0 +1,34 @@
+fetch "frontend"
+
+# Each shell replay row is dt_ms, held menu bits, gameplay keys, mouse dx.
+# Unlike engine replays this drives frames, including frames with no tics.
+dae bogle_front_replay(map_path, replay_path, w, h) {
+    ken ui = bogle_front_new(map_path)
+    ken fb = bytes(w * h)
+    ken frame = 0
+    fer line in split(read_file(replay_path), "\n") {
+        ken clean = wheesht(split(line, "#")[0])
+        gin len(clean) > 0 {
+            ken fields = []
+            fer part in split(clean, " ") {
+                gin len(part) > 0 {
+                    shove(fields, map_integer(part))
+                }
+            }
+            gin len(fields) != 4 {
+                hurl "Shell replay wants dt menu keys dx"
+            }
+            gin fields[1] < 0 or fields[1] > 31 or fields[2] < 0 or fields[2] > 4095 {
+                hurl "Shell replay input oot o range"
+            }
+            ken keep = bogle_front_step(ui, fields[0], {"menu": fields[1], "keys": fields[2], "dx": fields[3]})
+            frame = frame + 1
+            gin nae keep {
+                brak
+            }
+            bogle_front_render(ui, fb, w, h)
+            blether tae_string(frame) + " " + ui["screen"] + " " + tae_string(frame_hash(fb))
+        }
+    }
+    gie ui
+}

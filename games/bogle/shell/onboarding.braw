@@ -1,0 +1,22 @@
+fetch "games/bogle/engine/doors"
+
+# Read-only shell cue: use the exact trace and reach that E will use.
+dae bogle_door_prompt(g) {
+    gin nae g["gameplay"] or g["health"] <= 0 or g["won"] {
+        gie ""
+    }
+    ken selected = bogle_use_sector(g)
+    fer d in g["doors"] {
+        gin d["sector"] == selected {
+            ken lock = g["map"]["tag"][selected]
+            gin lock == 1 an bit_an(g["keys"], 1) == 0 {
+                gie "Ye need the iron key"
+            }
+            gin lock == 2 an bit_an(g["keys"], 2) == 0 {
+                gie "Ye need the silver key"
+            }
+            gie "E: open"
+        }
+    }
+    gie ""
+}

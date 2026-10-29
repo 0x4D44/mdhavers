@@ -1,4 +1,4 @@
-# Bogle Castle, stage 4
+# Bogle Castle, stage 4b
 
 The engine is a pure integer portal renderer. Positions and heights in game state
 use signed 16.16 integers; map coordinates are integer units. Angles cover one
@@ -18,13 +18,37 @@ mdhavers build games/bogle/shell/native.braw -o .scratch/bogle
 .scratch/bogle
 ```
 
-WASD moves, the mouse and arrow keys turn, E uses doors and the exit, Space or
-left mouse fires, 1–4 select owned weapons, and Escape quits. Hold fire for at
+Startup shows the castle splash with **Press ony key**, then the title menu:
+**New Game**, **Controls**, **Quit**. Navigate menus with Up/Down or W/S and
+choose with Enter/Space. Escape during play opens **Resume**, **Restart Level**,
+**Controls**, **Quit**; Escape also resumes or returns from Controls. Menus
+freeze the simulation and release the mouse. Resume captures it again. Held
+menu keys must be released before they can fire or choose another item.
+
+WASD moves, the mouse and Left/Right arrows turn, E uses doors and the exit,
+Space or left mouse fires, and 1–4 select owned weapons. Hold fire for at
 least 21 tics with the bagpipes, then release to blast; holding 35 tics fires
-automatically. The native shell starts E1M1, The Gatehouse. The native shell
-exposes `bogle_init(w,h)` and `bogle_frame(dt_ms)` in `shell/frame.braw`; only the
-host owns the loop. It advances an exact 35 Hz accumulator, at most four tics
-per frame. Native play is a manual acceptance check.
+automatically. Controls are also available from the title and pause menus.
+Death offers **Restart** and **Back to Title**. Completing the Gatehouse offers
+the same choices: there is no next level yet. Both screens show elapsed level
+time from the existing 35 Hz tic count; kills and secrets are not tracked.
+
+E1M1 starts in the courtyard facing a visible gamekeeper. Follow the courtyard
+east to the gate; face the door within 64 units and **E: open** appears. Locked
+doors name the missing iron or silver key. Moving gates have portcullis faces;
+the iron-key gallery door uses the cell-door face, so the two keyed doors also
+look different. Faces are assigned to both room-side portal walls when doors
+are initialized, preserving explicitly authored wall textures. Use/key prompts
+are centered above the crosshair and highest weapon tip at 320x200.
+The gatehouse, hall, kitchen, crypt,
+chapel and battlement exit remain reachable.
+
+The shell exposes `bogle_init(w,h)` and `bogle_frame(dt_ms)` in
+`shell/frame.braw`; the native host still owns the tiny loop. The bridge-free
+`shell/frontend.braw` state machine accepts explicit held menu bits and gameplay
+input, advances an exact 35 Hz accumulator with at most four tics per frame,
+and draws each screen in the game font. Menu time and mouse motion are discarded
+on transitions. Native windowed play is a manual acceptance check.
 
 The native headless executable accepts `<map> <replay> <w> <h> <every>`. The
 interpreter CLI accepts only a script filename, so both backends also accept
@@ -40,7 +64,9 @@ alive with both keys and all four weapons.
 
 Native `--record games/bogle/replays/name.txt` or `BOGLE_RECORD` records inputs
 actually consumed by tics. Mouse deltas accumulate between tics and are consumed
-once, including frames with several due tics.
+once, including frames with several due tics. Starting a new game or restarting
+truncates the recording so it always contains one uninterrupted level attempt;
+menu frames never enter the gameplay recording.
 
 `tools/mapbuild.braw` provides `new_map`, `room`, `split_convex`, `door`, `stairs`,
 `map_thing`, `validate`, and `write`. The design's `thing(...)` spelling cannot
@@ -78,7 +104,14 @@ the native compiler and compares it with its `.expected` file, and scans
 `engine/` for floats, bridge, clock and random names. `bogle_parity` replays
 `replays/stage2.txt` at 80x50 on the interpreter and on native builds with
 reference counting off and on, and compares each with `replays/stage2.hashes`.
-It also runs the two-frame `stage3` room replay in all three modes.
+It also runs the two-frame `stage3` room replay in all three modes, and the
+30-frame `frontend` replay through splash, title, Controls, play, pause, resume
+and restart. `BOGLE_FRONTEND=1 BOGLE_MAP=games/bogle/data/e1m1.map
+BOGLE_REPLAY=games/bogle/replays/frontend.txt` selects shell replay mode in
+`headless.braw`; each row is `dt_ms menu_bits gameplay_keys mouse_dx` and each
+output row is frame number, screen and frame hash. Menu bits are Up=1, Down=2,
+Choose=4, Escape=8, Any Key=16. The existing two-column engine replay format
+and its frame hashes are unchanged.
 The 671-tic `e1m1.txt` playthrough runs in full natively with RC off/on; its
 first 140 tics run on the debug interpreter. Five frame hashes include the
 exit overlay. `bagpipes_replay.braw` separately asserts the recorded blast
@@ -142,3 +175,13 @@ state in the pure engine; the shell alone handles input, clocks and recording.
 `new_game(map)` recognizes gameplay things (types 10 and above). The optional
 `new_game(map, aye)` enables gameplay for focused maps with only doors or
 enemies; earlier renderer-only test maps retain their static geometry.
+
+The new title illustration is generated with Codex imagegen; exact prompts and
+review notes are in `art/src/PROMPTS.md`. Its source is an opaque 320x200 PNG;
+`tools/bake_title.braw` uses the shared baker to produce the 160x100 indexed
+`data/title_castle.bog` (16,013 bytes). The shell scales it with nearest sampling.
+Run `tools/frontend_shots.braw` after creating `.scratch/shots/` to reproduce
+320x200 PPM captures of splash, title, pause, Controls, start, door prompt, death
+and level completion. `gate_start` looks at the closed courtyard gate from the
+player start; `door_iron` and `door_silver` show the distinct keyed doors and
+missing-key prompts. Sound remains stage 5.

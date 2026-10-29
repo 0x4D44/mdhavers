@@ -1,0 +1,57 @@
+fetch "games/bogle/shell/frontend"
+
+dae bogle_shot(ui, name) {
+    ken fb = bytes(320 * 200)
+    bogle_front_render(ui, fb, 320, 200)
+    ken palette = make_palette()
+    ken ppm = bytes_from_string("P6\n320 200\n255\n")
+    ken rgb = bytes(320 * 200 * 3)
+    fer pixel in 0..320 * 200 {
+        ken ink = bytes_get(fb, pixel)
+        fer channel in 0..3 {
+            bytes_set(rgb, pixel * 3 + channel, bytes_get(palette, ink * 3 + channel))
+        }
+    }
+    bytes_append(ppm, rgb)
+    write_bytes(".scratch/shots/" + name + ".ppm", ppm)
+    blether name + " " + tae_string(frame_hash(fb))
+}
+
+ken shots = bogle_front_new("games/bogle/data/e1m1.map")
+bogle_shot(shots, "splash")
+bogle_front_screen(shots, "title")
+bogle_shot(shots, "title")
+bogle_front_start(shots)
+bogle_shot(shots, "start")
+bogle_shot(shots, "gate_start")
+bogle_front_screen(shots, "pause")
+bogle_shot(shots, "pause")
+bogle_front_screen(shots, "controls")
+bogle_shot(shots, "controls")
+bogle_front_screen(shots, "play")
+shots["game"]["x"] = 336 * 65536
+shots["game"]["y"] = 192 * 65536
+shots["game"]["sector"] = 5
+mak_siccar bogle_door_prompt(shots["game"]) == "E: open"
+bogle_shot(shots, "door")
+# The iron gallery door has a cell-door face and a readable key cue.
+ken gate_game = shots["game"]
+shots["game"] = new_game(load_map("games/bogle/data/e1m1.map"))
+shots["game"]["x"] = 1560 * 65536
+shots["game"]["y"] = 192 * 65536
+shots["game"]["sector"] = 31
+shots["game"]["z"] = -24 * 65536
+shots["game"]["view_z"] = 17 * 65536
+mak_siccar bogle_door_prompt(shots["game"]) == "Ye need the iron key"
+bogle_shot(shots, "door_iron")
+shots["game"] = new_game(load_map("games/bogle/data/e1m1.map"))
+shots["game"]["x"] = 2110 * 65536
+shots["game"]["y"] = 192 * 65536
+shots["game"]["sector"] = 36
+mak_siccar bogle_door_prompt(shots["game"]) == "Ye need the silver key"
+bogle_shot(shots, "door_silver")
+shots["game"] = gate_game
+bogle_front_screen(shots, "dead")
+bogle_shot(shots, "death")
+bogle_front_screen(shots, "complete")
+bogle_shot(shots, "complete")

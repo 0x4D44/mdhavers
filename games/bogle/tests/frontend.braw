@@ -1,0 +1,112 @@
+fetch "games/bogle/shell/frontend"
+
+dae front_input(ui, menu, keys = 0, dx = 0, dt = 29) {
+    gie bogle_front_step(ui, dt, {"menu": menu, "keys": keys, "dx": dx})
+}
+
+dae front_press(ui, menu) {
+    front_input(ui, 0, 0, 0, 0)
+    gie front_input(ui, menu, 0, 0, 0)
+}
+
+ken front = bogle_front_new("games/bogle/data/e1m1.map")
+mak_siccar front["screen"] == "splash"
+front_input(front, 16)
+mak_siccar front["screen"] == "title"
+front_input(front, 16)
+mak_siccar front["screen"] == "title"
+front_press(front, 1)
+mak_siccar front["selection"] == 2
+front_press(front, 1)
+mak_siccar front["selection"] == 1
+front_press(front, 4)
+mak_siccar front["screen"] == "controls"
+front_press(front, 8)
+mak_siccar front["screen"] == "title"
+mak_siccar front["selection"] == 0
+blether "ok splash title wrapping and controls return"
+front_input(front, 4, 64, 999, 100000)
+mak_siccar front["screen"] == "play"
+mak_siccar front["game"]["tics"] == 0
+front_input(front, 4, 64, 0, 29)
+mak_siccar front["game"]["cooldown"] == 0
+mak_siccar front["game"]["tics"] == 1
+mak_siccar front["game"]["angle"] == 0
+front_input(front, 0, 0, 0, 0)
+front_input(front, 0, 64, 0, 29)
+mak_siccar front["game"]["cooldown"] > 0
+blether "ok new game consumes menu key without firing or mouse carry"
+ken front_tics = front["game"]["tics"]
+front_input(front, 8, 64, 999, 99999)
+mak_siccar front["screen"] == "pause"
+mak_siccar front["game"]["tics"] == front_tics
+front_input(front, 8, 64, 999, 99999)
+mak_siccar front["screen"] == "pause"
+front_press(front, 2)
+front_press(front, 2)
+front_press(front, 4)
+mak_siccar front["screen"] == "controls"
+front_input(front, 0, 0, 500, 10000)
+mak_siccar front["game"]["tics"] == front_tics
+front_press(front, 4)
+mak_siccar front["screen"] == "pause"
+front_press(front, 8)
+mak_siccar front["screen"] == "play"
+mak_siccar front["accumulator"] == 0
+front_input(front, 0, 0, 0, 28)
+mak_siccar front["game"]["tics"] == front_tics
+front_input(front, 0, 0, 0, 1)
+mak_siccar front["game"]["tics"] == front_tics + 1
+mak_siccar front["game"]["angle"] == 0
+blether "ok pause controls resume freeze time and discard mouse motion"
+front_press(front, 8)
+front_press(front, 2)
+front_press(front, 4)
+mak_siccar front["screen"] == "play"
+mak_siccar front["run"] == 2
+mak_siccar front["game"]["tics"] == 0
+mak_siccar front["game"]["health"] == 100
+mak_siccar front["game"]["map"]["ceil_h"][front["game"]["doors"][0]["sector"]] == 0
+blether "ok restart reloads pristine level"
+front["game"]["health"] = 0
+front_input(front, 0, 1)
+mak_siccar front["screen"] == "dead"
+mak_siccar front["game"]["tics"] == 0
+front_press(front, 4)
+mak_siccar front["screen"] == "play"
+mak_siccar front["game"]["health"] == 100
+front["game"]["won"] = aye
+front_input(front, 0)
+mak_siccar front["screen"] == "complete"
+front_press(front, 2)
+front_press(front, 4)
+mak_siccar front["screen"] == "title"
+blether "ok death restart and completion back to title"
+# Fraction retained after four-tic cap; dx consumed exactly once.
+front_press(front, 4)
+front_input(front, 0, 0, 20, 0)
+front_input(front, 0, 0, 12, 114)
+mak_siccar len(front["consumed"]) == 3
+mak_siccar front["consumed"][0]["dx"] == 32
+mak_siccar front["consumed"][1]["dx"] == 0
+mak_siccar front["pending_dx"] == 0
+front_input(front, 0, 0, 0, 1001)
+mak_siccar len(front["consumed"]) == 4
+mak_siccar front["accumulator"] == 25
+blether "ok exact 35hz fractional accumulator and bounded catchup"
+ken mouse_front = bogle_front_new("games/bogle/data/e1m1.map")
+bogle_front_start(mouse_front)
+front_input(mouse_front, 0, 0, 9223372036854775807, 0)
+front_input(mouse_front, 0, 0, 1, 29)
+mak_siccar mouse_front["game"]["angle"] == 0
+front_input(mouse_front, 0, 0, (-9223372036854775807 - 1), 0)
+front_input(mouse_front, 0, 0, 9223372036854775807, 0)
+front_input(mouse_front, 0, 0, (-9223372036854775807 - 1), 29)
+mak_siccar mouse_front["game"]["angle"] == 1
+blether "ok queued mouse rotation handles i64 endpoints"
+front_press(front, 8)
+front_press(front, 1)
+mak_siccar front["selection"] == 3
+mak_siccar nae front_press(front, 4)
+mak_siccar front["screen"] == "quit"
+blether "ok pause quit is explicit"

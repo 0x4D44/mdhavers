@@ -195,6 +195,14 @@ fn configure_headless(command: &mut Command, rc: bool, repo: &Path, map: &Path, 
         .env("MDHAVERS_HOME", repo)
         .env("MDH_RC", if rc { "1" } else { "0" })
         .env("BOGLE_MAP", map)
+        .env(
+            "BOGLE_FRONTEND",
+            if replay.file_stem() == Some(std::ffi::OsStr::new("frontend")) {
+                "1"
+            } else {
+                "0"
+            },
+        )
         .env("BOGLE_REPLAY", replay)
         .env("BOGLE_W", "80")
         .env("BOGLE_H", "50")
@@ -284,6 +292,11 @@ fn headless_replay_hashes_match_interpreter_and_native_rc_modes() {
 #[test]
 fn textured_room_replay_matches_interpreter_and_native_rc_modes() {
     check_replay("stage3", "stage3", 2, false);
+}
+
+#[test]
+fn frontend_frames_match_interpreter_and_native_rc_modes() {
+    check_replay("e1m1", "frontend", 30, false);
 }
 
 // The full route runs natively twice. The debug interpreter replays the first

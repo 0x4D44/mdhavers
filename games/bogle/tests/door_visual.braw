@@ -1,0 +1,48 @@
+fetch "games/bogle/shell/frontend"
+fetch "games/bogle/tools/render_fixtures"
+
+ken door_room = "BOGMAP 1\nv 0 0\nv 128 0\nv 128 128\nv 0 128\nv 160 0\nv 160 128\nv 320 0\nv 320 128\ns 0 128 1 2 255 0 0 0 1 2 3\ns 0 128 1 2 255 1 0 1 4 5 2\ns 0 128 1 2 255 0 0 4 6 7 5\nt 1 96 64 0 0\n"
+ken gate = new_game(map_parse(door_room), aye)
+mak_siccar gate["map"]["upper_tex"][1] == 8
+mak_siccar gate["map"]["upper_tex"][11] == 8
+ken iron = new_game(map_parse(replace(door_room, "255 1 0", "255 1 1")), aye)
+mak_siccar iron["map"]["upper_tex"][1] == 7
+mak_siccar iron["map"]["upper_tex"][11] == 7
+ken silver = new_game(map_parse(replace(door_room, "255 1 0", "255 1 2")), aye)
+mak_siccar silver["map"]["upper_tex"][1] == 8
+ken custom = new_game(map_parse(door_room + "w 0 1 6 0 0 0 0 0\n"), aye)
+mak_siccar custom["map"]["upper_tex"][1] == 6
+ken decorative = new_game(map_parse(door_room))
+mak_siccar decorative["map"]["upper_tex"][1] == 0
+mak_siccar decorative["map"]["ceil_h"][1] == 128
+blether "ok door faces on both approaches distinguish iron and silver and preserve authored art"
+# A pixel on the actual closed portal must sample its face, not granite.
+fixture_identity(gate)
+gate["textures"][0] = fixture_fill(4096, 10)
+gate["textures"][8] = fixture_fill(4096, 210)
+ken small = bytes(4000)
+bogle_render(gate, small, 80, 50)
+mak_siccar bytes_get(small, 25 * 80 + 40) == 210
+blether "ok closed door render samples its room-side face"
+# Prompt pixels must stay above every weapon pixel, for open and both locks.
+ken ui = bogle_front_new("games/bogle/data/e1m1.map")
+ui["game"] = gate
+bogle_front_screen(ui, "play")
+ken with_prompt = bytes(64000)
+ken without_prompt = bytes(64000)
+fer tag in 0..3 {
+    gate["map"]["tag"][1] = tag
+    gate["keys"] = 0
+    bogle_front_render(ui, with_prompt, 320, 200)
+    render(gate, without_prompt, 320, 200)
+    ken changed = 0
+    fer pixel in 0..64000 {
+        gin bytes_get(with_prompt, pixel) != bytes_get(without_prompt, pixel) {
+            ken row = pixel / 320
+            mak_siccar row >= 70 an row <= 78
+            changed = changed + 1
+        }
+    }
+    mak_siccar changed > 0
+}
+blether "ok open iron and silver prompts render above crosshair and weapon"

@@ -1,0 +1,59 @@
+fetch "games/bogle/engine/game"
+fetch "games/bogle/engine/map"
+fetch "games/bogle/shell/onboarding"
+
+ken rooms = "BOGMAP 1\nv 0 0\nv 128 0\nv 128 128\nv 0 128\nv 160 0\nv 160 128\nv 320 0\nv 320 128\ns 0 128 1 2 192 0 0 0 1 2 3\ns 0 128 1 2 192 1 0 1 4 5 2\ns 0 128 1 2 192 0 0 4 6 7 5\nt 1 64 64 0 0\n"
+ken g = new_game(map_parse(rooms), aye)
+mak_siccar bogle_door_prompt(g) == "E: open"
+mak_siccar g["doors"][0]["state"] == "closed" an g["message"] == ""
+mak_siccar g["map"]["ceil_h"][1] == 0 an g["keys"] == 0
+# One world unit beyond the inclusive use endpoint cannot select it.
+g["x"] = 63 * 65536
+mak_siccar bogle_door_prompt(g) == ""
+g["x"] = 96 * 65536
+g["angle"] = 2048
+mak_siccar bogle_door_prompt(g) == ""
+g["angle"] = 1024
+mak_siccar bogle_door_prompt(g) == ""
+g["angle"] = 0
+mak_siccar bogle_door_prompt(g) == "E: open"
+blether "ok door prompt facing and inclusive reach"
+# A solid wall reached before a nearby door must occlude the hint.
+g["map"]["portal"][1] = -1
+mak_siccar bogle_door_prompt(g) == ""
+g["map"]["portal"][1] = 1
+mak_siccar bogle_door_prompt(g) == "E: open"
+blether "ok solid wall occludes door prompt"
+g["map"]["tag"][1] = 1
+mak_siccar bogle_door_prompt(g) == "Ye need the iron key"
+g["keys"] = 2
+mak_siccar bogle_door_prompt(g) == "Ye need the iron key"
+g["keys"] = 1
+mak_siccar bogle_door_prompt(g) == "E: open"
+doors_tick(g, aye)
+mak_siccar g["doors"][0]["state"] == "opening"
+g["map"]["tag"][1] = 2
+mak_siccar bogle_door_prompt(g) == "Ye need the silver key"
+g["keys"] = 2
+mak_siccar bogle_door_prompt(g) == "E: open"
+g["health"] = 0
+mak_siccar bogle_door_prompt(g) == ""
+g["health"] = 100
+g["won"] = aye
+mak_siccar bogle_door_prompt(g) == ""
+g["won"] = nae
+g["gameplay"] = nae
+mak_siccar bogle_door_prompt(g) == ""
+blether "ok exact key hints and read-only state"
+ken start = new_game(load_map("games/bogle/data/e1m1.map"))
+ken visible = nae
+fer a in start["actors"] {
+    gin a["kind"] == 2 an a["x"] < 384 * 65536 {
+        mak_siccar a["x"] > start["x"] an a["angle"] == 0
+        mak_siccar abs(a["y"] - start["y"]) < a["x"] - start["x"]
+        mak_siccar bogle_sight(start, start["x"], start["y"], start["view_z"], start["sector"], a["x"], a["y"], a["z"] + 32 * 65536, a["sector"])
+        visible = aye
+    }
+}
+mak_siccar visible
+blether "ok courtyard keeper visible from start toward first door"
