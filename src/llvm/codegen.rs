@@ -15971,42 +15971,12 @@ impl<'ctx> CodeGen<'ctx> {
                         continue;
                     }
 
-                    // Build call arguments: instance first, then right operand, then defaults/nil.
-                    let mut call_args: Vec<BasicMetadataValueEnum> =
-                        vec![left_val.into(), right_val.into()];
-                    let expected_param_count = method_func.count_params() as usize;
-                    if call_args.len() < expected_param_count {
-                        let saved_masel = self.current_masel;
-                        let masel_alloca =
-                            self.create_entry_block_alloca_raw(&format!("__op_masel_{idx}"));
-                        self.builder.build_store(masel_alloca, left_val).unwrap();
-                        self.current_masel = Some(masel_alloca);
-
-                        if let Some(defaults) = self.function_defaults.get(func_name).cloned() {
-                            let actual_args_without_self = call_args.len() - 1;
-                            for i in actual_args_without_self..(expected_param_count - 1) {
-                                if let Some(Some(ref default_expr)) = defaults.get(i) {
-                                    call_args.push(self.compile_expr(default_expr)?.into());
-                                } else {
-                                    call_args.push(self.make_nil().into());
-                                }
-                            }
-                        } else {
-                            for _ in call_args.len()..expected_param_count {
-                                call_args.push(self.make_nil().into());
-                            }
-                        }
-
-                        self.current_masel = saved_masel;
-                    }
-
-                    let overload_res = self
-                        .builder
-                        .build_call(*method_func, &call_args, "op_overload_result")
-                        .unwrap()
-                        .try_as_basic_value()
-                        .basic()
-                        .unwrap_or(self.make_nil());
+                    let overload_res = self.compile_resolved_method_call(
+                        *method_func,
+                        func_name,
+                        left_val,
+                        &[right_val],
+                    )?;
                     self.builder
                         .build_unconditional_branch(merge_block)
                         .unwrap();
@@ -40886,6 +40856,125 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(phi.as_basic_value())
     }
 
+    /// Call a resolved method using the same parameter scope for ordinary and
+    /// operator calls. Each supplied/defaulted argument is bound before evaluating
+    /// later defaults; caller locals and `masel` are restored afterwards.
+    fn compile_resolved_method_call(
+        &mut self,
+        method_func: FunctionValue<'ctx>,
+        func_name: &str,
+        instance: BasicValueEnum<'ctx>,
+        arg_vals: &[BasicValueEnum<'ctx>],
+    ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        // Build call arguments: instance first, then regular args
+        let mut call_args: Vec<BasicMetadataValueEnum> = vec![instance.into()];
+        for arg in arg_vals {
+            call_args.push((*arg).into());
+        }
+
+        // Fill in default parameter values if fewer args provided than expected
+        // Note: method_func has self as first param, so expected is count_params() and call_args includes instance
+        let expected_param_count = method_func.count_params() as usize;
+        if call_args.len() < expected_param_count {
+            let saved_masel = self.current_masel;
+            let masel_alloca = self
+                .create_entry_block_alloca_raw(&format!("__methodcall_masel_direct_{func_name}"));
+            self.builder.build_store(masel_alloca, instance).unwrap();
+            self.current_masel = Some(masel_alloca);
+
+            // Defaults evaluate in the callee's closure environment, so caller locals must not
+            // be visible while compiling default expressions.
+            let saved_variables = std::mem::take(&mut self.variables);
+            self.variables = HashMap::new();
+            let mut saved_boxed: Vec<(String, bool)> = Vec::new();
+
+            let param_names = self.function_param_names.get(func_name).cloned();
+            let defaults = self.function_defaults.get(func_name).cloned();
+
+            if let (Some(param_names), Some(defaults)) = (param_names, defaults) {
+                // Bind provided user params so defaults can reference earlier params (interpreter semantics).
+                let provided_user_count = call_args.len().saturating_sub(1).min(param_names.len());
+                for user_idx in 0..provided_user_count {
+                    let param_name = param_names[user_idx].clone();
+                    let arg_val = arg_vals[user_idx];
+
+                    let alloca = self.create_entry_block_alloca_raw(&format!(
+                        "__method_default_bind_{func_name}_{user_idx}_{param_name}"
+                    ));
+                    self.builder.build_store(alloca, arg_val).unwrap();
+                    self.variables.insert(param_name.clone(), alloca);
+
+                    let was_boxed = self.boxed_vars.contains(&param_name);
+                    saved_boxed.push((param_name.clone(), was_boxed));
+                    self.boxed_vars.remove(&param_name);
+                }
+
+                let user_param_count = expected_param_count.saturating_sub(1);
+                for (user_idx, param_name) in param_names
+                    .iter()
+                    .enumerate()
+                    .take(user_param_count)
+                    .skip(provided_user_count)
+                {
+                    let val = if let Some(Some(ref default_expr)) = defaults.get(user_idx) {
+                        self.compile_expr(default_expr)?
+                    } else {
+                        self.make_nil()
+                    };
+                    call_args.push(val.into());
+
+                    let param_name = param_name.clone();
+                    let alloca = self.create_entry_block_alloca_raw(&format!(
+                        "__method_default_bind_{func_name}_{user_idx}_{param_name}"
+                    ));
+                    self.builder.build_store(alloca, val).unwrap();
+                    self.variables.insert(param_name.clone(), alloca);
+
+                    let was_boxed = self.boxed_vars.contains(&param_name);
+                    saved_boxed.push((param_name.clone(), was_boxed));
+                    self.boxed_vars.remove(&param_name);
+                }
+            } else if let Some(defaults) = self.function_defaults.get(func_name).cloned() {
+                // defaults[i] corresponds to the i-th method parameter (excluding self)
+                // call_args[0] is instance, so call_args.len()-1 is the number of actual args
+                let actual_args_without_self = call_args.len() - 1;
+                for i in actual_args_without_self..(expected_param_count - 1) {
+                    if let Some(Some(ref default_expr)) = defaults.get(i) {
+                        call_args.push(self.compile_expr(default_expr)?.into());
+                    } else {
+                        call_args.push(self.make_nil().into());
+                    }
+                }
+            } else {
+                for _ in call_args.len()..expected_param_count {
+                    call_args.push(self.make_nil().into());
+                }
+            }
+
+            self.variables = saved_variables;
+            for (name, was_boxed) in saved_boxed {
+                if was_boxed {
+                    self.boxed_vars.insert(name);
+                } else {
+                    self.boxed_vars.remove(&name);
+                }
+            }
+
+            self.current_masel = saved_masel;
+        }
+
+        // Call the method
+        let result = self
+            .builder
+            .build_call(method_func, &call_args, "method_result")
+            .unwrap()
+            .try_as_basic_value()
+            .basic()
+            .unwrap_or(self.make_nil());
+
+        Ok(result)
+    }
+
     fn compile_non_native_method_call(
         &mut self,
         instance: BasicValueEnum<'ctx>,
@@ -41037,109 +41126,12 @@ impl<'ctx> CodeGen<'ctx> {
                         check_block = next_block;
                         continue;
                     }
-                    let mut call_args: Vec<BasicMetadataValueEnum> = vec![instance.into()];
-                    for arg in arg_vals {
-                        call_args.push((*arg).into());
-                    }
-
-                    // Fill missing args using defaults/nil.
-                    let expected_param_count = method_func.count_params() as usize;
-                    if call_args.len() < expected_param_count {
-                        let saved_masel = self.current_masel;
-                        let masel_alloca = self
-                            .create_entry_block_alloca_raw(&format!("__methodcall_masel_{idx}"));
-                        self.builder.build_store(masel_alloca, instance).unwrap();
-                        self.current_masel = Some(masel_alloca);
-
-                        // Defaults evaluate in the callee closure environment, so caller locals must
-                        // not be visible while compiling default expressions.
-                        let saved_variables = std::mem::take(&mut self.variables);
-                        self.variables = HashMap::new();
-                        let mut saved_boxed: Vec<(String, bool)> = Vec::new();
-
-                        let param_names = self.function_param_names.get(func_name).cloned();
-                        let defaults = self.function_defaults.get(func_name).cloned();
-
-                        if let (Some(param_names), Some(defaults)) = (param_names, defaults) {
-                            let provided_user_count =
-                                call_args.len().saturating_sub(1).min(param_names.len());
-                            for user_idx in 0..provided_user_count {
-                                let param_name = param_names[user_idx].clone();
-                                let arg_val = arg_vals[user_idx];
-
-                                let alloca = self.create_entry_block_alloca_raw(&format!(
-                                    "__method_default_bind_{idx}_{user_idx}_{param_name}"
-                                ));
-                                self.builder.build_store(alloca, arg_val).unwrap();
-                                self.variables.insert(param_name.clone(), alloca);
-
-                                let was_boxed = self.boxed_vars.contains(&param_name);
-                                saved_boxed.push((param_name.clone(), was_boxed));
-                                self.boxed_vars.remove(&param_name);
-                            }
-
-                            let user_param_count = expected_param_count.saturating_sub(1);
-                            for (user_idx, param_name) in param_names
-                                .iter()
-                                .enumerate()
-                                .take(user_param_count)
-                                .skip(provided_user_count)
-                            {
-                                let val =
-                                    if let Some(Some(ref default_expr)) = defaults.get(user_idx) {
-                                        self.compile_expr(default_expr)?
-                                    } else {
-                                        self.make_nil()
-                                    };
-                                call_args.push(val.into());
-
-                                let param_name = param_name.clone();
-                                let alloca = self.create_entry_block_alloca_raw(&format!(
-                                    "__method_default_bind_{idx}_{user_idx}_{param_name}"
-                                ));
-                                self.builder.build_store(alloca, val).unwrap();
-                                self.variables.insert(param_name.clone(), alloca);
-
-                                let was_boxed = self.boxed_vars.contains(&param_name);
-                                saved_boxed.push((param_name.clone(), was_boxed));
-                                self.boxed_vars.remove(&param_name);
-                            }
-                        } else if let Some(defaults) =
-                            self.function_defaults.get(func_name).cloned()
-                        {
-                            let actual_args_without_self = call_args.len() - 1;
-                            for i in actual_args_without_self..(expected_param_count - 1) {
-                                if let Some(Some(ref default_expr)) = defaults.get(i) {
-                                    call_args.push(self.compile_expr(default_expr)?.into());
-                                } else {
-                                    call_args.push(self.make_nil().into());
-                                }
-                            }
-                        } else {
-                            for _ in call_args.len()..expected_param_count {
-                                call_args.push(self.make_nil().into());
-                            }
-                        }
-
-                        self.variables = saved_variables;
-                        for (name, was_boxed) in saved_boxed {
-                            if was_boxed {
-                                self.boxed_vars.insert(name);
-                            } else {
-                                self.boxed_vars.remove(&name);
-                            }
-                        }
-
-                        self.current_masel = saved_masel;
-                    }
-
-                    let result = self
-                        .builder
-                        .build_call(*method_func, &call_args, "method_dyn_result")
-                        .unwrap()
-                        .try_as_basic_value()
-                        .basic()
-                        .unwrap_or(self.make_nil());
+                    let result = self.compile_resolved_method_call(
+                        *method_func,
+                        func_name,
+                        instance,
+                        arg_vals,
+                    )?;
                     self.builder
                         .build_unconditional_branch(merge_block)
                         .unwrap();
@@ -41191,113 +41183,7 @@ impl<'ctx> CodeGen<'ctx> {
             object.span().line,
         )?;
 
-        // Build call arguments: instance first, then regular args
-        let mut call_args: Vec<BasicMetadataValueEnum> = vec![instance.into()];
-        for arg in arg_vals {
-            call_args.push((*arg).into());
-        }
-
-        // Fill in default parameter values if fewer args provided than expected
-        // Note: method_func has self as first param, so expected is count_params() and call_args includes instance
-        let expected_param_count = method_func.count_params() as usize;
-        if call_args.len() < expected_param_count {
-            let saved_masel = self.current_masel;
-            let masel_alloca = self
-                .create_entry_block_alloca_raw(&format!("__methodcall_masel_direct_{method_name}"));
-            self.builder.build_store(masel_alloca, instance).unwrap();
-            self.current_masel = Some(masel_alloca);
-
-            // Defaults evaluate in the callee's closure environment, so caller locals must not
-            // be visible while compiling default expressions.
-            let saved_variables = std::mem::take(&mut self.variables);
-            self.variables = HashMap::new();
-            let mut saved_boxed: Vec<(String, bool)> = Vec::new();
-
-            let param_names = self.function_param_names.get(&func_name).cloned();
-            let defaults = self.function_defaults.get(&func_name).cloned();
-
-            if let (Some(param_names), Some(defaults)) = (param_names, defaults) {
-                // Bind provided user params so defaults can reference earlier params (interpreter semantics).
-                let provided_user_count = call_args.len().saturating_sub(1).min(param_names.len());
-                for user_idx in 0..provided_user_count {
-                    let param_name = param_names[user_idx].clone();
-                    let arg_val = arg_vals[user_idx];
-
-                    let alloca = self.create_entry_block_alloca_raw(&format!(
-                        "__method_default_bind_{method_name}_{user_idx}_{param_name}"
-                    ));
-                    self.builder.build_store(alloca, arg_val).unwrap();
-                    self.variables.insert(param_name.clone(), alloca);
-
-                    let was_boxed = self.boxed_vars.contains(&param_name);
-                    saved_boxed.push((param_name.clone(), was_boxed));
-                    self.boxed_vars.remove(&param_name);
-                }
-
-                let user_param_count = expected_param_count.saturating_sub(1);
-                for (user_idx, param_name) in param_names
-                    .iter()
-                    .enumerate()
-                    .take(user_param_count)
-                    .skip(provided_user_count)
-                {
-                    let val = if let Some(Some(ref default_expr)) = defaults.get(user_idx) {
-                        self.compile_expr(default_expr)?
-                    } else {
-                        self.make_nil()
-                    };
-                    call_args.push(val.into());
-
-                    let param_name = param_name.clone();
-                    let alloca = self.create_entry_block_alloca_raw(&format!(
-                        "__method_default_bind_{method_name}_{user_idx}_{param_name}"
-                    ));
-                    self.builder.build_store(alloca, val).unwrap();
-                    self.variables.insert(param_name.clone(), alloca);
-
-                    let was_boxed = self.boxed_vars.contains(&param_name);
-                    saved_boxed.push((param_name.clone(), was_boxed));
-                    self.boxed_vars.remove(&param_name);
-                }
-            } else if let Some(defaults) = self.function_defaults.get(&func_name).cloned() {
-                // defaults[i] corresponds to the i-th method parameter (excluding self)
-                // call_args[0] is instance, so call_args.len()-1 is the number of actual args
-                let actual_args_without_self = call_args.len() - 1;
-                for i in actual_args_without_self..(expected_param_count - 1) {
-                    if let Some(Some(ref default_expr)) = defaults.get(i) {
-                        call_args.push(self.compile_expr(default_expr)?.into());
-                    } else {
-                        call_args.push(self.make_nil().into());
-                    }
-                }
-            } else {
-                for _ in call_args.len()..expected_param_count {
-                    call_args.push(self.make_nil().into());
-                }
-            }
-
-            self.variables = saved_variables;
-            for (name, was_boxed) in saved_boxed {
-                if was_boxed {
-                    self.boxed_vars.insert(name);
-                } else {
-                    self.boxed_vars.remove(&name);
-                }
-            }
-
-            self.current_masel = saved_masel;
-        }
-
-        // Call the method
-        let result = self
-            .builder
-            .build_call(method_func, &call_args, "method_result")
-            .unwrap()
-            .try_as_basic_value()
-            .basic()
-            .unwrap_or(self.make_nil());
-
-        Ok(result)
+        self.compile_resolved_method_call(method_func, &func_name, instance, arg_vals)
     }
 
     /// jammy(min, max) - random number between bounds
