@@ -57,6 +57,8 @@ dae new_game(map, play = naething) {
         "speed_tics": 0,
         "won": nae,
         "message": "",
+        "hurt_tic": -1000,
+        "grin_tic": -1000,
         "bog_slow": nae,
     }
     init_things(game)
@@ -76,7 +78,9 @@ dae tic(g, input) {
         fer weapon in 1..5 {
             gin bit_an(keys, 128 * bogle_pow2(weapon)) != 0 an g["owned"][weapon - 1] {
                 gin g["weapon"] != weapon {
-                    gin g["bag_charge"] > 0 { bogle_emit_sound(g, "pipe_stop") }
+                    gin g["bag_charge"] > 0 {
+                        bogle_emit_sound(g, "pipe_stop")
+                    }
                     g["bag_charge"] = 0
                 }
                 g["weapon"] = weapon

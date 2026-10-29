@@ -33,7 +33,7 @@ fer ending in ["pipe_blast", "pipe_deflate"] {
 }
 blether "ok sustained drone and stop"
 
-ken audio_names = ["pipe_blast", "pipe_deflate", "knife", "mars_throw", "mars_splat", "blunderbuss", "door", "pickup", "gamekeeper", "haggis_fuse", "explosion", "ghost", "midge", "oof", "menu"]
+ken audio_names = ["pipe_blast", "pipe_deflate", "sgian_dubh", "mars_throw", "mars_splat", "blunderbuss", "door", "pickup", "gamekeeper", "haggis_fuse", "explosion", "ghost", "midge", "oof", "menu"]
 ken audio_hashes = []
 fer name in audio_names {
     ken first = bogle_audio_new()

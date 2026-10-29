@@ -122,6 +122,15 @@ dae bogle_flat(g, fb, w, h, x, top, bottom, texture, light, delta, scales, ray_x
     }
 }
 
+# Render-only animation: no clocks, random draws or simulation writes.
+dae bogle_pickup_bob(tics) {
+    gie [0, 1, 2, 1, 0, -1, -2, -1][tics / 4 % 8]
+}
+
+dae bogle_pickup_glint(tics) {
+    gie tics % 70 < 5
+}
+
 # Things are sorted explicitly so transparent pixels reveal more distant sprites.
 dae bogle_sprites(g, fb, w, h, visible, drawsegs, cosine, sine) {
     ken m = g["map"]
@@ -190,6 +199,10 @@ dae bogle_sprites(g, fb, w, h, visible, drawsegs, cosine, sine) {
             world_height = 2097152
             world_half = 1048576
         }
+        gin dynamic an (actor["kind"] == 30 or actor["kind"] == 34 or actor["kind"] == 35) {
+            world_height = 3145728
+            world_half = 1048576
+        }
         gin dynamic an (actor["kind"] == 6 or actor["kind"] == 7) {
             world_height = 1048576
             world_half = 524288
@@ -201,8 +214,12 @@ dae bogle_sprites(g, fb, w, h, visible, drawsegs, cosine, sine) {
         ken half = world_half * focal / z
         ken left = centre - half
         ken right = centre + half
-        ken bottom = horizon - (actor["z"] - g["view_z"]) * focal / z
-        ken top = horizon - (actor["z"] + world_height - g["view_z"]) * focal / z
+        ken bob = 0
+        gin dynamic an actor["kind"] >= 10 an actor["kind"] <= 20 {
+            bob = bogle_pickup_bob(g["tics"]) * 65536
+        }
+        ken bottom = horizon - (actor["z"] + bob - g["view_z"]) * focal / z
+        ken top = horizon - (actor["z"] + bob + world_height - g["view_z"]) * focal / z
         gin right <= left or bottom <= top {
             haud
         }
@@ -211,7 +228,7 @@ dae bogle_sprites(g, fb, w, h, visible, drawsegs, cosine, sine) {
         ken fullbright = nae
         gin dynamic {
             texture = bogle_gameplay_assets()[bogle_actor_art(g, actor)]
-            fullbright = kind == 4 or kind == 32
+            fullbright = kind == 4 or kind == 32 or (kind >= 10 an kind <= 20 an bogle_pickup_glint(g["tics"]))
         } ither {
             texture = g["sprite_tex"][kind - 2]
             fullbright = g["sprite_fullbright"][kind - 2]
@@ -539,6 +556,8 @@ ken bogle_font = {
     "!": "010010010000010",
     ":": "000010000010000",
     "-": "000000111000000",
+    "+": "000010111010000",
+    "/": "001001010100100",
     ".": "000000000000010",
     "'": "010010000000000",
 }
@@ -568,6 +587,63 @@ dae bogle_text(fb, w, h, left, top, text, ink, scale) {
             }
         }
         x = x + 4 * scale
+    }
+}
+
+dae bogle_face_tier(health) {
+    gin health > 75 {
+        gie "fine"
+    }
+    gin health > 50 {
+        gie "hurt"
+    }
+    gin health > 25 {
+        gie "bad"
+    }
+    gin health > 0 {
+        gie "dire"
+    }
+    gie "dead"
+}
+
+# Recent pain wins over a pickup grin. Idle glances repeat every four seconds.
+dae bogle_face(g) {
+    ken tier = bogle_face_tier(g["health"])
+    gin tier == "dead" {
+        gie tier
+    }
+    ken now = g["tics"]
+    gin contains(g, "hurt_tic") an now >= g["hurt_tic"] an now - g["hurt_tic"] < 8 {
+        gie "ouch"
+    }
+    gin contains(g, "grin_tic") an now >= g["grin_tic"] an now - g["grin_tic"] < 18 {
+        gie "grin"
+    }
+    # The healthy glance source has no wounds: retain damage at lower tiers.
+    gin tier == "fine" {
+        gin now % 140 >= 100 an now % 140 < 114 {
+            gie "look_left"
+        }
+        gin now % 140 >= 120 an now % 140 < 134 {
+            gie "look_right"
+        }
+    }
+    gie tier
+}
+
+# Column-major indexed sprites shared by the status face and the Kit List.
+dae bogle_blit(fb, w, h, texture, tw, th, left, top, width, height, mirror = nae) {
+    fer x in max(0, left)..min(w, left + width) {
+        ken u = (x - left) * tw / width
+        gin mirror {
+            u = tw - 1 - u
+        }
+        fer y in max(0, top)..min(h, top + height) {
+            ken colour = bytes_get(texture, u * th + (y - top) * th / height)
+            gin colour != 255 {
+                bytes_set(fb, y * w + x, colour)
+            }
+        }
     }
 }
 
@@ -606,7 +682,7 @@ dae bogle_overlay(g, fb, w, h) {
         }
     }
     ken scale = max(1, min(w / 320, h / 200))
-    ken hud = min(h, 16 * scale)
+    ken hud = min(h, max(8, h * 44 / 200))
     ken weapon_width = max(1, w * 2 / 5)
     ken weapon_height = max(1, h * 12 / 25)
     ken left = (w - weapon_width) / 2
@@ -628,8 +704,30 @@ dae bogle_overlay(g, fb, w, h) {
             bytes_set(fb, y * w + x, 2)
         }
     }
-    bogle_text(fb, w, h, 3 * scale, h - hud + 2 * scale, "HEALTH " + tae_string(g["health"]), 15, scale)
-    bogle_text(fb, w, h, w / 3, h - hud + 2 * scale, "SPIRIT " + tae_string(g["spirit"]), 15, scale)
+    ken face = bogle_face(g)
+    ken face_name = face
+    gin face == "look_left" or face == "look_right" {
+        face_name = "look"
+    }
+    ken faces = bogle_hud_assets()
+    ken face_size = min(32 * scale, max(1, hud - 4 * scale))
+    ken face_left = (w - face_size) / 2
+    ken face_top = h - hud + 2 * scale
+    fer y in max(0, face_top - scale)..min(h, face_top + face_size + scale) {
+        fer x in max(0, face_left - scale)..min(w, face_left + face_size + scale) {
+            bytes_set(fb, y * w + x, 13)
+        }
+    }
+    bogle_blit(fb, w, h, faces[face_name], 32, 32, face_left, face_top, face_size, face_size, face == "look_right")
+    gin contains(faces["missing"], face_name) {
+        bogle_text(fb, w, h, face_left, face_top + 12 * scale, "FACE", 15, scale)
+    }
+    ken health_label = tae_string(g["health"])
+    gin hud >= 32 * scale {
+        health_label = "HEALTH " + health_label
+        bogle_text(fb, w, h, 3 * scale, h - hud + 12 * scale, "SPIRIT " + tae_string(g["spirit"]), 13, scale)
+    }
+    bogle_text(fb, w, h, 3 * scale, h - hud + 3 * scale, health_label, 15, scale)
     ken ammo = "-"
     gin weapon == 2 {
         ammo = tae_string(g["mars"])
@@ -640,8 +738,11 @@ dae bogle_overlay(g, fb, w, h) {
     gin weapon == 4 {
         ammo = tae_string(g["puff"])
     }
-    bogle_text(fb, w, h, w * 2 / 3, h - hud + 2 * scale, "AMMO " + ammo, 15, scale)
-    bogle_text(fb, w, h, 3 * scale, h - 6 * scale, "1 KNIFE  2 MARS  3 BUSS  4 PIPES", 13, scale)
+    gin hud >= 32 * scale {
+        ammo = "AMMO " + ammo
+        bogle_text(fb, w, h, 3 * scale, h - 6 * scale, "1 SGIAN-DUBH  2 MARS  3 BUSS  4 PIPES", 13, scale)
+    }
+    bogle_text(fb, w, h, w * 2 / 3, h - hud + 3 * scale, ammo, 15, scale)
     ken message = g["message"]
     gin g["won"] {
         message = "YE'VE ESCAPED THE GATEHOUSE!"

@@ -13,42 +13,92 @@ dae bogle_audio_event(mixer, event) {
     gin event == "pipe_stop" or event == "pipe_blast" or event == "pipe_deflate" {
         mixer["voices"][0][0] = 0
     }
-    gin event == "pipe_stop" { gie naething }
+    gin event == "pipe_stop" {
+        gie naething
+    }
     # kind, duration, start/end Hz, amplitude, noise hold period, noise mix /256.
     ken profile = []
-    gin event == "pipe_fill" { profile = [1, 0, 110, 110, 3600, 1, 0] }
-    gin event == "pipe_blast" { profile = [2, 8500, 660, 165, 10000, 3, 48] }
-    gin event == "pipe_deflate" { profile = [2, 5500, 330, 35, 6500, 8, 32] }
-    gin event == "knife" { profile = [3, 1800, 1700, 300, 6500, 1, 180] }
-    gin event == "mars_throw" { profile = [3, 3500, 230, 800, 6500, 6, 24] }
-    gin event == "mars_splat" { profile = [4, 4200, 120, 30, 10000, 18, 256] }
-    gin event == "blunderbuss" { profile = [4, 9500, 90, 25, 16000, 2, 230] }
-    gin event == "door" { profile = [2, 11000, 82, 45, 6000, 48, 100] }
-    gin event == "pickup" { profile = [3, 4600, 500, 1350, 7000, 1, 0] }
-    gin event == "gamekeeper" { profile = [2, 7500, 145, 70, 8000, 70, 40] }
-    gin event == "haggis_fuse" { profile = [4, 12000, 900, 1800, 5000, 1, 256] }
-    gin event == "explosion" { profile = [4, 14000, 65, 20, 20000, 7, 220] }
-    gin event == "ghost" { profile = [5, 15000, 480, 190, 6500, 1, 0] }
-    gin event == "midge" { profile = [2, 6000, 1200, 1700, 4000, 1, 24] }
-    gin event == "oof" { profile = [3, 4500, 180, 55, 8000, 45, 50] }
-    gin event == "menu" { profile = [3, 1900, 800, 1050, 4000, 1, 0] }
-    gin len(profile) == 0 { gie naething }
+    gin event == "pipe_fill" {
+        profile = [1, 0, 110, 110, 3600, 1, 0]
+    }
+    gin event == "pipe_blast" {
+        profile = [2, 8500, 660, 165, 10000, 3, 48]
+    }
+    gin event == "pipe_deflate" {
+        profile = [2, 5500, 330, 35, 6500, 8, 32]
+    }
+    gin event == "sgian_dubh" {
+        profile = [3, 1800, 1700, 300, 6500, 1, 180]
+    }
+    gin event == "mars_throw" {
+        profile = [3, 3500, 230, 800, 6500, 6, 24]
+    }
+    gin event == "mars_splat" {
+        profile = [4, 4200, 120, 30, 10000, 18, 256]
+    }
+    gin event == "blunderbuss" {
+        profile = [4, 9500, 90, 25, 16000, 2, 230]
+    }
+    gin event == "door" {
+        profile = [2, 11000, 82, 45, 6000, 48, 100]
+    }
+    gin event == "pickup" {
+        profile = [3, 4600, 500, 1350, 7000, 1, 0]
+    }
+    gin event == "gamekeeper" {
+        profile = [2, 7500, 145, 70, 8000, 70, 40]
+    }
+    gin event == "haggis_fuse" {
+        profile = [4, 12000, 900, 1800, 5000, 1, 256]
+    }
+    gin event == "explosion" {
+        profile = [4, 14000, 65, 20, 20000, 7, 220]
+    }
+    gin event == "ghost" {
+        profile = [5, 15000, 480, 190, 6500, 1, 0]
+    }
+    gin event == "midge" {
+        profile = [2, 6000, 1200, 1700, 4000, 1, 24]
+    }
+    gin event == "oof" {
+        profile = [3, 4500, 180, 55, 8000, 45, 50]
+    }
+    gin event == "menu" {
+        profile = [3, 1900, 800, 1050, 4000, 1, 0]
+    }
+    gin len(profile) == 0 {
+        gie naething
+    }
     ken slot = 0
     gin event != "pipe_fill" {
         slot = mixer["next"]
         mixer["next"] = 1 + slot % 11
     } ither {
         # Repeated held-fire events cannot restart the drone's phase/envelope.
-        gin mixer["voices"][0][0] != 0 { gie naething }
+        gin mixer["voices"][0][0] != 0 {
+            gie naething
+        }
     }
     mixer["seed"] = mixer["seed"] * 48271 % 2147483647
-    mixer["voices"][slot] = [profile[0], 0, profile[1], 0,
-        profile[2] * 65536 / 22050, profile[3] * 65536 / 22050,
-        profile[4], mixer["seed"], 0, profile[5], profile[6]]
+    mixer["voices"][slot] = [
+        profile[0],
+        0,
+        profile[1],
+        0,
+        profile[2] * 65536 / 22050,
+        profile[3] * 65536 / 22050,
+        profile[4],
+        mixer["seed"],
+        0,
+        profile[5],
+        profile[6],
+    ]
 }
 
 dae bogle_audio_events(mixer, events) {
-    fer event in events { bogle_audio_event(mixer, event) }
+    fer event in events {
+        bogle_audio_event(mixer, event)
+    }
 }
 
 dae bogle_audio_mix(mixer, sample_count) {
@@ -58,11 +108,17 @@ dae bogle_audio_mix(mixer, sample_count) {
     ken pcm = bytes(sample_count * 2)
     ken active = nae
     fer voice in mixer["voices"] {
-        gin voice[0] != 0 { active = aye }
+        gin voice[0] != 0 {
+            active = aye
+        }
     }
-    gin nae active or sample_count == 0 { gie pcm }
+    gin nae active or sample_count == 0 {
+        gie pcm
+    }
     ken sums = []
-    fer i in 0..sample_count { shove(sums, 0) }
+    fer i in 0..sample_count {
+        shove(sums, 0)
+    }
     fer voice in mixer["voices"] {
         ken kind = voice[0]
         gin kind != 0 {
@@ -84,18 +140,26 @@ dae bogle_audio_mix(mixer, sample_count) {
                     step = start + (finish - start) * age / duration
                     envelope = amplitude * (duration - age) / duration
                 }
-                gin age < 64 { envelope = envelope * age / 64 }
+                gin age < 64 {
+                    envelope = envelope * age / 64
+                }
                 phase = (phase + step) % 65536
                 # Triangle [-256,256], optionally a hollow square/reed tone.
                 ken wave = phase / 64 - 256
-                gin phase >= 32768 { wave = 768 - phase / 64 }
+                gin phase >= 32768 {
+                    wave = 768 - phase / 64
+                }
                 gin kind == 2 {
                     wave = 256
-                    gin phase >= 32768 { wave = -256 }
+                    gin phase >= 32768 {
+                        wave = -256
+                    }
                 }
                 gin kind == 1 {
                     ken reed = 128
-                    gin (phase * 3) % 65536 >= 32768 { reed = -128 }
+                    gin (phase * 3) % 65536 >= 32768 {
+                        reed = -128
+                    }
                     wave = (wave + reed) * 2 / 3
                 }
                 gin kind == 5 {
@@ -117,12 +181,16 @@ dae bogle_audio_mix(mixer, sample_count) {
             voice[3] = phase
             voice[7] = seed
             voice[8] = noise
-            gin duration != 0 an age >= duration { voice[0] = 0 }
+            gin duration != 0 an age >= duration {
+                voice[0] = 0
+            }
         }
     }
     fer i in 0..sample_count {
         ken value = max(-32768, min(32767, sums[i]))
-        gin value < 0 { value = value + 65536 }
+        gin value < 0 {
+            value = value + 65536
+        }
         bytes_set(pcm, i * 2, value % 256)
         bytes_set(pcm, i * 2 + 1, value / 256)
     }

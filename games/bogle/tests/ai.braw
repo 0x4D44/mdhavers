@@ -32,8 +32,8 @@ ken room = "BOGMAP 1\nv 0 0\nv 512 0\nv 512 512\nv 0 512\ns 0 128 1 2 192 0 0 0 
 ken g = actor_test_game(map_parse(room + "t 2 160 64 0 0\n"))
 ken a = g["actors"][0]
 ai_tick(g)
-mak_siccar a["state"] == "windup" an a["timer"] == 18
-fer i in 0..18 {
+mak_siccar a["state"] == "fists" an a["timer"] == 35
+fer i in 0..35 {
     ai_tick(g)
 }
 mak_siccar a["state"] == "charge" an a["dx"] == -163840

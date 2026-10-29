@@ -97,6 +97,14 @@ dae bogle_gameplay_assets() {
         art["spr_gamekeeper_charge"] = bogle_asset("spr_gamekeeper_charge", 64, 96)
         art["spr_gamekeeper_death1"] = bogle_asset("spr_gamekeeper_death1", 64, 96)
         art["spr_gamekeeper_death2"] = bogle_asset("spr_gamekeeper_death2", 64, 96)
+        # Temporary fallback is the existing raised-crook frame until fists bake.
+        fer name in ["spr_gamekeeper_fists1", "spr_gamekeeper_fists2"] {
+            gin file_exists("games/bogle/data/" + name + ".bog") {
+                art[name] = bogle_asset(name, 64, 96)
+            } ither {
+                art[name] = bogle_asset("spr_gamekeeper_charge", 64, 96)
+            }
+        }
         art["spr_gamekeeper_idle"] = bogle_asset("spr_gamekeeper_idle", 64, 96)
         art["spr_gamekeeper_pain"] = bogle_asset("spr_gamekeeper_pain", 64, 96)
         art["spr_gamekeeper_walk1"] = bogle_asset("spr_gamekeeper_walk1", 64, 96)
@@ -140,6 +148,9 @@ dae bogle_actor_art(g, actor) {
         }
         gin state == "charge" or state == "windup" {
             name = "spr_gamekeeper_charge"
+        }
+        gin state == "fists" or state == "windup" {
+            name = "spr_gamekeeper_fists" + tae_string(g["tics"] / 5 % 2 + 1)
         }
         gin state == "pain" or state == "stunned" {
             name = "spr_gamekeeper_pain"
@@ -186,4 +197,26 @@ dae bogle_actor_art(g, actor) {
         name = ["dec_stag_head", "dec_armour", "dec_brazier", "dec_thistle_pot", "dec_cow_portrait", "dec_banner", "dec_curling_stone"][kind - 30]
     }
     gie name
+}
+
+# Source art can arrive independently of code. The labelled HUD fallback is explicit.
+dae bogle_hud_assets() {
+    gin nae contains(bogle_asset_cache, "hud") {
+        ken faces = {"placeholder": nae, "missing": []}
+        fer name in ["fine", "hurt", "bad", "dire", "look", "grin", "ouch", "dead"] {
+            gin file_exists("games/bogle/data/hud_face_" + name + ".bog") {
+                faces[name] = bogle_asset("hud_face_" + name, 32, 32)
+            } ither {
+                ken fallback = bytes(1024)
+                fer i in 0..1024 {
+                    bytes_set(fallback, i, 8)
+                }
+                faces[name] = fallback
+                faces["placeholder"] = aye
+                shove(faces["missing"], name)
+            }
+        }
+        bogle_asset_cache["hud"] = faces
+    }
+    gie bogle_asset_cache["hud"]
 }

@@ -118,6 +118,26 @@ dae body_blocker(g, x, y) {
             }
         }
     }
+    # Freestanding dressing has a sixteen-unit radius, just like the body.
+    # Read spawn geometry so players and walking actors share the same blockers.
+    gin contains(m, "thing_type") {
+        fer i in 0..len(m["thing_type"]) {
+            ken kind = m["thing_type"][i]
+            gin kind == 31 or kind == 32 or kind == 33 or kind == 36 {
+                ken feet = m["thing_z"][i] * 65536
+                gin g["z"] < feet + 56 * 65536 an g["z"] + 56 * 65536 > feet {
+                    ken nx = (x - m["thing_x"][i] * 65536) / 256
+                    ken ny = (y - m["thing_y"][i] * 65536) / 256
+                    gin abs(nx) < 8192 an abs(ny) < 8192 an nx * nx + ny * ny < 67108864 {
+                        gin nx == 0 an ny == 0 {
+                            nx = 1
+                        }
+                        gie [aye, nx, ny]
+                    }
+                }
+            }
+        }
+    }
     gie [nae, 0, 0]
 }
 

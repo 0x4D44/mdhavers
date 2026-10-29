@@ -16,6 +16,8 @@ mak_siccar front["screen"] == "title"
 front_input(front, 16)
 mak_siccar front["screen"] == "title"
 front_press(front, 1)
+mak_siccar front["selection"] == 3
+front_press(front, 1)
 mak_siccar front["selection"] == 2
 front_press(front, 1)
 mak_siccar front["selection"] == 1
@@ -106,7 +108,7 @@ mak_siccar mouse_front["game"]["angle"] == 1
 blether "ok queued mouse rotation handles i64 endpoints"
 front_press(front, 8)
 front_press(front, 1)
-mak_siccar front["selection"] == 3
+mak_siccar front["selection"] == 4
 mak_siccar nae front_press(front, 4)
 mak_siccar front["screen"] == "quit"
 blether "ok pause quit is explicit"

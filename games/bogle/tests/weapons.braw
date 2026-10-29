@@ -7,7 +7,7 @@ mak_siccar g["actors"][0]["health"] == 60
 mak_siccar g["cooldown"] == 8
 weapons_tick(g, aye)
 mak_siccar g["actors"][0]["health"] == 60
-blether "ok knife range and cooldown"
+blether "ok sgian_dubh range and cooldown"
 g = new_game(map_parse(room + "t 2 200 64 0 0\n"))
 g["owned"][2] = aye
 g["weapon"] = 3

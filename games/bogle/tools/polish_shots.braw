@@ -1,0 +1,52 @@
+# Bridge-free stage 5b review captures. Create .scratch/shots5b first.
+fetch "games/bogle/shell/frontend"
+
+dae polish_shot(ui, name) {
+    ken fb = bytes(320 * 200)
+    bogle_front_render(ui, fb, 320, 200)
+    ken palette = make_palette()
+    ken ppm = bytes_from_string("P6\n320 200\n255\n")
+    ken rgb = bytes(320 * 200 * 3)
+    fer pixel in 0..320 * 200 {
+        ken ink = bytes_get(fb, pixel)
+        fer channel in 0..3 {
+            bytes_set(rgb, pixel * 3 + channel, bytes_get(palette, ink * 3 + channel))
+        }
+    }
+    bytes_append(ppm, rgb)
+    write_bytes(".scratch/shots5b/" + name + ".ppm", ppm)
+    blether name + " " + tae_string(frame_hash(fb))
+}
+
+ken polish_ui = bogle_front_new("games/bogle/data/e1m1.map")
+bogle_front_screen(polish_ui, "title")
+polish_shot(polish_ui, "title")
+bogle_front_screen(polish_ui, "kit")
+fer page in 0..(len(bogle_kit_entries()) + 1) / 2 {
+    polish_ui["kit_page"] = page
+    polish_shot(polish_ui, "kit_" + tae_string(page + 1))
+}
+bogle_front_start(polish_ui)
+polish_shot(polish_ui, "hud_face")
+# From the spawn, turn slightly towards the newly wall-hung courtyard portrait.
+polish_ui["game"]["angle"] = 256
+polish_shot(polish_ui, "start_dressing_bob_low")
+polish_ui["game"]["tics"] = 8
+polish_shot(polish_ui, "start_dressing_bob_high")
+# Advance the real first-sight state; no synthetic actor state is needed.
+bogle_front_start(polish_ui)
+ken polish_game = polish_ui["game"]
+polish_game["x"] = 200 * 65536
+polish_game["y"] = 160 * 65536
+polish_game["sector"] = 4
+tic(polish_game, {"keys": 0, "dx": 0})
+fer actor in polish_game["actors"] {
+    gin actor["kind"] == 2 an actor["x"] == 300 * 65536 {
+        mak_siccar actor["state"] == "fists"
+    }
+}
+polish_shot(polish_ui, "keeper_fists1")
+fer i in 0..5 {
+    tic(polish_game, {"keys": 0, "dx": 0})
+}
+polish_shot(polish_ui, "keeper_fists2")

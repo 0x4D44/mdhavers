@@ -1,0 +1,62 @@
+fetch "games/bogle/engine/game"
+fetch "games/bogle/engine/map"
+
+ken polish_room = "BOGMAP 1\nv 0 0\nv 512 0\nv 512 256\nv 0 256\ns 0 128 1 2 192 0 0 0 1 2 3\nt 1 64 128 0 0\n"
+# Report all independent checks before the final assertion, so a before-fix run
+# documents each missing behaviour rather than stopping at the first one.
+ken polish_ok = aye
+fer kind in [31, 32, 33, 36] {
+    ken pg = new_game(map_parse(polish_room + "t " + tae_string(kind) + " 128 128 0 0\n"), aye)
+    move_body(pg, 128 * 65536, 0)
+    ken blocked = pg["x"] < 100 * 65536
+    blether "scenery " + tae_string(kind) + " blocks: " + tae_string(blocked)
+    polish_ok = polish_ok an blocked
+}
+fer kind in [30, 34, 35] {
+    ken pg = new_game(map_parse(polish_room + "t " + tae_string(kind) + " 128 128 0 0\n"), aye)
+    ken mounted = pg["actors"][0]["z"] == 24 * 65536
+    move_body(pg, 128 * 65536, 0)
+    mounted = mounted an pg["x"] == 192 * 65536
+    blether "wall dressing " + tae_string(kind) + " raised and passable: " + tae_string(mounted)
+    polish_ok = polish_ok an mounted
+}
+ken pg = new_game(map_parse(polish_room + "t 2 224 128 0 0\n"), aye)
+ken keeper = pg["actors"][0]
+ken keeper_x = keeper["x"]
+ai_tick(pg)
+ken fists = keeper["state"] == "fists" an keeper["timer"] == 35
+fer i in 0..34 {
+    ai_tick(pg)
+}
+fists = fists an keeper["state"] == "fists" an keeper["x"] == keeper_x
+ai_tick(pg)
+fists = fists an keeper["state"] == "charge"
+ai_tick(pg)
+fists = fists an keeper["x"] < keeper_x
+blether "keeper shakes fists for 35 tics then charges: " + tae_string(fists)
+polish_ok = polish_ok an fists
+pg["tics"] = 72
+hurt_player(pg, 3)
+ken hurt = contains(pg, "hurt_tic")
+gin hurt {
+    hurt = pg["hurt_tic"] == 72
+}
+blether "damage marks face tic: " + tae_string(hurt)
+polish_ok = polish_ok an hurt
+fer kind in [15, 17, 18, 19, 20] {
+    pg = new_game(map_parse(polish_room + "t " + tae_string(kind) + " 64 128 0 0\n"), aye)
+    pg["tics"] = 73
+    actor_pickup(pg, pg["actors"][0])
+    ken grin = contains(pg, "grin_tic")
+    gin grin {
+        grin = pg["grin_tic"] == 73
+    }
+    blether "weapon or key " + tae_string(kind) + " marks grin tic: " + tae_string(grin)
+    polish_ok = polish_ok an grin
+}
+pg = new_game(map_parse(polish_room), aye)
+weapons_tick(pg, aye)
+ken cue = pg["sounds"] == ["sgian_dubh"]
+blether "sgian dubh sound cue: " + tae_string(cue)
+polish_ok = polish_ok an cue
+mak_siccar polish_ok

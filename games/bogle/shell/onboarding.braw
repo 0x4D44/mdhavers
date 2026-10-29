@@ -20,3 +20,42 @@ dae bogle_door_prompt(g) {
     }
     gie ""
 }
+
+# Two illustrated entries per page. Advice describes the shipped mechanics;
+# weapon pickups remain separate so every map pickup has a recognisable picture.
+dae bogle_kit_entries() {
+    gie [
+        ["1 SGIAN-DUBH", "wpn_sgian_dubh", 128, ["QUICK MELEE. NO AMMO NEEDED.", "GET CLOSE: REACH IS 64 UNITS."]],
+        ["2 DEEP-FRIED MARS BARS", "wpn_mars_bar", 128, ["THROWN ARC, ONE FLOOR BOUNCE, THEN SPLASH.", "A BOX UNLOCKS THESE AND ADDS FIVE BARS."]],
+        ["3 BLUNDERBUSS", "wpn_blunderbuss", 128, ["SEVEN PELLETS. BEST UP CLOSE.", "USES ONE POWDER AND SHOT PER BLAST."]],
+        ["4 BAGPIPES", "wpn_bagpipes_empty", 128, ["HOLD FIRE TO FILL, THEN RELEASE TO BLAST.", "AUTO BLAST AFTER ONE SECOND. PUFF REFILLS.", "CONE STUNS AND PUSHES; DISPERSES MIDGES."]],
+        ["OATCAKE", "pick_oatcake", 64, ["ADDS 10 HEALTH, UP TO 100."]],
+        ["HAGGIS, NEEPS AND TATTIES", "pick_haggis_plate", 64, ["ADDS 50 HEALTH, UP TO 100."]],
+        ["GIRDER JUICE CAN", "pick_girder_juice", 64, ["ADDS 15 HEALTH, UP TO 100."]],
+        ["GIRDER JUICE BOTTLE", "pick_girder_bottle", 64, ["RESTORES FULL HEALTH.", "DOUBLE SPEED FOR THREE SECONDS."]],
+        ["TIN OF SHORTBREAD", "pick_shortbread", 64, ["RESTORES SPIRIT TO 100.", "SPIRIT ABSORBS DAMAGE UNTIL IT RUNS OUT."]],
+        ["MARS BAR BOX", "pick_mars_box", 64, ["ADDS FIVE BARS AND UNLOCKS WEAPON 2."]],
+        ["POWDER AND SHOT", "pick_powder_shot", 64, ["ADDS FIVE BLUNDERBUSS SHOTS.", "FIND THE BLUNDERBUSS TO USE THEM."]],
+        ["BLUNDERBUSS PICKUP", "pick_blunderbuss", 64, ["UNLOCKS WEAPON 3 AND ADDS FIVE SHOTS."]],
+        ["BAGPIPES PICKUP", "pick_bagpipes", 64, ["UNLOCKS WEAPON 4. NO AMMO PICKUP NEEDED.", "HOLD FIRE TO FILL THE BAG."]],
+        ["IRON KEY", "pick_key_tartan", 64, ["OPENS THE LOCKED GALLERY DOOR.", "FACE THE DOOR AND PRESS E."]],
+        ["SILVER KEY", "pick_key_silver", 64, ["OPENS THE BATTLEMENT STAIR GATE.", "FACE THE GATE AND PRESS E."]],
+        ["GAMEKEEPER", "spr_gamekeeper_idle", 64, ["BELLOWS, PAUSES, THEN CHARGES STRAIGHT.", "SIDESTEP: HITTING A WALL STUNS HIM."]],
+        ["EXPLODING HAGGIS", "spr_haggis_idle", 64, ["RUSHES AND EXPLODES ON CONTACT OR DEATH.", "KEEP BACK; ITS BLAST HURTS MONSTERS TOO."]],
+        ["TARTAN GHOST", "spr_tartan_ghost_idle", 64, ["DRIFTS THROUGH WALLS AND THROWS A WAIL.", "LURE INTO LIGHT TO HURT IT.", "FIGHT IT BESIDE THE CHAPEL TORCHES."]],
+        ["MIDGE SWARM", "spr_midges_idle", 64, ["BOG SWARMS CHIP AWAY AT YOUR HEALTH.", "ORDINARY WEAPONS DO ONLY ONE DAMAGE.", "A BAGPIPE BLAST DISPERSES THE SWARM."]],
+    ]
+}
+
+# Unlit nearest sampling of baked column-major pictures; 255 is transparent.
+# Kept in the shell because catalogue art must not depend on world lighting.
+dae bogle_kit_blit(fb, art, sw, sh, left, top, width, height) {
+    fer y in max(0, top)..min(200, top + height) {
+        fer x in max(0, left)..min(320, left + width) {
+            ken ink = bytes_get(art, ((x - left) * sw / width) * sh + (y - top) * sh / height)
+            gin ink != 255 {
+                bytes_set(fb, y * 320 + x, ink)
+            }
+        }
+    }
+}

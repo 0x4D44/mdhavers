@@ -4,7 +4,7 @@ fetch "games/bogle/shell/frontend"
 
 ken sound_room = "BOGMAP 1\nv 0 0\nv 1024 0\nv 1024 512\nv 0 512\ns 0 128 1 2 192 0 0 0 1 2 3\nt 1 64 64 0 0\n"
 ken sg = new_game(map_parse(sound_room), aye)
-mak_siccar tic(sg, {"keys": 64, "dx": 0}) == ["knife"]
+mak_siccar tic(sg, {"keys": 64, "dx": 0}) == ["sgian_dubh"]
 mak_siccar tic(sg, {"keys": 64, "dx": 0}) == []
 sg["owned"][3] = aye
 sg["weapon"] = 4
@@ -12,12 +12,14 @@ sg["cooldown"] = 0
 mak_siccar tic(sg, {"keys": 64, "dx": 0}) == ["pipe_fill"]
 mak_siccar tic(sg, {"keys": 64, "dx": 0}) == []
 mak_siccar tic(sg, {"keys": 0, "dx": 0}) == ["pipe_deflate"]
-fer i in 0..21 { tic(sg, {"keys": 64, "dx": 0}) }
+fer i in 0..21 {
+    tic(sg, {"keys": 64, "dx": 0})
+}
 mak_siccar tic(sg, {"keys": 0, "dx": 0}) == ["pipe_blast"]
 sg["cooldown"] = 0
 tic(sg, {"keys": 64, "dx": 0})
 mak_siccar tic(sg, {"keys": 256, "dx": 0}) == ["pipe_stop"]
-blether "ok tic events knife and bagpipe lifecycle"
+blether "ok tic events sgian_dubh and bagpipe lifecycle"
 sg["weapon"] = 2
 sg["owned"][1] = aye
 sg["mars"] = 1

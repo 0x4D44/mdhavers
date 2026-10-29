@@ -7,6 +7,7 @@ dae bogle_front_new(map_path) {
     gie {
         "screen": "splash",
         "selection": 0,
+        "kit_page": 0,
         "return": "title",
         "map_path": map_path,
         "game": naething,
@@ -36,10 +37,10 @@ dae bogle_front_start(ui) {
 
 dae bogle_front_items(screen) {
     gin screen == "title" {
-        gie ["New Game", "Controls", "Quit"]
+        gie ["New Game", "Controls", "Kit List", "Quit"]
     }
     gin screen == "pause" {
-        gie ["Resume", "Restart Level", "Controls", "Quit"]
+        gie ["Resume", "Restart Level", "Controls", "Kit List", "Quit"]
     }
     gin screen == "dead" {
         gie ["Restart", "Back to Title"]
@@ -62,12 +63,28 @@ dae bogle_front_step(ui, dt_ms, input) {
         gie nae
     }
     gin ui["screen"] != "play" {
-        gin pressed != 0 { shove(ui["sounds"], "menu") }
+        gin pressed != 0 {
+            shove(ui["sounds"], "menu")
+        }
         # A held Space or mouse button used in a menu must be released to fire.
         ui["blocked_keys"] = bit_or(ui["blocked_keys"], keys)
         gin ui["screen"] == "splash" {
             gin pressed != 0 {
                 bogle_front_screen(ui, "title")
+            }
+            gie aye
+        }
+        gin ui["screen"] == "kit" {
+            ken pages = (len(bogle_kit_entries()) + 1) / 2
+            gin bit_an(pressed, 8) != 0 {
+                bogle_front_screen(ui, ui["return"])
+            } ither {
+                gin bit_an(pressed, 1) != 0 {
+                    ui["kit_page"] = (ui["kit_page"] + pages - 1) % pages
+                }
+                gin bit_an(pressed, 6) != 0 {
+                    ui["kit_page"] = (ui["kit_page"] + 1) % pages
+                }
             }
             gie aye
         }
@@ -101,6 +118,10 @@ dae bogle_front_step(ui, dt_ms, input) {
             } ither gin action == "Controls" {
                 ui["return"] = ui["screen"]
                 bogle_front_screen(ui, "controls")
+            } ither gin action == "Kit List" {
+                ui["return"] = ui["screen"]
+                ui["kit_page"] = 0
+                bogle_front_screen(ui, "kit")
             } ither gin action == "Back to Title" {
                 bogle_front_screen(ui, "title")
             } ither gin action == "Quit" {
@@ -133,7 +154,9 @@ dae bogle_front_step(ui, dt_ms, input) {
     fer i in 0..due {
         ken sample = {"keys": keys, "dx": ui["pending_dx"]}
         ui["pending_dx"] = 0
-        fer cue in tic(g, sample) { shove(ui["sounds"], cue) }
+        fer cue in tic(g, sample) {
+            shove(ui["sounds"], cue)
+        }
         shove(ui["consumed"], sample)
         gin g["health"] <= 0 {
             bogle_front_screen(ui, "dead")
@@ -170,8 +193,8 @@ dae bogle_front_render(ui, fb, w, h) {
         gin len(prompt) > 0 {
             ken scale = max(1, min(w / 320, h / 200))
             ken left = max(0, (w - (len(prompt) * 4 - 1) * scale) / 2)
-            # Above the crosshair and the highest weapon tip at 320x200.
-            ken top = max(2 * scale, h / 2 - 28 * scale)
+            # Above the crosshair and the highest weapon tip (row 60) at 320x200.
+            ken top = max(2 * scale, h / 2 - 48 * scale)
             fer y in top - 2 * scale..top + 7 * scale {
                 fer x in left..min(w, left + len(prompt) * 4 * scale) {
                     gin y >= 0 an y < h {
@@ -205,6 +228,8 @@ dae bogle_front_render(ui, fb, w, h) {
     gin screen == "splash" {
         bogle_front_box(canvas, 80, 167, 160, 18, 0)
         bogle_front_text(canvas, 173, "Press ony key", 15, 2)
+    } ither gin screen == "kit" {
+        bogle_kit_render(canvas, ui["kit_page"])
     } ither gin screen == "controls" {
         bogle_front_text(canvas, 24, "CONTROLS", 15, 2)
         ken lines = ["WASD - MOVE", "MOUSE OR LEFT RIGHT - TURN", "E - OPEN DOORS AND USE EXIT", "SPACE OR LEFT MOUSE - FIRE", "1-4 - SELECT OWNED WEAPON", "BAGPIPES - HOLD FIRE THEN RELEASE", "ESCAPE - PAUSE OR RESUME", "MENUS - ARROWS OR W S", "ENTER OR SPACE - CHOOSE"]
@@ -234,7 +259,7 @@ dae bogle_front_render(ui, fb, w, h) {
         ken items = bogle_front_items(screen)
         ken y = 80
         gin screen == "title" {
-            bogle_front_box(canvas, 82, 70, 156, 86, 0)
+            bogle_front_box(canvas, 82, 70, 156, 100, 0)
         }
         fer i in 0..len(items) {
             ken label = items[i]
@@ -244,7 +269,7 @@ dae bogle_front_render(ui, fb, w, h) {
                 ink = 15
             }
             bogle_front_text(canvas, y, label, ink, 2)
-            y = y + 22
+            y = y + 18
         }
         bogle_front_box(canvas, 54, 176, 212, 13, 0)
         bogle_front_text(canvas, 180, "ARROWS OR W S - ENTER OR SPACE", 15)
@@ -254,4 +279,29 @@ dae bogle_front_render(ui, fb, w, h) {
             bytes_set(fb, y * w + x, bytes_get(canvas, (y * 200 / h) * 320 + x * 320 / w))
         }
     }
+}
+
+dae bogle_kit_render(fb, page) {
+    ken entries = bogle_kit_entries()
+    ken pages = (len(entries) + 1) / 2
+    bogle_front_text(fb, 23, "KIT LIST " + tae_string(page + 1) + "/" + tae_string(pages), 15, 2)
+    ken art = bogle_gameplay_assets()
+    fer row in 0..2 {
+        ken index = page * 2 + row
+        gin index < len(entries) {
+            ken entry = entries[index]
+            ken top = 48 + row * 61
+            # Weapon art is twice as wide as actor art; preserve its aspect.
+            ken width = entry[2] / 2
+            bogle_kit_blit(fb, art[entry[1]], entry[2], 96, 24 + (64 - width) / 2, top, width, 48)
+            bogle_text(fb, 320, 200, 104, top + 1, entry[0], 15, 1)
+            ken y = top + 14
+            fer line in entry[3] {
+                bogle_text(fb, 320, 200, 104, y, line, 13, 1)
+                y = y + 10
+            }
+        }
+    }
+    bogle_front_text(fb, 174, "UP - PREVIOUS   DOWN OR ENTER - NEXT", 15)
+    bogle_front_text(fb, 183, "ESCAPE - BACK", 13)
 }

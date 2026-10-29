@@ -2332,3 +2332,278 @@ watermark.
 ~~~
 
 Baked output: `games/bogle/data/title_castle.bog`, 160×100 BOG1 with column-major payload. Rebuild with `games/bogle/tools/bake_title.braw`.
+
+
+## Batch 3 (stage 5b)
+
+### Session 1 — 2026-10-29
+
+Built-in imagegen. Five-image generation budget including retries. Manifest order; pre-existing source-art files skipped. Only copies shrunk in place with `sips -Z 256` are visually reviewed. Near-magenta backgrounds pass within 24 of #FF00FF per channel, following the lead acceptance note; no exact-magenta requirement or background repair. HUD faces after the healthy portrait use the saved 256-pixel `hud_face_fine.png` as their identity reference.
+
+### hud_face_fine.png
+
+Attempt 1 — accepted.
+
+Reference: `spr_gamekeeper_idle.png` (batch-1 style only).
+
+Review: Reviewed only the saved 256x256 PNG: complete head and ginger hair, short red beard, freckles, tartan-red scarf, healthy determined half-smile and forward gaze. Shoulders naturally meet the bottom edge. Chunky charcoal outlines and broad painted facets match batch 1. No unwanted text, border, signature, gore or clipped head. Opaque; visually flat near-magenta matte core R243-253 G0-11 B245-252, 22,893 pixels, zero beyond tolerance 24 after excluding the two-pixel antialiased silhouette edge.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+HUD face portrait of the player character: an original Highland hero, not any existing game's character. A young-ish adult Scot with a shock of bright ginger-red hair, a short red beard, freckles across his cheeks and nose, and a tartan-red scarf at the neck. Head and shoulders only, facing the viewer, centred, filling the frame, square image, on flat pure magenta #FF00FF. Healthy, cheerful determined half-smile, looking straight ahead. Broad expressive eyebrows, clear readable eyes, a broad friendly nose and a compact sturdy face; a youthful adventurous hero with a short neat beard rather than the older gamekeeper's bushy beard. Bareheaded, complete ginger hair silhouette, both ears and scarf visible. Show the complete head with a small magenta margin above the hair and at both sides; only the shoulders naturally continue through the bottom edge. No hat, hands, weapons or other objects.
+Reference image 1 is the accepted 256-pixel spr_gamekeeper_idle.png, supplied in reference mode ONLY as the batch-1 art-style reference. Match its exact chunky charcoal outlines, broad warm skin and ginger colour facets, painted cloth texture, simple tartan checks and affectionate comic Scottish proportions. Create a distinct younger player character; do not copy the gamekeeper's face, bushy beard, deerstalker or outfit. This is the canonical healthy player face to be reused as the identity reference for all other HUD expressions.
+Opaque production game portrait, bold simple features readable when tiny. The entire exposed background is a visually flat pure magenta #FF00FF digital fill. Keep all painting inside the outlined character; no background texture, gradient, glow, vignette, scenery, frame, text, letters, numbers, symbols, signature, watermark, blood, wounds or gore. No cast shadows.
+~~~
+
+### hud_face_hurt.png
+
+Attempt 1 — accepted.
+
+Reference: `hud_face_fine.png` (canonical identity reference).
+
+Review: Reviewed only the saved 256x256 PNG against hud_face_fine.png: same ginger hair, short beard, freckles, face, cream shirt, waistcoat, tartan-red scarf, proportions and painted outlines. One cheek plaster, knitted brows, determined closed mouth and forward gaze. Complete head, shoulders naturally at bottom. No unwanted text, border, signature or gore. Opaque; visually flat matte core R243-252 G1-14 B246-252, 22,933 pixels; zero beyond tolerance 24 with the two-pixel antialiased silhouette edge excluded.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+HUD face portrait of the player character: an original Highland hero, not any existing game's character. Head and shoulders only, facing the viewer, centred, filling the frame, square image, on flat pure magenta #FF00FF. A young-ish Scot with a shock of bright ginger-red hair, a short red beard, freckles, and a tartan-red scarf at the neck.
+Reference image 1 is hud_face_fine.png, the accepted 256-pixel canonical healthy player portrait, supplied in edit/reference mode. This MUST be exactly the same man: preserve his head and shoulder proportions, skin colours, ginger hair shape and colour, short red beard, freckles, nose, ears, eye colour, eyebrow shapes, cream shirt, moss-green waistcoat and red tartan scarf with the same checks, chunky dark outlines and broad hand-painted facets. Preserve the same scale, framing and flat frontal lighting.
+Change only expression and minor comic damage: slightly roughed up, ONE small bone-coloured sticking plaster on one cheek with a simple central pad and no markings, lips set in a grimly determined closed-mouth expression, looking straight ahead. Brows slightly knitted. His cheek plaster is the only damage. Keep both eyes open and alert, no bruised eyes, no head bandage, no soot and no blood. Bareheaded, complete hair silhouette and both ears visible, a small magenta margin above the hair and at both sides; only shoulders naturally continue through the bottom edge. No hands, weapons or other objects.
+Opaque production game portrait with bold features readable when tiny. Match the reference character's colours, outfit and proportions exactly. All damage is affectionate comic slapstick, never blood, gore or realistic wounds. The exposed background remains a visually flat pure magenta #FF00FF digital fill. Keep all painting inside the outlined character; no background texture, gradient, glow, vignette, cast shadows, scenery, frame, text, letters, numbers, signature or watermark.
+~~~
+
+### hud_face_bad.png
+
+Attempt 1 — accepted.
+
+Reference: `hud_face_fine.png` (canonical identity reference).
+
+Review: Reviewed only the saved 256x256 PNG against hud_face_fine.png: same man, colours, facial structure, short beard, freckles, cream shirt, waistcoat and tartan scarf, with wild ginger hair, one purple-black eye, two cheek plasters, soot smudges and gritted teeth. Other eye looks forward. Complete head; shoulders naturally continue through bottom. No blood, gore, unwanted text, border or signature; batch-1 painted style retained. Opaque; visually flat matte core R243-252 G1-13 B246-251 over 21,548 pixels, zero beyond tolerance 24 after excluding the two-pixel antialiased silhouette edge.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+HUD face portrait of the player character: an original Highland hero, not any existing game's character. Head and shoulders only, facing the viewer, centred, filling the frame, square image, on flat pure magenta #FF00FF. A young-ish Scot with a shock of bright ginger-red hair, a short red beard, freckles, and a tartan-red scarf at the neck.
+Reference image 1 is hud_face_fine.png, the accepted 256-pixel canonical healthy player portrait, supplied in edit/reference mode. Keep exactly the same man: same facial structure, nose, ears, eye colour, bright ginger-red hair colour, short red beard, freckles, skin colours, head and shoulder proportions, cream shirt, moss-green waistcoat and red tartan scarf with identical checks. Match the chunky charcoal outlines, broad hand-painted facets, scale, framing and flat frontal lighting exactly.
+Change only the expression, gaze and comic damage for the badly battered HUD state: ONE puffy purple-black eye, the other eye open and fiercely determined, TWO small bone-coloured sticking plasters, one on each cheek, with simple central pads and no markings. His ginger hair is wild and tousled but remains a recognisable version of the same haircut. A few broad charcoal-grey soot smudges sit on the forehead and cheeks. He is gritting his teeth in a wide readable determined grimace and looking straight ahead. This is exaggerated comic slapstick: closed bruises, plasters and dirt only, with NO blood, red wound marks, open cuts or gore. No head bandage in this state. Bareheaded, all hair and both ears inside the frame with a small magenta margin above and at the sides; only the shoulders naturally continue through the bottom edge. No hands, weapons, scenery or extra objects.
+Opaque production game portrait with bold simple features readable when tiny. Match the reference character's colours, outfit and proportions exactly. Every exposed background area is a visually flat pure magenta #FF00FF digital fill; keep all painted texture within the character outline. No background texture, gradient, glow, cast shadows, vignette, frame, text, letters, numbers, signature or watermark.
+~~~
+
+### hud_face_dire.png
+
+Attempt 1 — accepted.
+
+Reference: `hud_face_fine.png` (canonical identity reference).
+
+Review: Reviewed only the saved 256x256 PNG against hud_face_fine.png: same man, ginger hair, short beard, freckles, face proportions and unchanged cream shirt, waistcoat and tartan scarf. Two purple bruised eyes, clean wraparound head bandage, exhausted drooping eyes and slack mouth, looking forward. Complete hair, bandage and ears; shoulders naturally at bottom. No blood, gore, unwanted text, border or signature; established painted style retained. Opaque; visually flat matte core R242-251 G2-11 B245-251 over 22,891 pixels, zero beyond tolerance 24 with the two-pixel antialiased silhouette edge excluded.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+HUD face portrait of the player character: an original Highland hero, not any existing game's character. Head and shoulders only, facing the viewer, centred, filling the frame, square image, on flat pure magenta #FF00FF. A young-ish Scot with a shock of bright ginger-red hair, a short red beard, freckles, and a tartan-red scarf at the neck.
+Reference image 1 is hud_face_fine.png, the accepted 256-pixel canonical healthy player portrait, supplied in edit/reference mode. This must remain exactly the same man: preserve his facial structure, nose, ears, eye colour, bright ginger-red hair and short red beard, freckles, warm skin colours, head and shoulder proportions, cream shirt, moss-green waistcoat and red tartan scarf with the same checks. Preserve the same chunky charcoal outlines, broad hand-painted facets, square framing, scale and flat frontal lighting.
+Change only expression, gaze and comic damage for the nearly-done-in HUD state: BOTH eyes have broad puffy purple bruises, one simple clean bone-white cloth bandage wraps around the forehead and head below the ginger hair. He is utterly exhausted and wobbly, with heavy half-lidded tired eyes, uneven weary brows, slack slightly open mouth and sagging posture, still looking straight ahead. His head is upright enough to recognise the same face, with a subtly unsteady expression rather than an action scene. Tousled ginger hair remains visible above the bandage; show the full hair, bandage and both ears. This is comic slapstick damage: bruises and a clean head bandage only, NO blood, red wound marks, open cuts or gore. No cheek sticking plasters, lettering, bandage symbols, sweat drops, floating icons or motion lines.
+Small magenta clearance above the complete hair and at both sides; only shoulders naturally continue through the bottom edge. No hands, weapons, scenery or extra objects. Opaque production game portrait, bold features readable when tiny. Match the reference character's colours, outfit and proportions exactly. Every exposed background area is a visually flat pure magenta #FF00FF digital fill; confine all painted texture to the character. No background texture, gradient, glow, vignette, cast shadows, frame, text, letters, numbers, signature or watermark.
+~~~
+
+### hud_face_look.png
+
+Attempt 1 — accepted.
+
+Reference: `hud_face_fine.png` (canonical identity reference).
+
+Review: Reviewed only the saved 256x256 PNG against hud_face_fine.png: same healthy man, warm colours, ginger hair, short red beard, freckles, nose, scarf, cream shirt and waistcoat, with a small head turn and both pupils clearly toward the viewer's left in a wary sidelong glance. No damage. Complete head and hair; shoulders naturally at bottom. No unwanted text, border, signature, gore or style clash. Opaque; visually flat matte core R241-251 G1-13 B243-250 over 22,801 pixels, zero beyond tolerance 24 after excluding the two-pixel antialiased silhouette edge.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+HUD face portrait of the player character: an original Highland hero, not any existing game's character. Head and shoulders only, centred, filling the frame, square image, on flat pure magenta #FF00FF. A young-ish Scot with a shock of bright ginger-red hair, a short red beard, freckles, and a tartan-red scarf at the neck. The shoulders face the viewer, with the head and eyes turned toward the viewer's LEFT for a wary sidelong glance.
+Reference image 1 is hud_face_fine.png, the accepted 256-pixel canonical healthy player portrait, supplied in edit/reference mode. This must be exactly the same man: preserve his head and shoulder proportions, warm skin colours, ginger-red hair shape and colour, short red beard, freckles, nose, ears, eye colour and eyebrow shapes. Preserve his cream shirt, moss-green waistcoat, red tartan scarf with the same checks, chunky charcoal outlines and broad hand-painted facets. Keep the same scale, square framing and flat frontal lighting.
+Change only head angle, gaze and expression. He is healthy and undamaged. Turn his head slightly toward the LEFT edge of the IMAGE, a small three-quarter turn of about 20 degrees, with both eyes still visible and the nose pointing slightly toward the LEFT edge. Both pupils look clearly toward the LEFT edge of the IMAGE in an alert wary sidelong glance. His brows are slightly raised and suspicious, lips held in a small cautious closed-mouth half-smile. Do not mirror his outfit or reverse the requested direction; the game mirrors this left-looking image for the right. The character's leftward gaze is the whole action. No bruises, soot, plasters, bandages, wounds or blood.
+Keep the complete head, ginger hair silhouette, both ears and scarf inside the canvas, with a small magenta margin above the hair and at both sides. Only shoulders naturally continue through the bottom edge. No hands, weapons, arrows, motion lines, floating icons or scenery. Opaque production game portrait with bold features readable when tiny. Match the reference character's colours, outfit and proportions exactly. Every exposed background area is a visually flat pure magenta #FF00FF digital fill; confine all painted texture to the character. No background texture, gradient, glow, vignette, cast shadows, frame, text, letters, numbers, signature, watermark or gore.
+~~~
+
+### Session 1 results — 2026-10-29
+
+Exactly five images generated with built-in imagegen: `hud_face_fine.png`, `hud_face_hurt.png`, `hud_face_bad.png`, `hud_face_dire.png` and `hud_face_look.png`, all attempt 1 and all accepted. Zero rejections or regenerations. This session ends at the five-image cap.
+
+Each result was copied to its requested source-art filename and shrunk in place with `sips -Z 256` before visual review. All five saved files are opaque 256×256 PNGs. Only the reduced source-art files were opened for review. Every prompt starts with the exact section 4.4 shared style preamble. The healthy portrait uses the accepted 256-pixel batch-1 gamekeeper only as an art-style reference and establishes a distinct younger player character. Each later face uses the saved 256-pixel `hud_face_fine.png` in edit/reference mode to preserve the same man, colours, outfit and proportions.
+
+All five pass visual review for the requested expression, complete head, no unwanted text, border, signature or gore, and consistency with the batch-1 art. Shoulders naturally continue through the lower edge of the HUD bust. Backgrounds are visually flat near-magenta. Measurements on the saved 256-pixel files, using the edge-connected loose-magenta region with the two-pixel antialiased silhouette edge excluded, find zero clear-matte pixels outside tolerance 24 per channel. Across all five the matte core ranges are R241–253, G0–14, B243–252; no background repair or colour normalization was applied.
+
+All 67 pre-existing PNGs are unchanged against their starting SHA-256 hashes. No cargo or git write commands were run, and no code was written outside `.scratch`.
+
+Five of ten manifest lines remain, in order: `hud_face_grin.png`, `hud_face_ouch.png`, `hud_face_dead.png`, `spr_gamekeeper_fists1.png` and `spr_gamekeeper_fists2.png`. Continue with `hud_face_grin.png` and skip all existing files. Each remaining file is unattempted; next attempt 1. All remaining HUD faces must use `hud_face_fine.png` as the identity reference. The two fist frames must use `spr_gamekeeper_idle.png` with both fists raised and no crook held.
+
+
+### Session 2 — 2026-10-29
+
+Built-in imagegen, five images generated in manifest order. The first five manifest files already existed and were skipped. All five new images are attempt 1 and accepted; zero rejections or regenerations. The session ends at the five-image limit. Every reference was the saved 256-pixel PNG supplied in edit/reference mode.
+
+### hud_face_grin.png
+
+Attempt 1 — accepted.
+
+Reference: `hud_face_fine.png` (256-pixel identity reference, built-in edit/reference mode).
+
+Review: Reviewed only the saved 256×256 PNG. Same man, ginger hair, short red beard, freckles, cream shirt, moss-green waistcoat and tartan-red scarf as hud_face_fine.png. Huge delighted toothy grin, eyebrows up, bright forward gaze. Complete head and hair; shoulders naturally continue through the bottom edge. Chunky charcoal outlines and broad painted facets match batch 1. No unwanted text, border, signature, gore or clipped figure. Opaque; visually flat near-magenta matte core R244–253 G1–12 B246–252, 22,943 pixels, zero beyond tolerance 24 per channel with the two-pixel antialiased silhouette boundary excluded. No background repair or colour normalization.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+HUD face portrait of the player character: an original Highland hero, not any existing game's character. Head and shoulders only, facing the viewer, centred, filling the frame, square image, on flat pure magenta #FF00FF. A young-ish Scot with a shock of bright ginger-red hair, a short red beard, freckles, and a tartan-red scarf at the neck.
+Reference image 1 is hud_face_fine.png, the accepted 256-pixel canonical healthy player portrait, supplied in edit/reference mode. Keep exactly the same man: identical facial structure, nose, ears, eye colour, ginger-red hair colour and haircut, short red beard, freckles, warm skin colours, head and shoulder proportions, cream shirt, moss-green tweed waistcoat and tartan-red scarf with the same checks. Preserve the reference's chunky charcoal outlines, broad hand-painted facets, framing, scale and flat frontal lighting.
+Change only his expression: healthy, a huge delighted toothy grin, eyebrows raised high, bright happy eyes looking straight ahead. His wide joyful smile shows a simple broad row of bone-white teeth. Keep his familiar face, hair and short beard; no damage, plasters, bruises, bandage, soot, floating symbols or extra objects.
+Keep the complete head, hair silhouette, both ears and scarf inside the square canvas with small clear magenta margins above and at both sides; only the shoulders naturally continue through the bottom edge. No hands, weapons or scenery. Opaque production game portrait with bold simple features readable when tiny. Match the reference character's colours, outfit and proportions exactly. All exposed background is a visually flat pure magenta #FF00FF digital fill; keep all painting within the character outline. No background texture, grain, gradient, glow, cast shadows, vignette, frame, text, letters, numbers, signature, watermark, blood or gore.
+~~~
+
+### hud_face_ouch.png
+
+Attempt 1 — accepted.
+
+Reference: `hud_face_fine.png` (256-pixel identity reference, built-in edit/reference mode).
+
+Review: Reviewed only the saved 256×256 PNG. Same man, colours, outfit, proportions and framing as hud_face_fine.png. Both eyes squeezed shut, raised pinched brows and mouth wide open in a comic yelp. Healthy, no damage marks. Complete head and hair; shoulders naturally continue through the bottom edge. Chunky charcoal outlines and broad painted facets match batch 1. No unwanted text, border, signature, gore or clipped figure. Opaque; visually flat near-magenta matte core R242–251 G2–15 B245–251, 22,961 pixels, zero beyond tolerance 24 per channel with the two-pixel antialiased silhouette boundary excluded. No background repair or colour normalization.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+HUD face portrait of the player character: an original Highland hero, not any existing game's character. Head and shoulders only, facing the viewer, centred, filling the frame, square image, on flat pure magenta #FF00FF. A young-ish Scot with a shock of bright ginger-red hair, a short red beard, freckles, and a tartan-red scarf at the neck.
+Reference image 1 is hud_face_fine.png, the accepted 256-pixel canonical healthy player portrait, supplied in edit/reference mode. Keep exactly the same man: identical facial structure, nose, ears, eye colour, ginger-red hair colour and haircut, short red beard, freckles, warm skin colours, head and shoulder proportions, cream shirt, moss-green tweed waistcoat and tartan-red scarf with the same checks. Preserve the reference's chunky charcoal outlines, broad hand-painted facets, framing, scale and flat frontal lighting.
+Change only his expression: healthy but just hit in comic slapstick, both eyes squeezed tightly shut, eyebrows pinched upward, mouth open wide in a startled yelp. The open mouth is a simple dark cartoon shape with a little tongue and a few readable teeth. Preserve his familiar head shape, hair and short beard. No injury marks, bruises, plasters, head bandage, soot, impact burst, motion lines, floating symbols or extra objects.
+Keep the complete head, hair silhouette, both ears and scarf inside the square canvas with small clear magenta margins above and at both sides; only the shoulders naturally continue through the bottom edge. No hands, weapons or scenery. Opaque production game portrait with bold simple features readable when tiny. Match the reference character's colours, outfit and proportions exactly. All exposed background is a visually flat pure magenta #FF00FF digital fill; keep all painting within the character outline. No background texture, grain, gradient, glow, cast shadows, vignette, frame, text, letters, numbers, signature, watermark, blood or gore.
+~~~
+
+### hud_face_dead.png
+
+Attempt 1 — accepted.
+
+Reference: `hud_face_fine.png` (256-pixel identity reference, built-in edit/reference mode).
+
+Review: Reviewed only the saved 256×256 PNG. Same man, colours, outfit, proportions and framing as hud_face_fine.png. Comic crossed-stroke eyes, tongue out, one smooth closed forehead lump and three small gold stars. Complete head, hair and stars; shoulders naturally continue through the bottom edge. The requested X-shaped eyes are pictorial comic eye marks, with no unwanted lettering. Chunky charcoal outlines and broad painted facets match batch 1. No unwanted text, border, signature, gore or clipped figure. Opaque; visually flat near-magenta matte core R242–252 G1–13 B244–251, 22,207 pixels, zero beyond tolerance 24 per channel with the two-pixel antialiased silhouette boundary excluded. No background repair or colour normalization.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+HUD face portrait of the player character: an original Highland hero, not any existing game's character. Head and shoulders only, facing the viewer, centred, filling the frame, square image, on flat pure magenta #FF00FF. A young-ish Scot with a shock of bright ginger-red hair, a short red beard, freckles, and a tartan-red scarf at the neck.
+Reference image 1 is hud_face_fine.png, the accepted 256-pixel canonical healthy player portrait, supplied in edit/reference mode. Keep exactly the same man: identical facial structure, nose, ears, eye colour, ginger-red hair colour and haircut, short red beard, freckles, warm skin colours, head and shoulder proportions, cream shirt, moss-green tweed waistcoat and tartan-red scarf with the same checks. Preserve the reference's chunky charcoal outlines, broad hand-painted facets, framing, scale and flat frontal lighting.
+Change only his expression and comic slapstick damage: knocked out cold, two simple dark crossed strokes in an X shape replacing each eye, mouth open loosely with a short pink tongue hanging out, one rounded closed cartoon bump on the forehead, and three small outlined muted-gold five-point stars hovering near the top of his head. The X shapes are cartoon eyes, not lettering. His head remains upright enough for the familiar front-facing HUD framing, with a very slightly slack jaw. Keep the same man and outfit, ginger hair and short beard. The bump is smooth unbroken skin, never a wound. This is silly unconsciousness with no blood, open cuts, gore, realistic injury or new clothing. Keep every star fully inside the frame and reserve a small magenta gap around it.
+Keep the complete head, hair silhouette, both ears and scarf inside the square canvas with small clear magenta margins above and at both sides; only the shoulders naturally continue through the bottom edge. No hands, weapons or scenery. Opaque production game portrait with bold simple features readable when tiny. Match the reference character's colours, outfit and proportions exactly. All exposed background is a visually flat pure magenta #FF00FF digital fill; keep all painting within the character outline. No background texture, grain, gradient, glow, cast shadows, vignette, frame, text, letters, numbers, signature, watermark, blood or gore.
+~~~
+
+### spr_gamekeeper_fists1.png
+
+Attempt 1 — accepted.
+
+Reference: `spr_gamekeeper_idle.png` (256-pixel identity reference, built-in edit/reference mode).
+
+Review: Reviewed only the saved 256×256 PNG. Same stocky gamekeeper, big red beard, bonnet, cream shirt, moss-green tweed waistcoat, red tartan kilt, sporran, green socks and brown boots as spr_gamekeeper_idle.png. Red-faced open-mouthed bellow, both empty fists raised, his left fist (viewer right) higher, both boots planted. Complete fists, bonnet and boots, no crook. Chunky charcoal outlines and broad painted facets match batch 1. No unwanted text, border, signature, gore or clipped figure. Opaque; visually flat near-magenta matte core R243–253 G1–17 B243–252, 38,956 pixels, zero beyond tolerance 24 per channel with the two-pixel antialiased silhouette boundary excluded. No background repair or colour normalization.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure (or object), full body, facing the viewer, centred, feet (or base) at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+Reference image 1 is spr_gamekeeper_idle.png, the accepted 256-pixel batch-1 gamekeeper, supplied in edit/reference mode. This must be exactly the same stocky man, with the same big bushy red beard, thick red eyebrows, broad nose, brown tweed bonnet, moss-green tweed waistcoat over a cream rolled-sleeve shirt, red tartan kilt with the same checks, tan sporran, green socks and chunky brown boots. Match his face, colours, outfit, body proportions, thick charcoal outlines and broad hand-painted facets exactly.
+First fist-shaking animation frame: he is red-faced and shouting in exaggerated comic rage, with both empty clenched fists raised above his head and bent elbows out to the sides. His LEFT fist (on the viewer's RIGHT) is distinctly higher than the other fist. Both fists are lifted above bonnet height; no hands gripping anything. His mouth is a large open bellow, heavy eyebrows scowling, face flushed with comic anger. Both boots planted in a broad stable stance; a slight lean and the offset fists convey shaking. Keep the affectionate silly personality and reference likeness.
+He is NOT holding the shepherd's crook: it has been dropped out of frame and is entirely absent from this image. Both hands are empty clenched fists. Keep the entire bonnet, both raised fists, elbows, kilt, legs and both complete uncut boots inside the square canvas, with clear magenta margins above and beside all raised parts; the lowest complete boot sole meets the bottom edge. Adjust the full figure's placement to fit the raised arms without changing his stocky proportions. No cropped fingers, hat or boot tips. One character only, no scenery, ground, props or other objects. Opaque production game sprite with chunky simple shapes readable at 64 pixels. Every background area and gap between arms and body is a visually flat pure magenta #FF00FF digital fill; keep painted texture strictly inside the outlined character. No background texture, grain, gradient, glow, shadow, vignette, border, text, lettering, numbers, symbols, signature, watermark, blood or gore.
+~~~
+
+### spr_gamekeeper_fists2.png
+
+Attempt 1 — accepted.
+
+Reference: `spr_gamekeeper_idle.png` (256-pixel identity reference, built-in edit/reference mode).
+
+Review: Reviewed only the saved 256×256 PNG. Same stocky gamekeeper, big red beard, bonnet, cream shirt, moss-green tweed waistcoat, red tartan kilt, sporran, green socks and brown boots as spr_gamekeeper_idle.png. Red-faced open-mouthed bellow, both empty fists raised, his right fist (viewer left) higher. Left boot (viewer right) lifted for a stamp, other boot planted near the lower edge. Complete fists, bonnet and boots, no crook. Chunky charcoal outlines and broad painted facets match batch 1. No unwanted text, border, signature, gore or clipped figure. Opaque; visually flat near-magenta matte core R245–253 G1–19 B243–252, 40,794 pixels, zero beyond tolerance 24 per channel with the two-pixel antialiased silhouette boundary excluded. No background repair or colour normalization.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure (or object), full body, facing the viewer, centred, feet (or base) at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+Reference image 1 is spr_gamekeeper_idle.png, the accepted 256-pixel batch-1 gamekeeper, supplied in edit/reference mode. This must be exactly the same stocky man, with the same big bushy red beard, thick red eyebrows, broad nose, brown tweed bonnet, moss-green tweed waistcoat over a cream rolled-sleeve shirt, red tartan kilt with the same checks, tan sporran, green socks and chunky brown boots. Match his face, colours, outfit, body proportions, thick charcoal outlines and broad hand-painted facets exactly.
+Second fist-shaking animation frame: he is red-faced and shouting in exaggerated comic rage, with both empty clenched fists raised above his head and bent elbows out to the sides. His RIGHT fist (on the viewer's LEFT) is distinctly higher than the other fist. Both fists are lifted above bonnet height; no hands gripping anything. His mouth is a large open bellow, heavy eyebrows scowling, face flushed with comic anger. He stamps his LEFT foot (on the viewer's RIGHT): that boot is lifted a little, sole angled toward the floor ready to stamp, while the other complete boot is planted at the bottom edge. A slight body tilt and opposite raised fist make this clearly a second animation beat. Keep the affectionate silly personality and reference likeness.
+He is NOT holding the shepherd's crook: it has been dropped out of frame and is entirely absent from this image. Both hands are empty clenched fists. Keep the entire bonnet, both raised fists, elbows, kilt, legs and both complete uncut boots inside the square canvas, with clear magenta margins above and beside all raised parts; the lowest complete boot sole meets the bottom edge. Adjust the full figure's placement to fit the raised arms without changing his stocky proportions. No cropped fingers, hat or boot tips. One character only, no scenery, ground, props or other objects. Opaque production game sprite with chunky simple shapes readable at 64 pixels. Every background area and gap between arms and body is a visually flat pure magenta #FF00FF digital fill; keep painted texture strictly inside the outlined character. No background texture, grain, gradient, glow, shadow, vignette, border, text, lettering, numbers, symbols, signature, watermark, blood or gore.
+~~~
+
+### Session 2 results — 2026-10-29
+
+Exactly five images generated: `hud_face_grin.png`, `hud_face_ouch.png`, `hud_face_dead.png`, `spr_gamekeeper_fists1.png` and `spr_gamekeeper_fists2.png`. All accepted at attempt 1; zero rejections or regenerations.
+
+Each output was copied into its requested `art/src/` filename, then shrunk in place with `sips -Z 256` before visual review. All five saved files are opaque 256×256 PNGs; only the reduced source-art files were opened for review. Every full prompt starts with the exact section 4.4 shared style preamble. All HUD faces use `hud_face_fine.png`; both fist frames use `spr_gamekeeper_idle.png`, preserving the character's colours, outfit and proportions. Both fist frames have no crook.
+
+All five backgrounds are visually flat near-magenta. Every measured clear-matte pixel passes tolerance 24 on each channel; the two-pixel antialiased silhouette boundary is excluded. Across the five files the core ranges are R242–253, G1–19, B243–252. No background repair or colour normalization was applied.
+
+All 72 pre-existing PNGs are unchanged against their starting SHA-256 hashes. No cargo or git write commands were run; no code was written outside `.scratch`. Full prompts, baseline hashes and per-file numerical reviews are also saved under `.scratch/art3-session2/`.
+
+All ten manifest assets now exist. **Zero manifest lines remain.** Batch 3 (stage 5b) source-art generation is complete.

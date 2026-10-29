@@ -1,4 +1,4 @@
-# Bogle Castle, stage 5
+# Bogle Castle, stage 5b
 
 The engine is a pure integer portal renderer. Positions and heights in game state
 use signed 16.16 integers; map coordinates are integer units. Angles cover one
@@ -19,9 +19,9 @@ mdhavers build games/bogle/shell/native.braw -o .scratch/bogle
 ```
 
 Startup shows the castle splash with **Press ony key**, then the title menu:
-**New Game**, **Controls**, **Quit**. Navigate menus with Up/Down or W/S and
+**New Game**, **Controls**, **Kit List**, **Quit**. Navigate menus with Up/Down or W/S and
 choose with Enter/Space. Escape during play opens **Resume**, **Restart Level**,
-**Controls**, **Quit**; Escape also resumes or returns from Controls. Menus
+**Controls**, **Kit List**, **Quit**; Escape also resumes or returns from Controls or the Kit List. Menus
 freeze the simulation and release the mouse. Resume captures it again. Held
 menu keys must be released before they can fire or choose another item.
 
@@ -142,12 +142,12 @@ stored, fixed and dynamic deflate, checks Adler-32, reverses all five filters,
 and rejects interlacing. PNG chunk CRC is outside the selected subset. Fixture
 creation and exact output are documented in `tests/png/README.md`.
 
-`tools/bake.braw` is a library; `bake_all.braw` writes all 67 BOG outputs, including the
+`tools/bake.braw` is a library; `bake_all.braw` writes the asset manifest and the
 colormap. It box-filters textures to 64x64 with periodic sampling, fits cropped
 sprite content in 64x96 with visible feet on row 95, fits weapon frames in
 128x96, and resizes sky to 256x128.
 Alpha below 128 or RGB within 24 per channel of magenta masks a source pixel.
-Sprites and weapons additionally mask magenta dominance (red and blue at least
+Sprites, weapons and HUD faces additionally mask magenta dominance (red and blue at least
 128 and each at least 64 above green), removing antialiased purple fringes.
 Textures and sky retain their original predicate so natural purple stays opaque.
 A filtered texel is opaque at 50% foreground coverage; foreground RGB alone is
@@ -189,7 +189,7 @@ missing-key prompts.
 Sound is synthesized and mixed in `audio/mixer.braw`: mono signed 16-bit
 little-endian PCM at 22050 Hz, with twelve bounded voices, integer envelopes,
 seeded noise and clipping. Slot zero sustains the bagpipe drone while filling;
-release gives a blast or a sad deflate. Other procedural cues cover the knife
+release gives a blast or a sad deflate. Other procedural cues cover the sgian-dubh
 swish, Mars throw/splat, blunderbuss, door grind, pickup chime, gamekeeper shout,
 haggis fuse/explosion, ghost wail, midge buzz, player oof and menu blips. There
 are no audio sample files or new dependencies. Effects are mono, without
@@ -228,3 +228,34 @@ and menu events. The Rust bridge gate also exercises lifecycle, input validation
 null backends, thread restrictions, framework isolation, and a device-free C
 callback harness for borrowed copies, ring wrapping, in-flight counts and
 underrun silence.
+
+
+Stage 5b adds an illustrated **Kit List** to the title and pause menus. Its ten
+pages show all four weapons, all eleven pickups and the four enemy kinds, using
+the same baked sprites seen in play. Up/W goes back a page; Down/S or Enter/Space
+advances; Escape returns to the menu. The simulation stays frozen while reading.
+Weapon 1 is the **sgian-dubh** (quick melee, no ammunition); the selection bits
+and recorded replay format are unchanged.
+
+Pickups gently bob two units above and below their spawn height and briefly brighten on a repeating
+integer tic schedule. Their messages explain health, spirit, ammunition, weapon
+unlocks and the key's door. Girder Juice in a can restores **15** health; the
+bottle fills health and doubles speed for three seconds. The cow portrait,
+tartan banner and stag head are scenery hung beside walls with centres at eye
+height. The cow now hangs on the courtyard's south wall near the start. Armour,
+braziers, thistle pots and curling stones block movement like furniture. The
+banner is scenery; the separate bagpipe pickup unlocks weapon 4.
+
+The enlarged HUD has a status face: health above 75/50/25/0 selects fine/hurt/
+bad/dire, and zero health selects dead. Damage briefly shows ouch; weapon and key
+pickups show a grin. The healthy face occasionally glances left or right on a
+fixed tic schedule. These events and pickup motion use game tics only. A keeper
+shakes his fists for 35 tics on first sight before charging; subsequent windups
+retain their original 18 tics. The fist pictures alternate every five tics.
+
+Run `tools/bake_polish.braw` through a native build to bake available status-face
+and gamekeeper-fist sources. HUD faces use 32x32 indexed data and fists use the
+usual 64x96 sprite data. Missing art uses an explicit FACE placeholder or the
+existing keeper attack picture. The source art is maintained separately.
+`tools/polish_shots.braw` writes review PPMs to `.scratch/shots5b/`, including all
+Kit List pages, the HUD, courtyard dressing/pickup bob and both fist phases.

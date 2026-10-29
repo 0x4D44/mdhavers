@@ -1,0 +1,24 @@
+# Optional stage5b source art: never replaces missing sources with invented art.
+fetch "games/bogle/tools/bake"
+ken polish_palette = bake_palette()
+ken polish_count = 0
+fer face in ["fine", "hurt", "bad", "dire", "look", "grin", "ouch", "dead"] {
+    ken name = "hud_face_" + face
+    ken source = "games/bogle/art/src/" + name + ".png"
+    gin file_exists(source) {
+        write_bytes("games/bogle/data/" + name + ".bog", bake_source(source, "hud", polish_palette))
+        polish_count = polish_count + 1
+    } ither {
+        blether "Missing source: " + name + " (labelled HUD placeholder)"
+    }
+}
+fer name in ["spr_gamekeeper_fists1", "spr_gamekeeper_fists2"] {
+    ken source = "games/bogle/art/src/" + name + ".png"
+    gin file_exists(source) {
+        write_bytes("games/bogle/data/" + name + ".bog", bake_source(source, "sprite", polish_palette))
+        polish_count = polish_count + 1
+    } ither {
+        blether "Missing source: " + name + " (raised-crook fallback)"
+    }
+}
+blether "Baked " + tae_string(polish_count) + " polish images"

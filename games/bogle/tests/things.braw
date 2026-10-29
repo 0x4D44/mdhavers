@@ -43,7 +43,7 @@ mak_siccar g["message"] == "Ya wee scunner!"
 things_tick(g)
 mak_siccar g["health"] == 55 an nae g["actors"][3]["active"]
 mak_siccar g["actors"][4]["active"]
-mak_siccar g["message"] == "Braw! An oatcake."
+mak_siccar g["message"] == "Oatcake: +10 health, up tae 100."
 blether "ok armour health and pickup"
 g["map"]["light"][0] = 96
 mak_siccar nae damage_actor(g, g["actors"][1], 20)

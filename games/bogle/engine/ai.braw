@@ -47,7 +47,7 @@ dae ai_tick(g) {
                 ken distance = actor_distance(a["x"], a["y"], g["x"], g["y"])
                 ken kind = a["kind"]
                 gin kind == 2 {
-                    gin a["state"] == "windup" {
+                    gin a["state"] == "windup" or a["state"] == "fists" {
                         a["timer"] = a["timer"] - 1
                         gin a["timer"] <= 0 {
                             a["state"] = "charge"
@@ -69,6 +69,11 @@ dae ai_tick(g) {
                             bogle_emit_sound(g, "gamekeeper")
                             a["state"] = "windup"
                             a["timer"] = 18
+                            gin nae a["seen_player"] {
+                                a["seen_player"] = aye
+                                a["state"] = "fists"
+                                a["timer"] = 35
+                            }
                         } ither {
                             # Seeded patrol turns only when a wall interrupts a leg.
                             gin a["timer"] <= 0 {
@@ -88,7 +93,9 @@ dae ai_tick(g) {
                         bogle_emit_sound(g, "haggis_fuse")
                     }
                     gin a["state"] == "chase" {
-                        gin distance < 512 an g["tics"] % 14 == 0 { bogle_emit_sound(g, "haggis_fuse") }
+                        gin distance < 512 an g["tics"] % 14 == 0 {
+                            bogle_emit_sound(g, "haggis_fuse")
+                        }
                         gin distance < 28 an bogle_sight(g, a["x"], a["y"], a["z"] + 24 * 65536, a["sector"], g["x"], g["y"], g["z"] + 24 * 65536, g["sector"]) {
                             damage_actor(g, a, 1)
                         } ither {

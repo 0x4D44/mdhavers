@@ -1,0 +1,62 @@
+fetch "games/bogle/engine/render"
+mak_siccar bogle_face_tier(100) == "fine"
+mak_siccar bogle_face_tier(76) == "fine"
+mak_siccar bogle_face_tier(75) == "hurt"
+mak_siccar bogle_face_tier(51) == "hurt"
+mak_siccar bogle_face_tier(50) == "bad"
+mak_siccar bogle_face_tier(26) == "bad"
+mak_siccar bogle_face_tier(25) == "dire"
+mak_siccar bogle_face_tier(1) == "dire"
+mak_siccar bogle_face_tier(0) == "dead"
+mak_siccar bogle_face_tier(-1) == "dead"
+blether "ok health face boundaries"
+ken face_game = {"health": 100, "tics": 40, "hurt_tic": -1000, "grin_tic": -1000}
+mak_siccar bogle_face(face_game) == "fine"
+face_game["grin_tic"] = 40
+mak_siccar bogle_face(face_game) == "grin"
+face_game["hurt_tic"] = 40
+mak_siccar bogle_face(face_game) == "ouch"
+face_game["tics"] = 48
+mak_siccar bogle_face(face_game) == "grin"
+face_game["tics"] = 58
+mak_siccar bogle_face(face_game) == "fine"
+face_game["tics"] = 105
+mak_siccar bogle_face(face_game) == "look_left"
+face_game["tics"] = 125
+mak_siccar bogle_face(face_game) == "look_right"
+face_game["health"] = 0
+mak_siccar bogle_face(face_game) == "dead"
+blether "ok deterministic face priority and look"
+mak_siccar bogle_pickup_bob(0) == 0
+mak_siccar bogle_pickup_bob(8) == 2
+mak_siccar bogle_pickup_bob(24) == -2
+mak_siccar bogle_pickup_bob(32) == 0
+mak_siccar bogle_pickup_glint(0)
+mak_siccar nae bogle_pickup_glint(8)
+mak_siccar bogle_pickup_glint(70)
+ken keeper = {"kind": 2, "state": "fists"}
+mak_siccar bogle_actor_art(face_game, keeper) == "spr_gamekeeper_fists2"
+keeper["state"] = "windup"
+face_game["tics"] = 10
+mak_siccar bogle_actor_art(face_game, keeper) == "spr_gamekeeper_fists1"
+blether "ok pickup bob glint and keeper fists"
+ken mirror_pixels = bytes(2)
+bytes_set(mirror_pixels, 0, 11)
+bytes_set(mirror_pixels, 1, 22)
+ken mirror_frame = bytes(2)
+bogle_blit(mirror_frame, 2, 1, mirror_pixels, 2, 1, 0, 0, 2, 1, aye)
+mak_siccar bytes_get(mirror_frame, 0) == 22
+mak_siccar bytes_get(mirror_frame, 1) == 11
+bogle_blit(mirror_frame, 2, 1, mirror_pixels, 2, 1, -1, 0, 2, 1)
+mak_siccar bytes_get(mirror_frame, 0) == 22
+blether "ok face mirror and clipped blit"
+fetch "games/bogle/tools/bake"
+ken tiny_hud = bytes(4)
+bytes_set(tiny_hud, 0, 255)
+bytes_set(tiny_hud, 3, 255)
+ken baked_hud = bake_image({"w": 1, "h": 1, "rgba": tiny_hud}, "hud", bake_palette())
+ken hud_header = bytes_from_string("BOG1 32 32\n")
+mak_siccar bytes_len(baked_hud) == bytes_len(hud_header) + 1024
+mak_siccar bytes_slice(baked_hud, 0, bytes_len(hud_header)) == hud_header
+mak_siccar bytes_get(baked_hud, bytes_len(hud_header)) != 255
+blether "ok hud palette bake dimensions"

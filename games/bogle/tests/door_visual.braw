@@ -39,7 +39,7 @@ fer tag in 0..3 {
     fer pixel in 0..64000 {
         gin bytes_get(with_prompt, pixel) != bytes_get(without_prompt, pixel) {
             ken row = pixel / 320
-            mak_siccar row >= 70 an row <= 78
+            mak_siccar row >= 50 an row <= 58
             changed = changed + 1
         }
     }

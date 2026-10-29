@@ -1,0 +1,78 @@
+fetch "games/bogle/shell/frontend"
+
+dae kit_press(ui, menu) {
+    bogle_front_step(ui, 0, {"menu": 0, "keys": 0, "dx": 0})
+    bogle_front_step(ui, 0, {"menu": menu, "keys": 64, "dx": 999})
+}
+
+ken entries = bogle_kit_entries()
+mak_siccar len(entries) == 19
+mak_siccar entries[0][0] == "1 SGIAN-DUBH"
+ken assets = bogle_gameplay_assets()
+fer entry in entries {
+    mak_siccar contains(assets, entry[1])
+    mak_siccar bytes_len(assets[entry[1]]) == entry[2] * 96
+    mak_siccar len(entry[0]) <= 48
+    mak_siccar len(entry[3]) <= 3
+    fer line in entry[3] {
+        mak_siccar len(line) <= 48
+    }
+}
+blether "ok nineteen illustrated weapons pickups and enemies fit kit rows"
+ken ui = bogle_front_new("games/bogle/data/e1m1.map")
+kit_press(ui, 16)
+kit_press(ui, 2)
+kit_press(ui, 2)
+kit_press(ui, 4)
+mak_siccar ui["screen"] == "kit"
+mak_siccar ui["return"] == "title" an ui["kit_page"] == 0
+# The Choose key held from entry cannot turn the page.
+bogle_front_step(ui, 99999, {"menu": 4, "keys": 64, "dx": 999})
+mak_siccar ui["kit_page"] == 0 an ui["game"] == naething
+kit_press(ui, 1)
+mak_siccar ui["kit_page"] == 9
+kit_press(ui, 4)
+mak_siccar ui["kit_page"] == 0
+kit_press(ui, 2)
+mak_siccar ui["kit_page"] == 1
+kit_press(ui, 8)
+mak_siccar ui["screen"] == "title"
+blether "ok title entry page wrap held key and escape return"
+bogle_front_start(ui)
+kit_press(ui, 8)
+fer i in 0..3 {
+    kit_press(ui, 2)
+}
+kit_press(ui, 4)
+mak_siccar ui["screen"] == "kit" an ui["return"] == "pause"
+ken tics = ui["game"]["tics"]
+bogle_front_step(ui, 99999, {"menu": 0, "keys": 65, "dx": 999})
+mak_siccar ui["game"]["tics"] == tics an len(ui["consumed"]) == 0
+kit_press(ui, 8)
+mak_siccar ui["screen"] == "pause"
+kit_press(ui, 8)
+mak_siccar ui["screen"] == "play" an ui["pending_dx"] == 0 an ui["accumulator"] == 0
+blether "ok pause kit freezes gameplay and returns without queued input"
+# Column-major sampling, transparency and framebuffer clipping.
+ken picture = bytes(4)
+bytes_set(picture, 0, 7)
+bytes_set(picture, 1, 255)
+bytes_set(picture, 2, 8)
+bytes_set(picture, 3, 9)
+ken canvas = bytes(64000)
+bogle_kit_blit(canvas, picture, 2, 2, 319, 199, 2, 2)
+mak_siccar bytes_get(canvas, 63999) == 7
+bogle_kit_blit(canvas, picture, 2, 2, 10, 10, 2, 2)
+mak_siccar bytes_get(canvas, 3210) == 7 an bytes_get(canvas, 3211) == 8
+mak_siccar bytes_get(canvas, 3530) == 0 an bytes_get(canvas, 3531) == 9
+bogle_front_screen(ui, "kit")
+ken fb = bytes(4000)
+bogle_front_render(ui, fb, 80, 50)
+ken hash = frame_hash(fb)
+bogle_front_render(ui, fb, 80, 50)
+mak_siccar frame_hash(fb) == hash
+ui["kit_page"] = 9
+bogle_front_render(ui, fb, 80, 50)
+mak_siccar frame_hash(fb) != hash
+mak_siccar ui["game"]["tics"] == tics
+blether "ok baked pictures render deterministically on first and last page"

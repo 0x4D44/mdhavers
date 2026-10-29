@@ -4,6 +4,14 @@ fetch "games/bogle/tools/png"
 # bake_palette returns 768 bytes of RGB triples. Palette entry i is stored at
 # bytes [i*3, i*3+1, i*3+2]. Entry 255 is the reserved magenta transparency.
 ken BAKE_ASSETS = [
+    ["hud_face_fine", "hud"],
+    ["hud_face_hurt", "hud"],
+    ["hud_face_bad", "hud"],
+    ["hud_face_dire", "hud"],
+    ["hud_face_look", "hud"],
+    ["hud_face_grin", "hud"],
+    ["hud_face_ouch", "hud"],
+    ["hud_face_dead", "hud"],
     ["dec_armour", "sprite"],
     ["dec_banner", "sprite"],
     ["dec_brazier", "sprite"],
@@ -27,6 +35,8 @@ ken BAKE_ASSETS = [
     ["prj_wail", "sprite"],
     ["sky_highlands", "sky"],
     ["spr_gamekeeper_charge", "sprite"],
+    ["spr_gamekeeper_fists1", "sprite"],
+    ["spr_gamekeeper_fists2", "sprite"],
     ["spr_gamekeeper_death1", "sprite"],
     ["spr_gamekeeper_death2", "sprite"],
     ["spr_gamekeeper_idle", "sprite"],
@@ -308,11 +318,11 @@ dae bake_column_major(width, height, row_major) {
 }
 
 dae bake_image(image, kind, palette) {
-    bake_need(kind == "texture" or kind == "sprite" or kind == "sky" or kind == "weapon", "kind must be texture, sprite, weapon, or sky")
+    bake_need(kind == "texture" or kind == "sprite" or kind == "sky" or kind == "weapon" or kind == "hud", "kind must be texture, sprite, weapon, hud, or sky")
     bake_need(whit_kind(palette) == "bytes" an bytes_len(palette) == 768, "palette must be 768 RGB bytes")
     ken width = image["w"]
     ken height = image["h"]
-    ken mask = bake_mask(image, kind == "sprite" or kind == "weapon")
+    ken mask = bake_mask(image, kind == "sprite" or kind == "weapon" or kind == "hud")
     gin kind == "texture" {
         ken pixels = bake_filter(image, mask, palette, 0, 0, width, height, 64, 64, aye)
         gie bake_make_bog(64, 64, bake_column_major(64, 64, pixels))
@@ -322,7 +332,12 @@ dae bake_image(image, kind, palette) {
         gie bake_make_bog(256, 128, bake_column_major(256, 128, pixels))
     }
 
+    ken canvas_height = 96
     ken canvas_width = 64
+    gin kind == "hud" {
+        canvas_width = 32
+        canvas_height = 32
+    }
     gin kind == "weapon" {
         canvas_width = 128
     }
@@ -341,24 +356,24 @@ dae bake_image(image, kind, palette) {
         }
     }
 
-    ken canvas = bytes(canvas_width * 96)
-    fer i in 0..canvas_width * 96 {
+    ken canvas = bytes(canvas_width * canvas_height)
+    fer i in 0..canvas_width * canvas_height {
         bytes_set(canvas, i, 255)
     }
     gin max_x == -1 {
-        gie bake_make_bog(canvas_width, 96, bake_column_major(canvas_width, 96, canvas))
+        gie bake_make_bog(canvas_width, canvas_height, bake_column_major(canvas_width, canvas_height, canvas))
     }
 
     ken crop_width = max_x - min_x + 1
     ken crop_height = max_y - min_y + 1
     ken scaled_width = canvas_width
-    ken scaled_height = 96
-    gin crop_width * 96 >= crop_height * canvas_width {
+    ken scaled_height = canvas_height
+    gin crop_width * canvas_height >= crop_height * canvas_width {
         scaled_width = canvas_width
         scaled_height = max(1, crop_height * canvas_width / crop_width)
     } ither {
-        scaled_width = max(1, crop_width * 96 / crop_height)
-        scaled_height = 96
+        scaled_width = max(1, crop_width * canvas_height / crop_height)
+        scaled_height = canvas_height
     }
     ken pixels = bake_filter(image, mask, palette, min_x, min_y, crop_width, crop_height, scaled_width, scaled_height, nae)
     ken last_visible = -1
@@ -371,14 +386,14 @@ dae bake_image(image, kind, palette) {
     }
     gin last_visible >= 0 {
         ken offset_x = (canvas_width - scaled_width) / 2
-        ken offset_y = 95 - last_visible
+        ken offset_y = canvas_height - 1 - last_visible
         fer y in 0..last_visible + 1 {
             fer x in 0..scaled_width {
                 bytes_set(canvas, (offset_y + y) * canvas_width + offset_x + x, bytes_get(pixels, y * scaled_width + x))
             }
         }
     }
-    gie bake_make_bog(canvas_width, 96, bake_column_major(canvas_width, 96, canvas))
+    gie bake_make_bog(canvas_width, canvas_height, bake_column_major(canvas_width, canvas_height, canvas))
 }
 
 dae bake_source(path, kind, palette) {

@@ -165,7 +165,9 @@ dae weapons_tick(g, fire) {
     }
     gin weapon == 4 {
         gin fire an g["cooldown"] == 0 an g["puff"] >= 34 {
-            gin g["bag_charge"] == 0 { bogle_emit_sound(g, "pipe_fill") }
+            gin g["bag_charge"] == 0 {
+                bogle_emit_sound(g, "pipe_fill")
+            }
             g["bag_charge"] = g["bag_charge"] + 1
             gin g["bag_charge"] >= 35 {
                 bagpipe_blast(g)
@@ -180,7 +182,7 @@ dae weapons_tick(g, fire) {
         }
     } ither gin fire an g["cooldown"] == 0 {
         gin weapon == 1 {
-            bogle_emit_sound(g, "knife")
+            bogle_emit_sound(g, "sgian_dubh")
             weapon_hitscan(g, g["angle"], 64, 20)
             g["cooldown"] = 8
         } ither gin weapon == 2 an g["mars"] > 0 {

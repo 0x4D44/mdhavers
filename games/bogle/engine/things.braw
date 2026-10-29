@@ -34,13 +34,14 @@ dae init_things(g) {
             shove(g["actors"], {
                 "x": m["thing_x"][i] * 65536,
                 "y": m["thing_y"][i] * 65536,
-                "z": m["thing_z"][i] * 65536,
+                "z": (m["thing_z"][i] + actor_mount_height(kind)) * 65536,
                 "sector": m["thing_sector"][i],
                 "angle": m["thing_angle"][i],
                 "kind": kind,
                 "health": hp,
                 "state": state,
                 "timer": 0,
+                "seen_player": nae,
                 "vx": 0,
                 "vy": 0,
                 "dx": 0,
@@ -49,6 +50,14 @@ dae init_things(g) {
             })
         }
     }
+}
+
+# Wall dressing hangs with its centre at eye height (48 units).
+dae actor_mount_height(kind) {
+    gin kind == 30 or kind == 34 or kind == 35 {
+        gie 24
+    }
+    gie 0
 }
 
 # Distances in map units keep the squared products safely inside i64.
@@ -68,6 +77,7 @@ dae hurt_player(g, damage) {
     }
     g["spirit"] = g["spirit"] - absorbed
     g["health"] = g["health"] - damage + absorbed
+    g["hurt_tic"] = g["tics"]
     g["message"] = "Ya wee scunner!"
     bogle_emit_sound(g, "oof")
     gin g["health"] < 0 {
@@ -144,17 +154,17 @@ dae actor_move(g, a, dx, dy) {
 dae actor_pickup(g, a) {
     ken kind = a["kind"]
     ken messages = [
-        "Braw! An oatcake.",
-        "Haggis, neeps an tatties!",
-        "Girder Juice!",
-        "Haud on tae yer bonnet!",
-        "A tin o shortbread!",
-        "Braw! A deep-fried Mars bar.",
-        "Powder an shot!",
-        "A blunderbuss!",
-        "The pipes are callin!",
-        "Ye found the airn key.",
-        "Ye found the siller key.",
+        "Oatcake: +10 health, up tae 100.",
+        "Haggis plate: +50 health, up tae 100.",
+        "Wee juice: +15 health, up tae 100.",
+        "Juice bottle: full health, double speed for 3 seconds.",
+        "Shortbread: spirit filled tae 100.",
+        "Mars box: 5 throws, unlocks Mars bars.",
+        "Powder an shot: +5 blunderbuss shots.",
+        "Blunderbuss unlocked, wi 5 shots.",
+        "Bagpipes unlocked: haud fire, then let gae!",
+        "Airn key: opens the gallery door.",
+        "Siller key: opens the battlement door.",
     ]
     g["message"] = messages[kind - 10]
     gin kind == 10 {
@@ -195,6 +205,9 @@ dae actor_pickup(g, a) {
     }
     gin kind == 20 {
         g["keys"] = bit_or(g["keys"], 2)
+    }
+    gin kind == 15 or kind == 17 or kind == 18 or kind == 19 or kind == 20 {
+        g["grin_tic"] = g["tics"]
     }
     a["active"] = nae
     bogle_emit_sound(g, "pickup")
