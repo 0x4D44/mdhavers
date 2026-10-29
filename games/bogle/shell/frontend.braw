@@ -16,6 +16,7 @@ dae bogle_front_new(map_path) {
         "pending_dx": 0,
         "run": 0,
         "consumed": [],
+        "sounds": [],
     }
 }
 
@@ -51,6 +52,7 @@ dae bogle_front_items(screen) {
 
 dae bogle_front_step(ui, dt_ms, input) {
     ui["consumed"] = []
+    ui["sounds"] = []
     ken menu = input["menu"]
     ken pressed = bit_an(menu, bit_xor(ui["last_menu"], 31))
     ui["last_menu"] = menu
@@ -60,6 +62,7 @@ dae bogle_front_step(ui, dt_ms, input) {
         gie nae
     }
     gin ui["screen"] != "play" {
+        gin pressed != 0 { shove(ui["sounds"], "menu") }
         # A held Space or mouse button used in a menu must be released to fire.
         ui["blocked_keys"] = bit_or(ui["blocked_keys"], keys)
         gin ui["screen"] == "splash" {
@@ -130,7 +133,7 @@ dae bogle_front_step(ui, dt_ms, input) {
     fer i in 0..due {
         ken sample = {"keys": keys, "dx": ui["pending_dx"]}
         ui["pending_dx"] = 0
-        tic(g, sample)
+        fer cue in tic(g, sample) { shove(ui["sounds"], cue) }
         shove(ui["consumed"], sample)
         gin g["health"] <= 0 {
             bogle_front_screen(ui, "dead")

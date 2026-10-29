@@ -66,6 +66,7 @@ dae ai_tick(g) {
                             ken velocity = actor_towards(a, g["x"], g["y"], 163840)
                             a["dx"] = velocity[0]
                             a["dy"] = velocity[1]
+                            bogle_emit_sound(g, "gamekeeper")
                             a["state"] = "windup"
                             a["timer"] = 18
                         } ither {
@@ -84,8 +85,10 @@ dae ai_tick(g) {
                 gin kind == 3 {
                     gin a["state"] == "dormant" an distance < 256 {
                         a["state"] = "chase"
+                        bogle_emit_sound(g, "haggis_fuse")
                     }
                     gin a["state"] == "chase" {
+                        gin distance < 512 an g["tics"] % 14 == 0 { bogle_emit_sound(g, "haggis_fuse") }
                         gin distance < 28 an bogle_sight(g, a["x"], a["y"], a["z"] + 24 * 65536, a["sector"], g["x"], g["y"], g["z"] + 24 * 65536, g["sector"]) {
                             damage_actor(g, a, 1)
                         } ither {
@@ -102,11 +105,15 @@ dae ai_tick(g) {
                     }
                     gin a["timer"] <= 0 an distance >= 64 an distance < 768 an bogle_sight(g, a["x"], a["y"], a["z"] + 32 * 65536, a["sector"], g["x"], g["y"], g["z"] + 32 * 65536, g["sector"]) {
                         velocity = actor_towards(a, g["x"], g["y"], 6 * 65536)
+                        bogle_emit_sound(g, "ghost")
                         spawn_projectile(g, "wail", a["x"], a["y"], a["z"] + 32 * 65536, a["sector"], velocity[0], velocity[1], 0, a)
                         a["timer"] = 70
                     }
                 }
                 gin kind == 5 {
+                    gin distance < 256 an (g["tics"] % 7 == 1) {
+                        bogle_emit_sound(g, "midge")
+                    }
                     ken velocity = actor_towards(a, g["x"], g["y"], 32768)
                     actor_move(g, a, velocity[0], velocity[1])
                     a["timer"] = a["timer"] + 1

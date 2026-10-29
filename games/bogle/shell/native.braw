@@ -9,4 +9,4 @@ whiles nae screen_should_close() {
     last = now
     snooze(1)
 }
-screen_close()
+bogle_close()

@@ -25,6 +25,7 @@ thread_local! {
 /// Register all graphics functions in the interpreter globals
 #[cfg(feature = "graphics")]
 pub fn register_graphics_functions(globals: &Rc<RefCell<crate::value::Environment>>) {
+    register_sound_functions(globals);
     // Window/Screen functions
     register_screen_functions(globals);
 
@@ -800,6 +801,7 @@ fn string_to_key(name: &str) -> Result<KeyboardKey, String> {
 pub fn register_graphics_functions(
     globals: &std::rc::Rc<std::cell::RefCell<crate::value::Environment>>,
 ) {
+    register_sound_functions(globals);
     // Keep the framebuffer bridge vocabulary available in CLI/minimal builds;
     // calls fail with the same Scots hurl as the native runtime placeholders.
     const BRIDGE_FUNCTIONS: &[(&str, usize)] = &[
@@ -826,6 +828,76 @@ pub fn register_graphics_functions(
                     "Nae windae! Screen an' keyboard functions cannae be used in native code"
                         .to_string(),
                 )
+            }))),
+        );
+    }
+}
+
+/// The interpreter uses deterministic null sound in every feature configuration.
+/// State belongs to this interpreter, and queued input is copied before returning.
+fn register_sound_functions(globals: &Rc<std::cell::RefCell<crate::value::Environment>>) {
+    #[derive(Default)]
+    struct Sound {
+        channels: usize,
+        pcm: Vec<u8>,
+    }
+    let state = Rc::new(std::cell::RefCell::new(Sound::default()));
+    for (name, arity) in [
+        ("sound_open", 2),
+        ("sound_queue", 1),
+        ("sound_queued", 0),
+        ("sound_close", 0),
+    ] {
+        let state = state.clone();
+        globals.borrow_mut().define(
+            name.to_owned(),
+            Value::NativeFunction(Rc::new(NativeFunction::new(name, arity, move |args| {
+                let mut sound = state.borrow_mut();
+                match name {
+                    "sound_open" => {
+                        let channels = match (&args[0], &args[1]) {
+                            (Value::Integer(22050 | 44100), Value::Integer(channels @ (1 | 2))) => {
+                                *channels as usize
+                            }
+                            _ => {
+                                return Err(
+                                    "sound_open wants rate 22050 or 44100 and channels 1 or 2"
+                                        .to_owned(),
+                                )
+                            }
+                        };
+                        if sound.channels != 0 {
+                            return Err("sound_open: sound is already open".to_owned());
+                        }
+                        sound.channels = channels;
+                        sound.pcm.clear();
+                        Ok(Value::Nil)
+                    }
+                    "sound_queue" => {
+                        if sound.channels == 0 {
+                            return Err("sound_queue: nae sound is open".to_owned());
+                        }
+                        let pcm = match &args[0] {
+                            Value::Bytes(pcm) => pcm.borrow(),
+                            _ => return Err("sound_queue wants bytes PCM".to_owned()),
+                        };
+                        if pcm.len() % (sound.channels * 2) != 0 {
+                            return Err("sound_queue wants complete signed16 PCM frames".to_owned());
+                        }
+                        if pcm.len() > 1048576 - sound.pcm.len() {
+                            return Err("sound_queue: PCM ring is full".to_owned());
+                        }
+                        sound.pcm.extend_from_slice(&pcm);
+                        Ok(Value::Nil)
+                    }
+                    "sound_queued" => Ok(Value::Integer((sound.pcm.len() / 2) as i64)),
+                    "sound_close" => {
+                        sound.channels = 0;
+                        sound.pcm.clear();
+                        Ok(Value::Nil)
+                    }
+                    _ => unreachable!(),
+                }
             }))),
         );
     }

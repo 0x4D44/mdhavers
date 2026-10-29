@@ -90,6 +90,7 @@ dae doors_tick(g, use) {
                 } ither gin lock == 2 an bit_an(g["keys"], 2) == 0 {
                     g["message"] = "It's lockit. Ye'll be needin' the siller key."
                 } ither {
+                    gin d["state"] != "opening" { bogle_emit_sound(g, "door") }
                     d["state"] = "opening"
                 }
             }
@@ -120,11 +121,13 @@ dae doors_tick(g, use) {
             } ither {
                 d["timer"] = d["timer"] - 1
                 gin d["timer"] <= 0 {
+                    bogle_emit_sound(g, "door")
                     d["state"] = "closing"
                 }
             }
         } ither gin d["state"] == "closing" {
             gin door_occupied(g, sector) {
+                bogle_emit_sound(g, "door")
                 d["state"] = "opening"
             } ither {
                 m["ceil_h"][sector] = max(m["floor_h"][sector], m["ceil_h"][sector] - 4)

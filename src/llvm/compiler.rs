@@ -17,6 +17,7 @@ static EMBEDDED_RUNTIME_RS: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/md
 static EMBEDDED_GC_STUB: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/gc_stub_c.a"));
 
 static EMBEDDED_SCREEN: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/mdh_screen.a"));
+static EMBEDDED_SOUND: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/mdh_sound.a"));
 
 use inkwell::context::Context;
 use inkwell::module::Module;
@@ -128,7 +129,7 @@ pub fn link_native_executable_from_object_for_coverage(
         use_color: false,
         wrote_any: false,
     };
-    link_native_executable_from_object(obj_path, output_path, &mut status, false)
+    link_native_executable_from_object(obj_path, output_path, &mut status, false, false)
 }
 
 struct BuildStatus {
@@ -402,6 +403,7 @@ fn link_native_executable_from_object(
     output_path: &Path,
     status: &mut BuildStatus,
     uses_screen: bool,
+    uses_sound: bool,
 ) -> Result<(), HaversError> {
     // Generate unique temp file names using process ID and a counter
     // This avoids race conditions when tests run in parallel
@@ -409,6 +411,7 @@ fn link_native_executable_from_object(
     let runtime_path = std::env::temp_dir().join(format!("mdh_runtime_{}.a", unique_id));
     let runtime_rs_path = std::env::temp_dir().join(format!("mdh_runtime_rs_{}.a", unique_id));
     let gc_stub_path = std::env::temp_dir().join(format!("mdh_gc_stub_{}.a", unique_id));
+    let sound_path = std::env::temp_dir().join(format!("mdh_sound_{}.a", unique_id));
     let screen_path = std::env::temp_dir().join(format!("mdh_screen_{}.a", unique_id));
     let _cleanup = TempFileCleanup::new(vec![
         obj_path.to_path_buf(),
@@ -416,6 +419,7 @@ fn link_native_executable_from_object(
         runtime_rs_path.clone(),
         gc_stub_path.clone(),
         screen_path.clone(),
+        sound_path.clone(),
     ]);
 
     status.update("Preparing runtime", StatusColor::Yellow);
@@ -458,6 +462,11 @@ fn link_native_executable_from_object(
             .map_err(|err| HaversError::CompileError(err.to_string()))?;
     }
 
+    if uses_sound {
+        std::fs::write(&sound_path, EMBEDDED_SOUND)
+            .map_err(|err| HaversError::CompileError(err.to_string()))?;
+    }
+
     status.update("Linking native executable", StatusColor::Yellow);
 
     // Link with system linker. The runtime archives call into each other, so
@@ -474,6 +483,12 @@ fn link_native_executable_from_object(
     ]);
     if uses_screen {
         link_args.push(screen_path.to_str().unwrap());
+    }
+    if uses_sound {
+        link_args.push(sound_path.to_str().unwrap());
+    }
+    if uses_sound && cfg!(target_os = "macos") {
+        link_args.extend(["-framework", "AudioToolbox"]);
     }
     if elf_group {
         link_args.push("-Wl,--end-group");
@@ -608,7 +623,7 @@ impl LLVMCompiler {
         output_path: &Path,
         source_path: Option<&Path>,
         mut status: Option<&mut BuildStatus>,
-    ) -> Result<bool, HaversError> {
+    ) -> Result<(bool, bool), HaversError> {
         if let Some(status) = status.as_mut() {
             status.update("Generating LLVM IR", StatusColor::Yellow);
         }
@@ -680,7 +695,7 @@ impl LLVMCompiler {
             return Err(HaversError::CompileError(err));
         }
 
-        Ok(codegen.uses_screen)
+        Ok((codegen.uses_screen, codegen.uses_sound))
     }
 
     /// Compile to native executable
@@ -710,7 +725,7 @@ impl LLVMCompiler {
         let compiler = LLVMCompiler::new()
             .with_optimization(opt_level)
             .with_refcounting(self.refcounting()?);
-        let uses_screen = match compiler.compile_to_object_with_source_status(
+        let (uses_screen, uses_sound) = match compiler.compile_to_object_with_source_status(
             program,
             &obj_path,
             source_path,
@@ -723,7 +738,13 @@ impl LLVMCompiler {
             }
         };
 
-        link_native_executable_from_object(&obj_path, output_path, &mut status, uses_screen)
+        link_native_executable_from_object(
+            &obj_path,
+            output_path,
+            &mut status,
+            uses_screen,
+            uses_sound,
+        )
     }
 
     /// Run LLVM optimization passes

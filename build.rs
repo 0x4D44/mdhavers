@@ -19,6 +19,7 @@ fn main() {
     println!("cargo:rerun-if-changed=runtime/mdh_runtime.h");
     println!("cargo:rerun-if-changed=runtime/gc_stub.c");
     for file in [
+        "runtime/mdh_sound.c",
         "runtime/mdh_screen.c",
         "runtime/platform/mdh_screen.h",
         "runtime/platform/screen_macos.c",
@@ -104,6 +105,15 @@ fn main() {
     }
     screen.compile("mdh_screen");
 
+    let mut sound = cc::Build::new();
+    sound
+        .file("runtime/mdh_sound.c")
+        .include("runtime")
+        .opt_level(2)
+        .warnings(true)
+        .cargo_metadata(false);
+    sound.compile("mdh_sound");
+
     // Compile the GC stub. Debug builds get the test-only allocation-failure knob
     // (MDH_TEST_ALLOC_FAIL_OVER and MDH_TEST_BUF_FAIL_OVER, see runtime/gc_stub.c);
     // release builds never do.
@@ -130,6 +140,7 @@ fn main() {
         ("mdh_runtime", "mdh_runtime_c.a"),
         ("gc_stub", "gc_stub_c.a"),
         ("mdh_screen", "mdh_screen.a"),
+        ("mdh_sound", "mdh_sound.a"),
     ] {
         let built = out_dir.join(archive_name(stem));
         let dest = out_dir.join(embedded);

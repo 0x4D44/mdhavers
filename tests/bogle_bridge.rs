@@ -73,6 +73,150 @@ mod native {
         output
     }
 
+    #[test]
+    fn sound_null_lifecycle_counts_scalar_samples_and_rejects_bad_input() {
+        let output = run_ok(
+            r#"
+blether sound_close()
+blether sound_queued()
+blether sound_open(22050, 2)
+ken pcm = bytes(12)
+blether sound_queue(pcm)
+bytes_set(pcm, 0, 255)
+blether sound_queued()
+sound_queue(bytes(4))
+blether sound_queued()
+sound_close()
+blether sound_queued()
+sound_open(44100, 1)
+sound_queue(bytes(2))
+blether sound_queued()
+sound_close()
+"#,
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "naething\n0\nnaething\nnaething\n6\n8\n0\n1\n"
+        );
+        assert!(output.stderr.is_empty(), "{output:?}");
+        let cases = [
+            ("sound_queue(bytes(2))", "sound_queue: nae sound is open"),
+            (
+                "sound_open(48000, 1)",
+                "sound_open wants rate 22050 or 44100 and channels 1 or 2",
+            ),
+            (
+                "sound_open(22050.0, 1)",
+                "sound_open wants rate 22050 or 44100 and channels 1 or 2",
+            ),
+            (
+                "sound_open(22050, 3)",
+                "sound_open wants rate 22050 or 44100 and channels 1 or 2",
+            ),
+            (
+                "sound_open(22050, 2)\nsound_open(22050, 2)",
+                "sound_open: sound is already open",
+            ),
+            (
+                "sound_open(22050, 2)\nsound_queue(bytes(2))",
+                "sound_queue wants complete signed16 PCM frames",
+            ),
+            (
+                "sound_open(22050, 1)\nsound_queue(bytes(1))",
+                "sound_queue wants complete signed16 PCM frames",
+            ),
+            (
+                "sound_open(22050, 1)\nsound_queue([])",
+                "sound_queue wants bytes PCM",
+            ),
+            (
+                "sound_open(22050, 1)\nsound_queue(bytes(1048578))",
+                "sound_queue: PCM ring is full",
+            ),
+            (
+                "sound_open(22050, 1)\nsound_queue(bytes(1048576))\nsound_queue(bytes(2))",
+                "sound_queue: PCM ring is full",
+            ),
+        ];
+        let mut source = String::new();
+        for (call, _) in cases {
+            source.push_str(&format!("hae_a_bash {{ {call}\nblether \"UNEXPECTED SUCCESS\" }} gin_it_gangs_wrang e {{ blether e }}\nsound_close()\n"));
+        }
+        let output = run_ok(&source);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout)
+                .lines()
+                .collect::<Vec<_>>(),
+            cases
+                .iter()
+                .map(|(_, e)| format!("Jings! Something went awfy wrang: {e}"))
+                .collect::<Vec<_>>()
+        );
+        let output = run_ok(
+            r#"
+dae check(f) {
+    ken t = thread_spawn(f, [])
+    hae_a_bash { thread_join(t)
+blether "UNEXPECTED SUCCESS" } gin_it_gangs_wrang e { blether e }
+}
+check(|| sound_open(22050, 1))
+check(|| sound_queue(bytes(2)))
+check(|| sound_queued())
+check(|| sound_close())
+"#,
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "Jings! Something went awfy wrang: Nae sound aff the main thread!\n".repeat(4)
+        );
+        #[cfg(target_os = "macos")]
+        {
+            let executable = Executable::compile("sound_open(22050, 1)\nsound_queue(bytes(4))\nblether sound_queued()\nsound_close()\n");
+            let mut sound_only = Command::new(&executable.0);
+            sound_only.env_remove("MDH_SCREEN").env("MDH_SOUND", "none");
+            let output = bounded_output(sound_only);
+            assert!(output.status.success(), "{output:?}");
+            assert_eq!(String::from_utf8_lossy(&output.stdout), "2\n");
+            let mut command = Command::new("otool");
+            command.arg("-L").arg(&executable.0);
+            let output = bounded_output(command);
+            let libraries = String::from_utf8_lossy(&output.stdout);
+            assert!(libraries.contains("AudioToolbox"), "{libraries}");
+            for forbidden in ["AppKit", "QuartzCore", "CoreGraphics", "libobjc"] {
+                assert!(
+                    !libraries.contains(forbidden),
+                    "unexpected {forbidden}: {libraries}"
+                );
+            }
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn sound_ring_callback_copies_wraps_drains_and_zero_fills() {
+        let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let executable = Executable(
+            repo.join(".scratch")
+                .join(format!("bogle-sound-ring-{}", std::process::id())),
+        );
+        let mut command = Command::new("clang");
+        command
+            .arg("-Wall")
+            .arg("-Wextra")
+            .arg("-Werror")
+            .arg(repo.join("tests/fixtures/bogle_sound_ring.c"))
+            .args(["-framework", "AudioToolbox", "-o"])
+            .arg(&executable.0);
+        let output = bounded_output(command);
+        assert!(output.status.success(), "ring harness build: {output:?}");
+        let output = executable.run();
+        assert!(output.status.success(), "ring harness: {output:?}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "sound ring copy/wrap/in-flight/underrun OK\n"
+        );
+    }
+
     fn fnv1a32(bytes: &[u8]) -> u32 {
         bytes.iter().fold(2_166_136_261, |hash, byte| {
             (hash ^ u32::from(*byte)).wrapping_mul(16_777_619)
@@ -288,7 +432,13 @@ blether screen_close()
         let output = bounded_output(command);
         assert!(output.status.success(), "otool failed: {output:?}");
         let libraries = String::from_utf8_lossy(&output.stdout);
-        for forbidden in ["AppKit", "QuartzCore", "CoreGraphics", "libobjc"] {
+        for forbidden in [
+            "AppKit",
+            "QuartzCore",
+            "CoreGraphics",
+            "libobjc",
+            "AudioToolbox",
+        ] {
             assert!(
                 !libraries.contains(forbidden),
                 "unexpected {forbidden}: {libraries}"
@@ -325,4 +475,28 @@ fn interpreter_without_graphics_reports_nae_windae_for_every_bridge_name() {
             .to_string();
         assert!(error.contains("Nae windae"), "{call}: {error}");
     }
+}
+
+#[test]
+fn sound_interpreter_null_backend_is_per_interpreter_and_bounded() {
+    use mdhavers::{parse, Interpreter};
+    let mut interpreter = Interpreter::new();
+    for source in [
+        "sound_close()\nsound_open(22050, 2)\nsound_queue(bytes(12))\ngin sound_queued() != 6 { hurl \"scalar sample count\" }",
+        "sound_close()\nsound_close()\ngin sound_queued() != 0 { hurl \"close reset\" }\nsound_open(44100, 1)\nsound_queue(bytes(2))\ngin sound_queued() != 1 { hurl \"mono count\" }",
+    ] {
+        interpreter.interpret(&parse(source).unwrap()).unwrap();
+    }
+    let error = interpreter
+        .interpret(&parse("sound_queue(bytes(1048576))").unwrap())
+        .unwrap_err();
+    assert!(error.to_string().contains("PCM ring is full"), "{error}");
+    let mut other = Interpreter::new();
+    other
+        .interpret(&parse("gin sound_queued() != 0 { hurl \"shared state\" }").unwrap())
+        .unwrap();
+    let error = other
+        .interpret(&parse("sound_queue(bytes(2))").unwrap())
+        .unwrap_err();
+    assert!(error.to_string().contains("nae sound is open"), "{error}");
 }

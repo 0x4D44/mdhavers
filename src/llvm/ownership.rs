@@ -393,6 +393,10 @@ pub const RUNTIME_OWNERSHIP: &[(&str, &str, Ret)] = &[
     ("__mdh_soond_steek", "", Ret::None),
     ("__mdh_soond_unlade", "b", Ret::None),
     ("__mdh_soond_wheesht", "b", Ret::None),
+    ("__mdh_sound_close", "", Ret::None),
+    ("__mdh_sound_open", "bb", Ret::None),
+    ("__mdh_sound_queue", "b", Ret::None),
+    ("__mdh_sound_queued", "", Ret::None),
     ("__mdh_speir", "b", Ret::Fresh),
     ("__mdh_split_by", "bb", Ret::Fresh), // shares elements of arg 1
     ("__mdh_sporran_fill", "bbb", Ret::Fresh), // R1: +1 on every path
@@ -620,6 +624,7 @@ blether Pot().n
         let c_runtime = concat!(
             include_str!("../../runtime/mdh_runtime.c"),
             include_str!("../../runtime/mdh_screen.c"),
+            include_str!("../../runtime/mdh_sound.c"),
             include_str!("../../runtime/gc_stub.c")
         );
         let rust_runtime = [

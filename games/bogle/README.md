@@ -1,4 +1,4 @@
-# Bogle Castle, stage 4b
+# Bogle Castle, stage 5
 
 The engine is a pure integer portal renderer. Positions and heights in game state
 use signed 16.16 integers; map coordinates are integer units. Angles cover one
@@ -164,7 +164,7 @@ sectors cover the courtyard, gatehouse, hall and dais, kitchen, eight descending
 steps, crypt, gallery, chapel and battlements. The iron key opens the gallery;
 the silver key opens the battlement stair. The kitchen offers Mars bars, the
 chapel holds bagpipes, and the final lever ends the level. Bog and fryer floors
-hurt; bog and cold water slow movement. The kelpie, bogle, Piper’s Ghost, caber, whisky barrels and sound
+hurt; bog and cold water slow movement. The kelpie, bogle, Piper’s Ghost, caber and whisky barrels
 remain deferred as specified by the design.
 
 `tools/stage4frame.braw` replays to the descending stair near the crypt, renders
@@ -184,4 +184,47 @@ Run `tools/frontend_shots.braw` after creating `.scratch/shots/` to reproduce
 320x200 PPM captures of splash, title, pause, Controls, start, door prompt, death
 and level completion. `gate_start` looks at the closed courtyard gate from the
 player start; `door_iron` and `door_silver` show the distinct keyed doors and
-missing-key prompts. Sound remains stage 5.
+missing-key prompts.
+
+Sound is synthesized and mixed in `audio/mixer.braw`: mono signed 16-bit
+little-endian PCM at 22050 Hz, with twelve bounded voices, integer envelopes,
+seeded noise and clipping. Slot zero sustains the bagpipe drone while filling;
+release gives a blast or a sad deflate. Other procedural cues cover the knife
+swish, Mars throw/splat, blunderbuss, door grind, pickup chime, gamekeeper shout,
+haggis fuse/explosion, ghost wail, midge buzz, player oof and menu blips. There
+are no audio sample files or new dependencies. Effects are mono, without
+positional panning or distance attenuation.
+
+`tic` returns a fresh list of sound event names; the pure front end collects
+all due tics' events for its host. These outputs do not affect simulation or
+rendering. The native shell fills to 1323 queued samples (60 ms) each frame;
+three approximately 5 ms AudioQueue buffers account for the device's extra
+buffering. Pausing stops the drone, resuming a charged bag restores it, and a
+new run resets mixer voices. The existing headless and replay hosts import no
+audio bridge and retain their committed frame hashes.
+
+The OS-only native bridge provides `sound_open(rate, channels)`,
+`sound_queue(bytes)`, `sound_queued()` and `sound_close()`. It accepts 22050 or
+44100 Hz and one or two channels. Queue input must contain complete signed16
+little-endian interleaved frames; the bridge copies borrowed bytes before
+returning. `sound_queued()` counts **scalar samples**, including samples already
+in device buffers: stereo frames count twice. The capacity is 1 MiB (524288
+scalar samples). Close is idempotent and clears the queue; queued returns zero
+when closed. Device calls must run on the main thread; AudioQueue's callback
+only copies the locked C ring and never enters mdhavers. Only programs using
+the sound names link AudioToolbox.
+
+`MDH_SOUND=none` or `MDH_SCREEN=none` selects a deterministic null bridge that
+counts samples without draining them or opening a device. The game shell skips
+audio initialization under either flag. On other native platforms and in the
+interpreter, the API currently uses null sound; interpreter state belongs to
+each interpreter instance. Native macOS reports an error if a real output
+device cannot open. Arthur's listening check needs a logged-in session with an
+available Core Audio output device.
+
+`tests/audio.braw` hashes every timbre and checks sustain/stop, chunk independence,
+finite tails, voice bounds and clipping. `tests/sound_events.braw` checks engine
+and menu events. The Rust bridge gate also exercises lifecycle, input validation,
+null backends, thread restrictions, framework isolation, and a device-free C
+callback harness for borrowed copies, ring wrapping, in-flight counts and
+underrun silence.

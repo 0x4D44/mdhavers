@@ -3,6 +3,7 @@ fetch "games/bogle/engine/move"
 # Mutable game actors are separate from immutable map spawn records.
 dae init_things(g) {
     g["actors"] = []
+    g["sounds"] = []
     g["bog_spawn_timer"] = 350
     g["bog_slow"] = nae
     ken m = g["map"]
@@ -68,6 +69,7 @@ dae hurt_player(g, damage) {
     g["spirit"] = g["spirit"] - absorbed
     g["health"] = g["health"] - damage + absorbed
     g["message"] = "Ya wee scunner!"
+    bogle_emit_sound(g, "oof")
     gin g["health"] < 0 {
         g["health"] = 0
     }
@@ -91,6 +93,7 @@ dae damage_actor(g, actor, damage) {
         # Mark inactive before recursing so two adjacent haggises cannot loop.
         gin actor["kind"] == 3 {
             actor["state"] = "exploded"
+            bogle_emit_sound(g, "explosion")
             splash_damage(g, actor["x"], actor["y"], actor["z"], actor["sector"], 96, 60, actor)
         }
     }
@@ -194,6 +197,7 @@ dae actor_pickup(g, a) {
         g["keys"] = bit_or(g["keys"], 2)
     }
     a["active"] = nae
+    bogle_emit_sound(g, "pickup")
 }
 
 dae things_tick(g) {
@@ -251,5 +255,13 @@ dae things_tick(g) {
                 hurt_player(g, 2)
             }
         }
+    }
+}
+
+# Events are an output of the deterministic tic, never input to simulation.
+# Coalesce identical cues within a tic (several pickups or adjacent swarms).
+dae bogle_emit_sound(g, cue) {
+    gin nae contains(g["sounds"], cue) {
+        shove(g["sounds"], cue)
     }
 }

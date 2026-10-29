@@ -170,6 +170,10 @@ struct LibcFunctions<'ctx> {
     bytes_write_u32be: FunctionValue<'ctx>,
     mono_ms: FunctionValue<'ctx>,
     mono_ns: FunctionValue<'ctx>,
+    sound_open: FunctionValue<'ctx>,
+    sound_queue: FunctionValue<'ctx>,
+    sound_queued: FunctionValue<'ctx>,
+    sound_close: FunctionValue<'ctx>,
     screen_open: FunctionValue<'ctx>,
     screen_shaw: FunctionValue<'ctx>,
     screen_should_close: FunctionValue<'ctx>,
@@ -628,6 +632,7 @@ pub struct CodeGen<'ctx> {
     libc: LibcFunctions<'ctx>,
     /// Any compiled bridge call requires the separate screen archive at native link.
     pub(crate) uses_screen: bool,
+    pub(crate) uses_sound: bool,
 
     /// Current function being compiled
     current_function: Option<FunctionValue<'ctx>>,
@@ -937,6 +942,7 @@ impl<'ctx> CodeGen<'ctx> {
             types,
             libc,
             uses_screen: false,
+            uses_sound: false,
             current_function: None,
             line_slots: HashMap::new(),
             variables: HashMap::new(),
@@ -2491,6 +2497,28 @@ impl<'ctx> CodeGen<'ctx> {
         // __mdh_mono_ns() -> MdhValue
         let mono_ns = module.add_function("__mdh_mono_ns", mono_ms_type, Some(Linkage::External));
         // Framebuffer bridge: MdhValue arguments are borrowed for this call only.
+        let sound_open = module.add_function(
+            "__mdh_sound_open",
+            types
+                .value_type
+                .fn_type(&[types.value_type.into(), types.value_type.into()], false),
+            Some(Linkage::External),
+        );
+        let sound_queue = module.add_function(
+            "__mdh_sound_queue",
+            types.value_type.fn_type(&[types.value_type.into()], false),
+            Some(Linkage::External),
+        );
+        let sound_queued = module.add_function(
+            "__mdh_sound_queued",
+            types.value_type.fn_type(&[], false),
+            Some(Linkage::External),
+        );
+        let sound_close = module.add_function(
+            "__mdh_sound_close",
+            types.value_type.fn_type(&[], false),
+            Some(Linkage::External),
+        );
         let screen_open_type = types.value_type.fn_type(
             &[
                 types.value_type.into(),
@@ -4116,6 +4144,10 @@ impl<'ctx> CodeGen<'ctx> {
             bytes_write_u32be,
             mono_ms,
             mono_ns,
+            sound_open,
+            sound_queue,
+            sound_queued,
+            sound_close,
             screen_open,
             screen_shaw,
             screen_should_close,
@@ -24179,6 +24211,46 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_int_signed_div(ms_data, thousand, "secs")
                         .unwrap();
                     return Ok(self.make_int(secs));
+                }
+                "sound_open" => {
+                    self.uses_sound = true;
+                    return self.compile_runtime_call_value_with_arity(
+                        self.libc.sound_open,
+                        args,
+                        2,
+                        "sound_open",
+                        "sound_open returned void",
+                    );
+                }
+                "sound_queue" => {
+                    self.uses_sound = true;
+                    return self.compile_runtime_call_value_with_arity(
+                        self.libc.sound_queue,
+                        args,
+                        1,
+                        "sound_queue",
+                        "sound_queue returned void",
+                    );
+                }
+                "sound_queued" => {
+                    self.uses_sound = true;
+                    return self.compile_runtime_call_value_with_arity(
+                        self.libc.sound_queued,
+                        args,
+                        0,
+                        "sound_queued",
+                        "sound_queued returned void",
+                    );
+                }
+                "sound_close" => {
+                    self.uses_sound = true;
+                    return self.compile_runtime_call_value_with_arity(
+                        self.libc.sound_close,
+                        args,
+                        0,
+                        "sound_close",
+                        "sound_close returned void",
+                    );
                 }
                 "screen_open" => {
                     self.uses_screen = true;

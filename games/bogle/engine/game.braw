@@ -67,14 +67,16 @@ dae new_game(map, play = naething) {
 }
 
 dae tic(g, input) {
+    g["sounds"] = []
     gin g["gameplay"] an (g["health"] <= 0 or g["won"]) {
-        gie naething
+        gie g["sounds"]
     }
     ken keys = input["keys"]
     gin g["gameplay"] {
         fer weapon in 1..5 {
             gin bit_an(keys, 128 * bogle_pow2(weapon)) != 0 an g["owned"][weapon - 1] {
                 gin g["weapon"] != weapon {
+                    gin g["bag_charge"] > 0 { bogle_emit_sound(g, "pipe_stop") }
                     g["bag_charge"] = 0
                 }
                 g["weapon"] = weapon
@@ -97,7 +99,7 @@ dae tic(g, input) {
         g["was_use"] = use
         gin g["won"] {
             g["tics"] = g["tics"] + 1
-            gie naething
+            gie g["sounds"]
         }
     }
     ken forward = 0
@@ -147,6 +149,7 @@ dae tic(g, input) {
         things_tick(g)
         ai_tick(g)
     }
+    gie g["sounds"]
 }
 
 dae render(g, fb, w, h) {

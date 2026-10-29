@@ -333,6 +333,7 @@ fn bogle_scan_braw_source(source: &str, relative: &str) -> Vec<String> {
                 }
                 if call_follows(bytes, index)
                     && (name.starts_with("screen_")
+                        || name.starts_with("sound_")
                         || name.starts_with("key_")
                         || name.starts_with("mouse_")
                         || name.starts_with("mono_")
@@ -464,11 +465,11 @@ floor
 "#;
     assert!(bogle_scan_braw_source(ignored, "ignored.braw").is_empty());
 
-    let forbidden = "screen_shaw(fb, palette)\nmono_ns()\nsin(0)\nrandom_int(1, 2)\n1.5\nPI\n";
+    let forbidden = "screen_shaw(fb, palette)\nmono_ns()\nsound_queue(bytes(2))\nsin(0)\nrandom_int(1, 2)\n1.5\nPI\n";
     let findings = bogle_scan_braw_source(forbidden, "mutant.braw");
     assert_eq!(
         findings.len(),
-        6,
+        7,
         "forbidden tokens were not all reported: {findings:?}"
     );
 }

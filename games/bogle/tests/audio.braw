@@ -1,0 +1,94 @@
+fetch "games/bogle/audio/mixer"
+
+dae audio_hash(pcm) {
+    ken result = 1
+    fer i in 0..bytes_len(pcm) {
+        result = (result * 31 + bytes_get(pcm, i)) % 2147483647
+    }
+    gie result
+}
+
+dae audio_silent(pcm) {
+    fer i in 0..bytes_len(pcm) {
+        mak_siccar bytes_get(pcm, i) == 0
+    }
+}
+
+ken audio_m = bogle_audio_new()
+audio_silent(bogle_audio_mix(audio_m, 32))
+mak_siccar bytes_len(bogle_audio_mix(audio_m, 0)) == 0
+bogle_audio_event(audio_m, "pipe_fill")
+ken audio_drone = audio_hash(bogle_audio_mix(audio_m, 256))
+mak_siccar audio_drone != audio_hash(bytes(512))
+bogle_audio_mix(audio_m, 12000)
+mak_siccar audio_hash(bogle_audio_mix(audio_m, 256)) != audio_hash(bytes(512))
+bogle_audio_event(audio_m, "pipe_stop")
+audio_silent(bogle_audio_mix(audio_m, 32))
+fer ending in ["pipe_blast", "pipe_deflate"] {
+    bogle_audio_event(audio_m, "pipe_fill")
+    bogle_audio_event(audio_m, ending)
+    mak_siccar audio_m["voices"][0][0] == 0
+    bogle_audio_mix(audio_m, 10000)
+    audio_silent(bogle_audio_mix(audio_m, 32))
+}
+blether "ok sustained drone and stop"
+
+ken audio_names = ["pipe_blast", "pipe_deflate", "knife", "mars_throw", "mars_splat", "blunderbuss", "door", "pickup", "gamekeeper", "haggis_fuse", "explosion", "ghost", "midge", "oof", "menu"]
+ken audio_hashes = []
+fer name in audio_names {
+    ken first = bogle_audio_new()
+    ken split = bogle_audio_new()
+    bogle_audio_event(first, name)
+    bogle_audio_event(split, name)
+    ken whole = bogle_audio_mix(first, 128)
+    ken prefix = bogle_audio_mix(split, 37)
+    ken suffix = bogle_audio_mix(split, 91)
+    fer i in 0..74 {
+        mak_siccar bytes_get(whole, i) == bytes_get(prefix, i)
+    }
+    fer i in 0..182 {
+        mak_siccar bytes_get(whole, i + 74) == bytes_get(suffix, i)
+    }
+    ken hashed = audio_hash(whole)
+    mak_siccar hashed != audio_hash(bytes(256))
+    fer earlier in audio_hashes {
+        mak_siccar earlier != hashed
+    }
+    shove(audio_hashes, hashed)
+    bogle_audio_mix(first, 18000)
+    audio_silent(bogle_audio_mix(first, 32))
+}
+blether audio_hashes
+blether "ok distinct finite sounds and chunk independence"
+
+# Repeated bursts steal finite slots but cannot evict the sustained drone.
+ken audio_crowded = bogle_audio_new()
+bogle_audio_event(audio_crowded, "pipe_fill")
+fer i in 0..40 {
+    bogle_audio_event(audio_crowded, "explosion")
+}
+mak_siccar len(audio_crowded["voices"]) == 12
+ken audio_loud = bogle_audio_mix(audio_crowded, 256)
+ken audio_clipped = nae
+fer i in 0..256 {
+    ken low = bytes_get(audio_loud, i * 2)
+    ken high = bytes_get(audio_loud, i * 2 + 1)
+    gin (low == 255 an high == 127) or (low == 0 an high == 128) {
+        audio_clipped = aye
+    }
+}
+mak_siccar audio_clipped
+bogle_audio_mix(audio_crowded, 18000)
+mak_siccar audio_hash(bogle_audio_mix(audio_crowded, 32)) != audio_hash(bytes(64))
+bogle_audio_event(audio_crowded, "pipe_stop")
+audio_silent(bogle_audio_mix(audio_crowded, 32))
+bogle_audio_event(audio_crowded, "unknown")
+audio_silent(bogle_audio_mix(audio_crowded, 32))
+ken audio_errors = 0
+hae_a_bash {
+    bogle_audio_mix(audio_crowded, -1)
+} gin_it_gangs_wrang err {
+    audio_errors = audio_errors + 1
+}
+mak_siccar audio_errors == 1
+blether "ok bounded voices clipping and guards"

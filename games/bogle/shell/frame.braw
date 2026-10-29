@@ -1,4 +1,5 @@
 fetch "frontend"
+fetch "games/bogle/audio/mixer"
 
 ken bogle_ui = naething
 ken bogle_fb = naething
@@ -6,6 +7,7 @@ ken bogle_palette = naething
 ken bogle_width = 320
 ken bogle_height = 200
 ken bogle_record = naething
+ken bogle_sound = naething
 
 dae bogle_init(w, h) {
     bogle_width = w
@@ -25,6 +27,13 @@ dae bogle_init(w, h) {
     }
     screen_open(w, h, "Bogle Castle - The Gatehouse")
     screen_grab_mouse(nae)
+    # The native bridge also honours these flags, but avoid even opening its
+    # null stream in an offscreen shell. Replay hosts never import frame.braw.
+    gin env_get("MDH_SCREEN") != "none" an env_get("MDH_SOUND") != "none" {
+        sound_open(22050, 1)
+        bogle_sound = bogle_audio_new()
+        bogle_sound_frame([])
+    }
 }
 
 dae bogle_frame(dt_ms) {
@@ -101,9 +110,36 @@ dae bogle_frame(dt_ms) {
             scrieve_append(bogle_record, tae_string(input["keys"]) + " " + tae_string(input["dx"]) + "\n")
         }
     }
+    gin bogle_sound != naething {
+        gin run != bogle_ui["run"] { bogle_sound = bogle_audio_new() }
+        gin bogle_ui["screen"] != "play" {
+            shove(bogle_ui["sounds"], "pipe_stop")
+        } ither gin before != "play" an bogle_ui["game"]["bag_charge"] > 0 {
+            shove(bogle_ui["sounds"], "pipe_fill")
+        }
+        bogle_sound_frame(bogle_ui["sounds"])
+    }
     gin keep {
         bogle_front_render(bogle_ui, bogle_fb, bogle_width, bogle_height)
         screen_shaw(bogle_fb, bogle_palette)
     }
     gie keep
+}
+
+# Keep 60ms of PCM ahead; bound each fill even after a slow frame. The mixer
+# has no device/clock knowledge, and the engine never sees queue depth.
+dae bogle_sound_frame(events) {
+    bogle_audio_events(bogle_sound, events)
+    ken needed = max(0, 1323 - sound_queued())
+    gin needed > 0 {
+        sound_queue(bogle_audio_mix(bogle_sound, needed))
+    }
+}
+
+dae bogle_close() {
+    gin bogle_sound != naething {
+        sound_close()
+        bogle_sound = naething
+    }
+    screen_close()
 }

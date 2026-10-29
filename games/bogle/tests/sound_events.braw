@@ -1,0 +1,66 @@
+fetch "games/bogle/engine/game"
+fetch "games/bogle/engine/map"
+fetch "games/bogle/shell/frontend"
+
+ken sound_room = "BOGMAP 1\nv 0 0\nv 1024 0\nv 1024 512\nv 0 512\ns 0 128 1 2 192 0 0 0 1 2 3\nt 1 64 64 0 0\n"
+ken sg = new_game(map_parse(sound_room), aye)
+mak_siccar tic(sg, {"keys": 64, "dx": 0}) == ["knife"]
+mak_siccar tic(sg, {"keys": 64, "dx": 0}) == []
+sg["owned"][3] = aye
+sg["weapon"] = 4
+sg["cooldown"] = 0
+mak_siccar tic(sg, {"keys": 64, "dx": 0}) == ["pipe_fill"]
+mak_siccar tic(sg, {"keys": 64, "dx": 0}) == []
+mak_siccar tic(sg, {"keys": 0, "dx": 0}) == ["pipe_deflate"]
+fer i in 0..21 { tic(sg, {"keys": 64, "dx": 0}) }
+mak_siccar tic(sg, {"keys": 0, "dx": 0}) == ["pipe_blast"]
+sg["cooldown"] = 0
+tic(sg, {"keys": 64, "dx": 0})
+mak_siccar tic(sg, {"keys": 256, "dx": 0}) == ["pipe_stop"]
+blether "ok tic events knife and bagpipe lifecycle"
+sg["weapon"] = 2
+sg["owned"][1] = aye
+sg["mars"] = 1
+sg["cooldown"] = 0
+mak_siccar tic(sg, {"keys": 64, "dx": 0}) == ["mars_throw"]
+sg["sounds"] = []
+projectile_burst(sg, sg["projectiles"][0])
+mak_siccar sg["sounds"][0] == "mars_splat"
+sg["sounds"] = []
+sg["weapon"] = 3
+sg["owned"][2] = aye
+sg["powder"] = 1
+sg["cooldown"] = 0
+weapons_tick(sg, aye)
+mak_siccar sg["sounds"] == ["blunderbuss"]
+sg["sounds"] = []
+hurt_player(sg, 3)
+mak_siccar sg["sounds"] == ["oof"]
+sg["health"] = 0
+mak_siccar tic(sg, {"keys": 64, "dx": 0}) == []
+blether "ok throws splats bang damage and no stale events after death"
+sg = new_game(map_parse(sound_room + "t 2 200 64 0 0\nt 3 300 64 0 0\nt 4 400 64 0 0\nt 5 80 100 0 0\n"), aye)
+ken sounds = tic(sg, {"keys": 0, "dx": 0})
+mak_siccar contains(sounds, "gamekeeper")
+mak_siccar contains(sounds, "haggis_fuse")
+mak_siccar contains(sounds, "ghost")
+mak_siccar contains(sounds, "midge")
+sg["sounds"] = []
+damage_actor(sg, sg["actors"][1], 1)
+mak_siccar contains(sg["sounds"], "explosion")
+blether "ok enemy shout fuse explosion wail and buzz"
+sg = new_game(map_parse(sound_room + "t 10 64 64 0 0\n"), aye)
+mak_siccar tic(sg, {"keys": 0, "dx": 0}) == ["pickup"]
+ken door_room = "BOGMAP 1\nv 0 0\nv 128 0\nv 128 128\nv 0 128\nv 160 0\nv 160 128\nv 320 0\nv 320 128\ns 0 128 1 2 192 0 0 0 1 2 3\ns 0 128 1 2 192 1 0 1 4 5 2\ns 0 128 1 2 192 0 0 4 6 7 5\nt 1 96 64 0 0\n"
+sg = new_game(map_parse(door_room), aye)
+mak_siccar tic(sg, {"keys": 128, "dx": 0}) == ["door"]
+mak_siccar tic(sg, {"keys": 128, "dx": 0}) == []
+blether "ok pickup and door transition events"
+ken sui = bogle_front_new("games/bogle/data/e1m1.map")
+bogle_front_step(sui, 0, {"menu": 16, "keys": 0, "dx": 0})
+mak_siccar sui["sounds"] == ["menu"]
+bogle_front_step(sui, 0, {"menu": 16, "keys": 0, "dx": 0})
+mak_siccar sui["sounds"] == []
+bogle_front_step(sui, 0, {"menu": 2, "keys": 0, "dx": 0})
+mak_siccar sui["sounds"] == ["menu"]
+blether "ok menu events are edges"

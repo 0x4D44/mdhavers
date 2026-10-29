@@ -29,6 +29,7 @@ dae weapon_hitscan(g, angle, range, damage) {
 }
 
 dae bagpipe_blast(g) {
+    bogle_emit_sound(g, "pipe_blast")
     g["puff"] = g["puff"] - 34
     g["bag_charge"] = 0
     g["cooldown"] = 10
@@ -72,6 +73,7 @@ dae spawn_projectile(g, kind, x, y, z, sector, vx, vy, vz, owner) {
 
 dae projectile_burst(g, p) {
     gin p["kind"] == "mars" {
+        bogle_emit_sound(g, "mars_splat")
         splash_damage(g, p["x"], p["y"], p["z"], p["sector"], 64, 45, p["owner"])
         p["kind"] = "sizzle"
         p["timer"] = 35
@@ -163,6 +165,7 @@ dae weapons_tick(g, fire) {
     }
     gin weapon == 4 {
         gin fire an g["cooldown"] == 0 an g["puff"] >= 34 {
+            gin g["bag_charge"] == 0 { bogle_emit_sound(g, "pipe_fill") }
             g["bag_charge"] = g["bag_charge"] + 1
             gin g["bag_charge"] >= 35 {
                 bagpipe_blast(g)
@@ -170,18 +173,23 @@ dae weapons_tick(g, fire) {
         } ither gin nae fire {
             gin g["bag_charge"] >= 21 an g["puff"] >= 34 {
                 bagpipe_blast(g)
+            } ither gin g["bag_charge"] > 0 {
+                bogle_emit_sound(g, "pipe_deflate")
             }
             g["bag_charge"] = 0
         }
     } ither gin fire an g["cooldown"] == 0 {
         gin weapon == 1 {
+            bogle_emit_sound(g, "knife")
             weapon_hitscan(g, g["angle"], 64, 20)
             g["cooldown"] = 8
         } ither gin weapon == 2 an g["mars"] > 0 {
+            bogle_emit_sound(g, "mars_throw")
             g["mars"] = g["mars"] - 1
             spawn_projectile(g, "mars", g["x"], g["y"], g["view_z"], g["sector"], 8 * bogle_cos(g["sin"], g["angle"]), 8 * bogle_sin(g["sin"], g["angle"]), 4 * 65536, naething)
             g["cooldown"] = 18
         } ither gin weapon == 3 an g["powder"] > 0 {
+            bogle_emit_sound(g, "blunderbuss")
             g["powder"] = g["powder"] - 1
             fer pellet in 0..7 {
                 ken spread = (pellet - 3) * 32 + game_random(g) % 33 - 16
