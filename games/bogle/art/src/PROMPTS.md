@@ -957,3 +957,1318 @@ All pre-existing art and palette files were checked against starting SHA-256 has
 All twelve requested source-art assets now exist: `sky_highlands.png`, `spr_gamekeeper_idle.png`, `spr_haggis_idle.png`, `spr_tartan_ghost_idle.png`, `spr_midges_idle.png`, `wpn_mars_bar.png`, `wpn_sgian_dubh.png`, `wpn_bagpipes_full.png`, `pick_girder_juice.png`, `pick_haggis_plate.png`, `pick_shortbread.png` and `pick_key_tartan.png`. None remain to generate. The ten lead-reviewed textures and their original prompt entries are preserved. This session used one of its maximum five image generations.
 
 
+
+## Batch 2
+
+Session 1, 2026-10-29. Built-in imagegen; at most five generations including retries. Each output is copied to its source-art name and reduced in place with `sips -Z 256` before visual review. Near-magenta matte tolerance: 24 per channel, following the lead acceptance note above.
+
+### spr_gamekeeper_walk1.png
+
+Attempt 1 — accepted.
+
+Reference used: `games/bogle/art/src/spr_gamekeeper_idle.png` (256×256), supplied through imagegen edit/reference mode.
+
+256×256 review: Left boot (viewer’s right) clearly forward, right leg trailing, crook in the right hand. The beard, face, hat, waistcoat, kilt, sporran, socks and boots match the idle reference. Complete figure and crook, flat magenta backdrop, no unwanted text, border, signature, gore or style clash.
+
+Matte core: 38,827 pixels, RGB ranges R244–253, G0–18, B242–251; zero pixels outside the per-channel tolerance of 24. The two-pixel antialiased silhouette boundary is excluded from matte measurements. No background repair or colour normalization was applied.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure (or object), full body, facing the viewer, centred, feet (or base) at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+Reference image 1 is spr_gamekeeper_idle.png, the accepted 256x256 source-art sprite. Use this file in edit/reference mode and match this same character exactly: identical stocky proportions, huge bushy orange-red beard and eyebrows, broad nose, brown deerstalker with its little top tie, olive-green checked tweed waistcoat with brass buttons over a cream rolled-sleeve shirt, red tartan kilt, tan sporran with three dark tassels, green ribbed socks with red tabs, and chunky brown lace-up boots. His shepherd's crook has the same warm brown shaft and large hooked top. Keep the same outfit colours, tartan pattern, face, head-to-body proportions, bold charcoal outlines and broad painted facets as the reference. The crook is held in his right hand, on the viewer's left, except where the requested falling action releases it.
+Walking animation frame 1: the gamekeeper is mid-stride towards the viewer, his anatomical LEFT leg and boot (on the viewer's right) stepped clearly forward, his right leg trailing behind. Keep his chest and face directed at the viewer, with a small natural shoulder swing and the crook firmly in his right hand. Same affectionately stern expression as the idle. Show an unmistakable left-foot-forward walking pose, not an idle stance.
+Square 1:1 production animation sprite for Bogle Castle. Change only the pose and the specific expression required for this frame; retain the reference character identity and painted batch-1 style exactly. One complete character, no extra people. Centre the whole action with the feet or lowest base at the bottom edge; keep every boot outline intact and allow clear magenta space above and at both sides of the entire hat, hands and crook. Do not crop any part of the figure or prop. The backdrop is a visually flat opaque magenta #FF00FF chroma-key matte, with every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps between limbs and crook. Confine painted shading and texture to the character and crook. No ground, floor, scenery, cast shadow, gradient, glow, transparency or checkerboard. No lettering, text, numbers, symbols, logos, border, signature, watermark or gore.
+~~~
+
+### spr_gamekeeper_walk2.png
+
+Attempt 1 — accepted.
+
+Reference used: `games/bogle/art/src/spr_gamekeeper_idle.png` (256×256), supplied through imagegen edit/reference mode.
+
+256×256 review: Right boot (viewer’s left) clearly forward, left leg trailing, opposite stride to walk1, crook in the right hand. Character colours, outfit and proportions match the idle reference. Complete figure and hooked crook, flat magenta backdrop, no unwanted text, border, signature, gore or style clash.
+
+Matte core: 37,928 pixels, RGB ranges R244–253, G1–18, B242–251; zero pixels outside the per-channel tolerance of 24. The two-pixel antialiased silhouette boundary is excluded from matte measurements. No background repair or colour normalization was applied.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure (or object), full body, facing the viewer, centred, feet (or base) at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+Reference image 1 is spr_gamekeeper_idle.png, the accepted 256x256 source-art sprite. Use this file in edit/reference mode and match this same character exactly: identical stocky proportions, huge bushy orange-red beard and eyebrows, broad nose, brown deerstalker with its little top tie, olive-green checked tweed waistcoat with brass buttons over a cream rolled-sleeve shirt, red tartan kilt, tan sporran with three dark tassels, green ribbed socks with red tabs, and chunky brown lace-up boots. His shepherd's crook has the same warm brown shaft and large hooked top. Keep the same outfit colours, tartan pattern, face, head-to-body proportions, bold charcoal outlines and broad painted facets as the reference. The crook is held in his right hand, on the viewer's left, except where the requested falling action releases it.
+Walking animation frame 2: the gamekeeper is mid-stride towards the viewer, his anatomical RIGHT leg and boot (on the viewer's left) stepped clearly forward, his left leg trailing behind. Keep his chest and face directed at the viewer, with a small natural shoulder swing and the crook firmly in his right hand. Same affectionately stern expression as the idle. Show an unmistakable right-foot-forward walking pose, not an idle stance.
+Square 1:1 production animation sprite for Bogle Castle. Change only the pose and the specific expression required for this frame; retain the reference character identity and painted batch-1 style exactly. One complete character, no extra people. Centre the whole action with the feet or lowest base at the bottom edge; keep every boot outline intact and allow clear magenta space above and at both sides of the entire hat, hands and crook. Do not crop any part of the figure or prop. The backdrop is a visually flat opaque magenta #FF00FF chroma-key matte, with every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps between limbs and crook. Confine painted shading and texture to the character and crook. No ground, floor, scenery, cast shadow, gradient, glow, transparency or checkerboard. No lettering, text, numbers, symbols, logos, border, signature, watermark or gore.
+~~~
+
+### spr_gamekeeper_charge.png
+
+Attempt 1 — accepted.
+
+Reference used: `games/bogle/art/src/spr_gamekeeper_idle.png` (256×256), supplied through imagegen edit/reference mode.
+
+256×256 review: Charging running stride with lowered head, bellowing open mouth, flushed red face and raised crook. Recognisable reference face, red beard, deerstalker, green checked waistcoat, red kilt, sporran and boots. Complete figure and raised hooked crook inside the canvas; flat magenta backdrop. No unwanted text, border, signature, gore or style clash.
+
+Matte core: 39,246 pixels, RGB ranges R243–253, G1–19, B241–251; zero pixels outside the per-channel tolerance of 24. The two-pixel antialiased silhouette boundary is excluded from matte measurements. No background repair or colour normalization was applied.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure (or object), full body, facing the viewer, centred, feet (or base) at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+Reference image 1 is spr_gamekeeper_idle.png, the accepted 256x256 source-art sprite. Use this file in edit/reference mode and match this same character exactly: identical stocky proportions, huge bushy orange-red beard and eyebrows, broad nose, brown deerstalker with its little top tie, olive-green checked tweed waistcoat with brass buttons over a cream rolled-sleeve shirt, red tartan kilt, tan sporran with three dark tassels, green ribbed socks with red tabs, and chunky brown lace-up boots. His shepherd's crook has the same warm brown shaft and large hooked top. Keep the same outfit colours, tartan pattern, face, head-to-body proportions, bold charcoal outlines and broad painted facets as the reference. The crook is held in his right hand, on the viewer's left, except where the requested falling action releases it.
+Charging attack animation frame: the same gamekeeper charges head-down straight towards the viewer, torso leaned forward, knees bent in a forceful running stride. His right hand raises the same hooked shepherd's crook, entirely inside the canvas. His face is flushed comic red, eyebrows lowered and mouth wide open as he bellows; his familiar orange-red beard and deerstalker remain clearly recognisable. Affectionate comic fury, not frightening realism. His whole face must remain visible under the tilted hat. No speech bubble, no words and no action lettering.
+Square 1:1 production animation sprite for Bogle Castle. Change only the pose and the specific expression required for this frame; retain the reference character identity and painted batch-1 style exactly. One complete character, no extra people. Centre the whole action with the feet or lowest base at the bottom edge; keep every boot outline intact and allow clear magenta space above and at both sides of the entire hat, hands and crook. Do not crop any part of the figure or prop. The backdrop is a visually flat opaque magenta #FF00FF chroma-key matte, with every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps between limbs and crook. Confine painted shading and texture to the character and crook. No ground, floor, scenery, cast shadow, gradient, glow, transparency or checkerboard. No lettering, text, numbers, symbols, logos, border, signature, watermark or gore.
+~~~
+
+### spr_gamekeeper_pain.png
+
+Attempt 1 — accepted.
+
+Reference used: `games/bogle/art/src/spr_gamekeeper_idle.png` (256×256), supplied through imagegen edit/reference mode.
+
+256×256 review: Recoil pose with shoulders drawn back, eyes squeezed shut, bared-teeth wince and deerstalker visibly askew. Crook remains in the right hand; reference beard, outfit colours, tartan and stocky proportions retained. Full hat, hands, boots and hooked crook visible. Flat magenta backdrop; no unwanted text, border, signature, gore or style clash.
+
+Matte core: 37,545 pixels, RGB ranges R245–253, G1–18, B244–252; zero pixels outside the per-channel tolerance of 24. The two-pixel antialiased silhouette boundary is excluded from matte measurements. No background repair or colour normalization was applied.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure (or object), full body, facing the viewer, centred, feet (or base) at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+Reference image 1 is spr_gamekeeper_idle.png, the accepted 256x256 source-art sprite. Use this file in edit/reference mode and match this same character exactly: identical stocky proportions, huge bushy orange-red beard and eyebrows, broad nose, brown deerstalker with its little top tie, olive-green checked tweed waistcoat with brass buttons over a cream rolled-sleeve shirt, red tartan kilt, tan sporran with three dark tassels, green ribbed socks with red tabs, and chunky brown lace-up boots. His shepherd's crook has the same warm brown shaft and large hooked top. Keep the same outfit colours, tartan pattern, face, head-to-body proportions, bold charcoal outlines and broad painted facets as the reference. The crook is held in his right hand, on the viewer's left, except where the requested falling action releases it.
+Pain animation frame: the same gamekeeper recoils backwards with hunched shoulders and a comic startled wince, both eyes squeezed firmly shut. His deerstalker is knocked visibly askew but remains on his head. His right hand still holds the crook. One knee bends as he loses balance; keep the complete boots visible. Same face, outfit, beard and proportions as the reference, without wounds or gore. No impact stars, text or extra objects.
+Square 1:1 production animation sprite for Bogle Castle. Change only the pose and the specific expression required for this frame; retain the reference character identity and painted batch-1 style exactly. One complete character, no extra people. Centre the whole action with the feet or lowest base at the bottom edge; keep every boot outline intact and allow clear magenta space above and at both sides of the entire hat, hands and crook. Do not crop any part of the figure or prop. The backdrop is a visually flat opaque magenta #FF00FF chroma-key matte, with every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps between limbs and crook. Confine painted shading and texture to the character and crook. No ground, floor, scenery, cast shadow, gradient, glow, transparency or checkerboard. No lettering, text, numbers, symbols, logos, border, signature, watermark or gore.
+~~~
+
+### spr_gamekeeper_death1.png
+
+Attempt 1 — accepted.
+
+Reference used: `games/bogle/art/src/spr_gamekeeper_idle.png` (256×256), supplied through imagegen edit/reference mode.
+
+256×256 review: Comic backward fall with both boot soles visible, arms flung out and startled face; the released crook is airborne on the viewer’s left. Hat, beard, waistcoat, kilt, sporran, socks and boots match the idle reference, with pose foreshortening. Whole character and complete flying crook inside the frame. Flat magenta backdrop; no unwanted text, border, signature, gore or style clash.
+
+Matte core: 39,092 pixels, RGB ranges R244–253, G1–17, B242–252; zero pixels outside the per-channel tolerance of 24. The two-pixel antialiased silhouette boundary is excluded from matte measurements. No background repair or colour normalization was applied.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure (or object), full body, facing the viewer, centred, feet (or base) at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+Reference image 1 is spr_gamekeeper_idle.png, the accepted 256x256 source-art sprite. Use this file in edit/reference mode and match this same character exactly: identical stocky proportions, huge bushy orange-red beard and eyebrows, broad nose, brown deerstalker with its little top tie, olive-green checked tweed waistcoat with brass buttons over a cream rolled-sleeve shirt, red tartan kilt, tan sporran with three dark tassels, green ribbed socks with red tabs, and chunky brown lace-up boots. His shepherd's crook has the same warm brown shaft and large hooked top. Keep the same outfit colours, tartan pattern, face, head-to-body proportions, bold charcoal outlines and broad painted facets as the reference. The crook is held in his right hand, on the viewer's left, except where the requested falling action releases it.
+First comic knock-out animation frame: the same gamekeeper is toppling backwards, torso tilted back, knees and boots lifted slightly towards the viewer and arms thrown out in surprise. His face and full outfit remain visible as he falls away from the viewer. The same shepherd's crook has just flown out of his right hand and is airborne beside him on the viewer's left, with the whole hooked top and shaft visible. Keep the crook close enough that both complete figure and prop fit inside the frame. Exaggerated silly loss of balance, no injury, blood or gore. This is the start of the fall, not the final lying-flat pose.
+Square 1:1 production animation sprite for Bogle Castle. Change only the pose and the specific expression required for this frame; retain the reference character identity and painted batch-1 style exactly. One complete character, no extra people. Centre the whole action with the feet or lowest base at the bottom edge; keep every boot outline intact and allow clear magenta space above and at both sides of the entire hat, hands and crook. Do not crop any part of the figure or prop. The backdrop is a visually flat opaque magenta #FF00FF chroma-key matte, with every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps between limbs and crook. Confine painted shading and texture to the character and crook. No ground, floor, scenery, cast shadow, gradient, glow, transparency or checkerboard. No lettering, text, numbers, symbols, logos, border, signature, watermark or gore.
+~~~
+
+### Session 1 results — 2026-10-29
+
+Exactly five images generated through built-in imagegen, all first attempts, all accepted: `spr_gamekeeper_walk1.png`, `spr_gamekeeper_walk2.png`, `spr_gamekeeper_charge.png`, `spr_gamekeeper_pain.png` and `spr_gamekeeper_death1.png`. No rejections or regenerations. Each image used the existing 256×256 `spr_gamekeeper_idle.png` in edit/reference mode.
+
+All five outputs were copied to their requested source-art paths, reduced in place using `sips -Z 256`, then visually reviewed only at 256×256. All have complete silhouettes, match the idle character and batch-1 style, contain no unwanted text, border, signature or gore, and pass the 24-per-channel near-magenta tolerance. Numerical measurements exclude the two-pixel antialiased silhouette boundary. No scripted image repair was applied.
+
+All pre-existing art and palette files remain unchanged, verified against starting SHA-256 hashes. The original prompt log is preserved verbatim before the Batch 2 append. Full prompts and measurements are also in `.scratch/art2-session1-attempts.json` and `.scratch/art2-session1-review.jsonl`. No cargo, git writes or code outside `.scratch`.
+
+39 of 44 manifest lines remain. Next: `spr_gamekeeper_death2.png`, then `spr_haggis_walk1.png`. This session ends at the five-image cap.
+
+### spr_gamekeeper_death2.png
+
+Attempt 1 — accepted.
+
+Reference used: `games/bogle/art/src/spr_gamekeeper_idle.png` (256×256), supplied through imagegen edit/reference mode.
+
+256×256 review: Comic supine knock-out pose, foreshortened with both whole boot soles towards the viewer, dazed eyes, small circling gold stars and two blue birds. The complete hooked crook lies beside him. Reference beard, face, deerstalker, waistcoat, kilt, sporran, socks and boots retained. Whole character and every effect inside the square; flat magenta. No unwanted text, border, signature, gore or style clash.
+
+Matte core: 36,488 pixels, RGB ranges R243–253, G0–18, B241–252; zero pixels outside the per-channel tolerance of 24. The two-pixel antialiased silhouette boundary is excluded from matte measurements. No background repair or colour normalization was applied.
+
+The thin painted gold dizziness arc is foreground; four arc pixels and their antialiased boundary are excluded from matte sampling.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure (or object), full body, facing the viewer, centred, feet (or base) at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+Reference image 1 is spr_gamekeeper_idle.png, the accepted 256x256 source-art sprite. Use this file in edit/reference mode and match this same character exactly: identical stocky proportions, huge bushy orange-red beard and eyebrows, broad nose, brown deerstalker with its little top tie, olive-green checked tweed waistcoat with brass buttons over a cream rolled-sleeve shirt, red tartan kilt, tan sporran with three dark tassels, green ribbed socks with red tabs, and chunky brown lace-up boots. His shepherd's crook has the same warm brown shaft and large hooked top. Keep the same outfit colours, tartan pattern, face, head-to-body proportions, bold charcoal outlines and broad painted facets as the reference.
+Final comic knock-out animation frame: this same gamekeeper is lying flat on his back, his long axis extending away from the viewer, both complete brown boots in the foreground and his familiar bearded face looking up dazed beyond his belly. His back is horizontal, not sitting up or still falling. Use a gently elevated frontal game view so the face, waistcoat, kilt, sporran and both legs remain recognisable with natural foreshortening. Arms lie loosely beside him. The deerstalker is still perched askew on his head. A few small outlined gold stars and two tiny silly blue birds circle closely above his head to indicate harmless cartoon dizziness. The same complete hooked crook lies beside him on the viewer's left, separate from his hands. Fit the whole crook, both boots, hat and every bird and star within the square. One complete gamekeeper, affectionate comic knock-out, no injury or gore.
+Square 1:1 production animation sprite for Bogle Castle. Show the entire subject and all requested small effects completely inside the canvas, with clear magenta room above and at both sides. The lowest complete base or foot is at the bottom edge without any clipped outline. The backdrop is a visually flat opaque magenta #FF00FF chroma-key matte, with every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps. Keep all painted shading and texture inside the outlined subject and effects. No ground, floor, scenery, cast shadow, gradient, vignette, glow, transparency or checkerboard. No text, lettering, numbers, logos, border, signature, watermark, blood, wounds or gore.
+~~~
+
+### spr_haggis_walk1.png
+
+Attempt 1 — accepted.
+
+Reference used: `games/bogle/art/src/spr_haggis_idle.png` (256×256), supplied through imagegen edit/reference mode.
+
+256×256 review: Left pair of legs on the viewer’s right step forward, opposite legs trail, with four whole cloven hooves and a fizzing fuse. The same round peat-brown body, broad grin, cream eyes, red tartan sash, thistle sporran, colours and proportions match the idle. All sparks, fuse, body and feet fit the canvas. Flat magenta; no unwanted text, border, signature, gore or style clash.
+
+Matte core: 29,711 pixels, RGB ranges R244–253, G1–17, B242–252; zero pixels outside the per-channel tolerance of 24. The two-pixel antialiased silhouette boundary is excluded from matte measurements. No background repair or colour normalization was applied.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure (or object), full body, facing the viewer, centred, feet (or base) at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+Reference image 1 is spr_haggis_idle.png, the accepted 256x256 source-art sprite. Use this file in edit/reference mode and match this same creature exactly: the round squat peat-brown haggis pudding body with its coarse tufty surface and warm ochre painted facets, two big cream eyes with black pupils, heavy curved eyebrows, huge cheeky toothy grin, four short brown legs with charcoal cloven hooves, red tartan sash around the lower body with loch-blue and muted gold crossing bands, and the small central tan tasselled sporran with green-and-purple thistle badge. Keep the same short braided curved fuse on top with a crisp orange-yellow star-shaped spark. Preserve its colours, outfit, head-to-body proportions, bold dark outlines and broad hand-painted batch-1 style exactly.
+Scuttling walk animation frame 1: the haggis faces the viewer and moves towards them on the same four stubby legs. Its anatomical LEFT pair of legs (on the viewer's right) are stepped clearly forward and the right pair trail, producing a jaunty alternating scuttle. Keep the round body, grin, sash and sporran identical to the reference; change only the leg pose with a very small body bob. Show all four complete short legs and cloven hooves. The same fuse fizzes with a few tiny crisp orange-yellow spark flecks, no smoke or glow. Clearly a left-legs-forward moving frame, not the idle stance.
+Square 1:1 production animation sprite for Bogle Castle. Show the entire subject and all requested small effects completely inside the canvas, with clear magenta room above and at both sides. The lowest complete base or foot is at the bottom edge without any clipped outline. The backdrop is a visually flat opaque magenta #FF00FF chroma-key matte, with every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps. Keep all painted shading and texture inside the outlined subject and effects. No ground, floor, scenery, cast shadow, gradient, vignette, glow, transparency or checkerboard. No text, lettering, numbers, logos, border, signature, watermark, blood, wounds or gore.
+~~~
+
+### spr_haggis_walk2.png
+
+Attempt 1 — accepted.
+
+Reference used: `games/bogle/art/src/spr_haggis_idle.png` (256×256), supplied through imagegen edit/reference mode.
+
+256×256 review: Right pair of legs on the viewer’s left step forward, with the opposite stride to walk1, four complete cloven hooves and fizzing fuse sparks. Same round body, face, tartan sash, thistle sporran, colours and proportions as the idle reference. Complete silhouette and effects inside the square; flat magenta. No unwanted text, border, signature, gore or style clash.
+
+Matte core: 29,793 pixels, RGB ranges R242–253, G0–17, B241–252; zero pixels outside the per-channel tolerance of 24. The two-pixel antialiased silhouette boundary is excluded from matte measurements. No background repair or colour normalization was applied.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure (or object), full body, facing the viewer, centred, feet (or base) at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+Reference image 1 is spr_haggis_idle.png, the accepted 256x256 source-art sprite. Use this file in edit/reference mode and match this same creature exactly: the round squat peat-brown haggis pudding body with its coarse tufty surface and warm ochre painted facets, two big cream eyes with black pupils, heavy curved eyebrows, huge cheeky toothy grin, four short brown legs with charcoal cloven hooves, red tartan sash around the lower body with loch-blue and muted gold crossing bands, and the small central tan tasselled sporran with green-and-purple thistle badge. Keep the same short braided curved fuse on top with a crisp orange-yellow star-shaped spark. Preserve its colours, outfit, head-to-body proportions, bold dark outlines and broad hand-painted batch-1 style exactly.
+Scuttling walk animation frame 2: the haggis faces the viewer and moves towards them on the same four stubby legs. Its anatomical RIGHT pair of legs (on the viewer's left) are stepped clearly forward and the left pair trail, the opposite stride to walk frame 1. Keep the round body, grin, sash and sporran identical to the reference; change only the leg pose with a very small body bob. Show all four complete short legs and cloven hooves. The same fuse fizzes with a few tiny crisp orange-yellow spark flecks, no smoke or glow. Clearly a right-legs-forward moving frame, not the idle stance.
+Square 1:1 production animation sprite for Bogle Castle. Show the entire subject and all requested small effects completely inside the canvas, with clear magenta room above and at both sides. The lowest complete base or foot is at the bottom edge without any clipped outline. The backdrop is a visually flat opaque magenta #FF00FF chroma-key matte, with every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps. Keep all painted shading and texture inside the outlined subject and effects. No ground, floor, scenery, cast shadow, gradient, vignette, glow, transparency or checkerboard. No text, lettering, numbers, logos, border, signature, watermark, blood, wounds or gore.
+~~~
+
+### spr_haggis_boom1.png
+
+Attempt 1 — accepted.
+
+Reference used: `games/bogle/art/src/spr_haggis_idle.png` (256×256), supplied through imagegen edit/reference mode.
+
+256×256 review: Early comic explosion with round orange-yellow cloud lobes, oatmeal crumbs, a short fuse fragment and a flying red tartan scrap matching the reference sash. Chunky painted facets and bold dark outlines match batch 1. Entire burst, cloth and crumbs inside the canvas on flat magenta; no text, border, signature, anatomical debris, gore or style clash.
+
+Matte core: 35,764 pixels, RGB ranges R245–254, G0–18, B242–252; zero pixels outside the per-channel tolerance of 24. The two-pixel antialiased silhouette boundary is excluded from matte measurements. No background repair or colour normalization was applied.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure (or object), full body, facing the viewer, centred, feet (or base) at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+Reference image 1 is spr_haggis_idle.png, the accepted 256x256 source-art sprite. Use it in edit/reference mode as the exact batch-1 style and material-colour reference: chunky dark outlines, broad warm painted facets, peat-brown oatmeal, red tartan with loch-blue and muted gold crossing bands. This is the creature's harmless explosion animation, so replace the intact character with a comic puff; retain its palette and the exact tartan pattern on the flying cloth scrap.
+Early explosion animation frame: a compact round puff of bright torch orange and warm golden yellow, made of a few bold bulbous cloud lobes. Several small tan oatmeal crumbs and one recognisable red tartan scrap from the reference sash fly just outside the puff. A little dark fuse fragment is fine. This is the small beginning burst, with a tight readable silhouette; no large grey smoke cloud yet. No intact creature, face, eyes, limbs, hooves, sporran, anatomical pieces, gore or blast lettering. Oatmeal and cloth only. All cloud lobes, crumbs and the tartan scrap are opaque, crisply outlined and entirely inside the square.
+Square 1:1 production animation sprite for Bogle Castle. Show the entire subject and all requested small effects completely inside the canvas, with clear magenta room above and at both sides. The lowest complete base or foot is at the bottom edge without any clipped outline. The backdrop is a visually flat opaque magenta #FF00FF chroma-key matte, with every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps. Keep all painted shading and texture inside the outlined subject and effects. No ground, floor, scenery, cast shadow, gradient, vignette, glow, transparency or checkerboard. No text, lettering, numbers, logos, border, signature, watermark, blood, wounds or gore.
+~~~
+
+### spr_haggis_boom2.png
+
+Attempt 1 — accepted.
+
+Reference used: `games/bogle/art/src/spr_haggis_idle.png` (256×256), supplied through imagegen edit/reference mode.
+
+Additional reference used: `games/bogle/art/src/spr_haggis_boom1.png` (256×256), supplied in edit/reference mode for explosion-frame continuity.
+
+256×256 review: Full-size round orange-yellow blast with broad granite-grey smoke lobes and flying oatmeal crumbs. Matches the early explosion’s colours, chunky outlines and painted facets while clearly advancing to the larger smoke-cloud frame. All lobes and crumbs fit inside the canvas on flat magenta. No unwanted text, border, signature, anatomical debris, gore or style clash.
+
+Matte core: 21,408 pixels, RGB ranges R243–253, G0–19, B241–253; zero pixels outside the per-channel tolerance of 24. The two-pixel antialiased silhouette boundary is excluded from matte measurements. No background repair or colour normalization was applied.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure (or object), full body, facing the viewer, centred, feet (or base) at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+Reference image 1 is spr_haggis_idle.png, the accepted 256x256 source-art sprite. Use it in edit/reference mode as the exact batch-1 style and material-colour reference: chunky dark outlines, broad warm painted facets and peat-brown oatmeal. This is the creature's harmless explosion animation, so replace the intact character with a comic smoke puff; retain the same painted cartoon game style.
+Reference image 2 is spr_haggis_boom1.png, the accepted 256x256 early explosion frame. Use it as the animation continuity reference: keep its orange-yellow paint colours, chunky cloud lobes, bold charcoal outlines and tan oatmeal crumbs; develop these into the larger round grey-smoke second burst described below.
+Full-size explosion animation frame: one big round cartoon cloud of bulbous torch-orange, warm yellow and granite-grey smoke lobes, with a compact bright orange-yellow middle and broad grey puffs around it. Several clearly readable tan oatmeal crumbs fly around the cloud. The cloud fills most of the square while leaving clear magenta margins around every lobe and crumb. It is the larger second burst after a small orange-yellow puff. Opaque broad flat painted facets and chunky charcoal outlines; no soft semi-transparent smoke, no glowing haze. No intact creature, face, eyes, limbs, anatomical pieces, gore or action lettering. A harmless silly burst of oatmeal.
+Square 1:1 production animation sprite for Bogle Castle. Show the entire subject and all requested small effects completely inside the canvas, with clear magenta room above and at both sides. The lowest complete base or foot is at the bottom edge without any clipped outline. The backdrop is a visually flat opaque magenta #FF00FF chroma-key matte, with every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps. Keep all painted shading and texture inside the outlined subject and effects. No ground, floor, scenery, cast shadow, gradient, vignette, glow, transparency or checkerboard. No text, lettering, numbers, logos, border, signature, watermark, blood, wounds or gore.
+~~~
+
+### Session 2 results — 2026-10-29
+
+Exactly five images generated through built-in imagegen, all first attempts, all accepted: `spr_gamekeeper_death2.png`, `spr_haggis_walk1.png`, `spr_haggis_walk2.png`, `spr_haggis_boom1.png`, `spr_haggis_boom2.png`. No rejections or regenerations. The gamekeeper and both walking frames used their accepted 256×256 idle references in edit/reference mode. Both explosions used the haggis idle as a style reference; boom2 also used the accepted 256×256 boom1 for animation continuity.
+
+Every output was copied to its requested source-art name, reduced in place with `sips -Z 256`, and visually reviewed only at 256×256. All pass framing, reference identity or style, and absence of unwanted text, border, signature and gore. All empty matte cores pass the 24-per-channel near-magenta tolerance; antialiased foreground edges are excluded. The gamekeeper’s thin gold dizziness arc is a painted foreground effect, excluded from background measurements. No image repair or background normalization was applied.
+
+All 29 pre-existing art and palette files are unchanged, verified against starting SHA-256 hashes. The original prompt log is preserved verbatim before this session’s append. Full prompts, generated source paths and review records are in `.scratch/art2-session2-attempts.json`, `.scratch/art2-session2-generated.json` and `.scratch/art2-session2-review.jsonl`. No cargo, git writes or code outside `.scratch`.
+
+34 of 44 manifest lines remain. Next: `spr_tartan_ghost_float2.png`. This session ends at the five-image cap.
+
+### spr_tartan_ghost_float2.png
+
+Attempt 1 — accepted (session 3, 2026-10-29).
+
+Reference used: `spr_tartan_ghost_idle.png` (256×256), supplied through built-in imagegen edit/reference mode.
+
+256×256 review: The same red-tartan ghost has both sleeves lifted and its hem billowing toward the right. Hood, hollow cyan-rimmed eyes, dark-and-gold checks, torn cyan lining and proportions match the idle reference. Complete uncut cloth tips and clear top and side margins; visually flat magenta. No text, border, signature, gore or style clash.
+
+Matte core: 26,351 pixels, RGB ranges R242–252, G1–18, B240–252; 0 pixels outside the per-channel tolerance of 24. The two-pixel antialiased silhouette boundary is excluded from matte measurements. No image repair or colour normalization was applied.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure (or object), full body, facing the viewer, centred, feet (or base) at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground
+Reference image 1 is spr_tartan_ghost_idle.png, the accepted 256x256 batch-1 sprite. Use it in edit/reference mode: match this exact character, colours, outfit and proportions, including its tall rounded draped hood, hollow charcoal eyes with narrow pale cyan rims, red tartan cloth with broad dark brown crossing bands and muted gold lines, empty drooping sleeves with torn ghost-cyan lining, thick charcoal outlines and broad painted folds. Change only the requested animation pose or expression; preserve the same character identity and batch-1 hand-painted game style.
+Second floating animation frame: the same whole tartan ghost billowing, both empty sleeve arms lifted higher than in the idle reference. Its long cloth hem swirls in the opposite direction, toward the viewer's right; keep the cloth broad and readable, with the same two floppy foot-like hem tips. Hollow eyes face the viewer, no mouth. Keep its hood, arm length, tartan checks and cyan torn lining consistent with the reference. No added accessories or figures.
+Square 1:1 production animation sprite for Bogle Castle. Show the entire subject and every effect completely inside the canvas, with clear magenta room above and at both sides. The lowest complete cloth tip or insect is at the bottom edge without any clipped outline. The backdrop is a visually flat opaque magenta #FF00FF chroma-key matte, with every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps. Keep all painted shading and texture inside the outlined subject and effects. No ground, floor, scenery, cast shadow, gradient, vignette, glow, transparency or checkerboard. No text, lettering, numbers, logos, border, signature, watermark, blood, wounds or gore.
+~~~
+
+### spr_tartan_ghost_wail.png
+
+Attempt 1 — accepted (session 3, 2026-10-29).
+
+Reference used: `spr_tartan_ghost_idle.png` (256×256), supplied through built-in imagegen edit/reference mode.
+
+256×256 review: The reference ghost leans forward with a wide hollow howling mouth and a curling cold-cyan breath ribbon. Red checks, gold and dark bands, hollow eyes, torn cyan sleeves, hood and body proportions match the idle. Entire breath effect and figure fit inside the frame, with complete lower tips. Visually flat magenta; no unwanted text, border, signature, gore or style clash.
+
+Matte core: 24,380 pixels, RGB ranges R243–252, G0–18, B241–251; 0 pixels outside the per-channel tolerance of 24. The two-pixel antialiased silhouette boundary is excluded from matte measurements. No image repair or colour normalization was applied.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure (or object), full body, facing the viewer, centred, feet (or base) at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground
+Reference image 1 is spr_tartan_ghost_idle.png, the accepted 256x256 batch-1 sprite. Use it in edit/reference mode: match this exact character, colours, outfit and proportions, including its tall rounded draped hood, hollow charcoal eyes with narrow pale cyan rims, red tartan cloth with broad dark brown crossing bands and muted gold lines, empty drooping sleeves with torn ghost-cyan lining, thick charcoal outlines and broad painted folds. Change only the requested animation pose or expression; preserve the same character identity and batch-1 hand-painted game style.
+Wailing attack animation frame: the same tartan ghost leans forward toward the viewer, empty sleeve arms spreading, its face now showing a large wide hollow howling mouth below the same two hollow eyes. A short curling ribbon of cold ghost-cyan breath swirls out of its mouth toward the foreground, as a few broad opaque outlined cyan and pale blue painted wisps. Keep the ghost's face and tartan body readable, and the entire cold breath effect inside the canvas. The breath is a painted foreground effect, no diffuse haze or glow over the magenta. No teeth, tongue, bones or visible person.
+Square 1:1 production animation sprite for Bogle Castle. Show the entire subject and every effect completely inside the canvas, with clear magenta room above and at both sides. The lowest complete cloth tip or insect is at the bottom edge without any clipped outline. The backdrop is a visually flat opaque magenta #FF00FF chroma-key matte, with every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps. Keep all painted shading and texture inside the outlined subject and effects. No ground, floor, scenery, cast shadow, gradient, vignette, glow, transparency or checkerboard. No text, lettering, numbers, logos, border, signature, watermark, blood, wounds or gore.
+~~~
+
+### spr_tartan_ghost_pain.png
+
+Attempt 1 — accepted (session 3, 2026-10-29).
+
+Reference used: `spr_tartan_ghost_idle.png` (256×256), supplied through built-in imagegen edit/reference mode.
+
+256×256 review: The same ghost recoils with a hunched hood, crumpled inward cloth, drawn-in sleeves and squinting dark eyes with pale cyan rims. Tartan colours and crossing bands, torn cyan lining and underlying character proportions match the idle reference. Whole figure and both cloth feet remain visible with margins. Visually flat magenta; no text, border, signature, gore or style clash.
+
+Matte core: 37,777 pixels, RGB ranges R243–253, G1–17, B243–252; 0 pixels outside the per-channel tolerance of 24. The two-pixel antialiased silhouette boundary is excluded from matte measurements. No image repair or colour normalization was applied.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure (or object), full body, facing the viewer, centred, feet (or base) at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground
+Reference image 1 is spr_tartan_ghost_idle.png, the accepted 256x256 batch-1 sprite. Use it in edit/reference mode: match this exact character, colours, outfit and proportions, including its tall rounded draped hood, hollow charcoal eyes with narrow pale cyan rims, red tartan cloth with broad dark brown crossing bands and muted gold lines, empty drooping sleeves with torn ghost-cyan lining, thick charcoal outlines and broad painted folds. Change only the requested animation pose or expression; preserve the same character identity and batch-1 hand-painted game style.
+Pain animation frame: the same tartan ghost flinches and recoils, its cloth folds crumpled inward, shoulders hunched and empty sleeve arms drawn in. Its two hollow eyes squeeze into squinting narrow dark shapes with the same pale cyan rims. Keep the same tall hood, broad red tartan checks, torn cyan sleeve lining and two floppy cloth feet, with a comically startled expression. No mouth, wound, stars or additional effects.
+Square 1:1 production animation sprite for Bogle Castle. Show the entire subject and every effect completely inside the canvas, with clear magenta room above and at both sides. The lowest complete cloth tip or insect is at the bottom edge without any clipped outline. The backdrop is a visually flat opaque magenta #FF00FF chroma-key matte, with every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps. Keep all painted shading and texture inside the outlined subject and effects. No ground, floor, scenery, cast shadow, gradient, vignette, glow, transparency or checkerboard. No text, lettering, numbers, logos, border, signature, watermark, blood, wounds or gore.
+~~~
+
+### spr_tartan_ghost_death.png
+
+Attempt 1 — accepted (session 3, 2026-10-29).
+
+Reference used: `spr_tartan_ghost_idle.png` (256×256), supplied through built-in imagegen edit/reference mode.
+
+256×256 review: The recognizable reference hood and hollow eyes remain above an unravelling red-tartan body of separated curled strips, loose thread ends and pale cyan wisps. Cloth colours, gold and dark crossing bands, hood shape, cyan lining and painted outlines match the idle. All ribbons and wisps are contained, with a complete lowest strip at the bottom. Visually flat magenta through every gap; no text, border, signature, anatomical parts, gore or style clash.
+
+Matte core: 26,753 pixels, RGB ranges R243–253, G0–17, B241–252; 0 pixels outside the per-channel tolerance of 24. The two-pixel antialiased silhouette boundary is excluded from matte measurements. No image repair or colour normalization was applied.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure (or object), full body, facing the viewer, centred, feet (or base) at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground
+Reference image 1 is spr_tartan_ghost_idle.png, the accepted 256x256 batch-1 sprite. Use it in edit/reference mode: match this exact character, colours, outfit and proportions, including its tall rounded draped hood, hollow charcoal eyes with narrow pale cyan rims, red tartan cloth with broad dark brown crossing bands and muted gold lines, empty drooping sleeves with torn ghost-cyan lining, thick charcoal outlines and broad painted folds. Change only the requested animation pose or expression; preserve the same character identity and batch-1 hand-painted game style.
+Comic death animation frame: the same tartan ghost unravels into loose red tartan threads, long curled cloth strips and a few fading ghost-cyan wisps. A collapsing remnant of the same rounded hood with hollow eyes remains recognizable at the upper centre; its red checked robe loosens into separated broad ribbons with dark brown and muted gold crossing bands, curling outward and down to the base. Suggest fading with fewer separate opaque pale-cyan wisp shapes and open magenta gaps, never alpha-blended mist or a background glow. Show all strips, thread ends and wisps wholly inside the canvas. No intact person inside the cloth, skeleton, anatomical parts or gore.
+Square 1:1 production animation sprite for Bogle Castle. Show the entire subject and every effect completely inside the canvas, with clear magenta room above and at both sides. The lowest complete cloth tip or insect is at the bottom edge without any clipped outline. The backdrop is a visually flat opaque magenta #FF00FF chroma-key matte, with every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps. Keep all painted shading and texture inside the outlined subject and effects. No ground, floor, scenery, cast shadow, gradient, vignette, glow, transparency or checkerboard. No text, lettering, numbers, logos, border, signature, watermark, blood, wounds or gore.
+~~~
+
+### spr_midges_idle2.png
+
+Attempt 1 — accepted (session 3, 2026-10-29).
+
+Reference used: `spr_midges_idle.png` (256×256), supplied through built-in imagegen edit/reference mode.
+
+256×256 review: A second frame of the same round airy swarm, with insect positions shifted while preserving its density, tiny charcoal bodies, paired grey wings and relative sizes. The larger winged midges and scattered dots match the idle style and proportions. All insects remain whole, including the lowest base dots; clear magenta gaps throughout. Visually flat magenta; no face, smoke, unwanted text, border, signature, gore or style clash.
+
+Matte core: 33,020 pixels, RGB ranges R243–253, G1–19, B241–251; 0 pixels outside the per-channel tolerance of 24. The two-pixel antialiased silhouette boundary is excluded from matte measurements. No image repair or colour normalization was applied.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure (or object), full body, facing the viewer, centred, feet (or base) at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground
+Reference image 1 is spr_midges_idle.png, the accepted 256x256 batch-1 sprite. Use it in edit/reference mode, preserving the exact round swarm scale, insect colours, dot sizes, paired grey wings, chunky charcoal outlines and hand-painted style.
+Second idle animation frame of the same roughly round airy midge swarm: shift the positions of its many tiny charcoal-black insect dots and a few larger grey-winged midges to show a gentle restless flutter. Keep the same insect proportions and overall density as the reference, with many clear magenta gaps between individual opaque insects. The swarm is one whole figure whose lowest complete insect is its base. Keep all insects uncropped and fully inside the canvas. No large central creature, face, human body, clothing, smoke, haze or extra objects.
+Square 1:1 production animation sprite for Bogle Castle. Show the entire subject and every effect completely inside the canvas, with clear magenta room above and at both sides. The lowest complete cloth tip or insect is at the bottom edge without any clipped outline. The backdrop is a visually flat opaque magenta #FF00FF chroma-key matte, with every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps. Keep all painted shading and texture inside the outlined subject and effects. No ground, floor, scenery, cast shadow, gradient, vignette, glow, transparency or checkerboard. No text, lettering, numbers, logos, border, signature, watermark, blood, wounds or gore.
+~~~
+
+### Session 3 results — 2026-10-29
+
+Exactly five images generated with built-in imagegen, all first attempts and all accepted: `spr_tartan_ghost_float2.png`, `spr_tartan_ghost_wail.png`, `spr_tartan_ghost_pain.png`, `spr_tartan_ghost_death.png`, `spr_midges_idle2.png`. No rejections or regenerations. The four tartan-ghost frames used `spr_tartan_ghost_idle.png`; the midge frame used `spr_midges_idle.png`. Each accepted 256×256 reference was inspected and supplied through edit/reference mode.
+
+Every output was copied to its requested source-art filename and reduced in place with `sips -Z 256` before review. Only 256×256 files were visually reviewed. All five pass reference identity and style, complete framing, and absence of unwanted text, border, signature and gore. All measured clear matte cores pass the 24-per-channel near-magenta tolerance, excluding the two-pixel antialiased silhouette boundary. No image repair or background normalization was applied.
+
+All 33 pre-existing art and palette files are unchanged, verified against starting SHA-256 hashes. The previous prompt log is preserved verbatim before this session's append. Full prompts, generated source paths and review measurements are in `.scratch/art2-session3-attempts.json`, `.scratch/art2-session3-generated.json` and `.scratch/art2-session3-review.jsonl`. No cargo, git writes or code outside `.scratch`.
+
+29 of 44 manifest lines remain. Next: `prj_wail.png`. This session ends at the five-image cap.
+
+
+### prj_wail.png
+
+Attempt 1 — accepted (session 4, 2026-10-29).
+
+Reference used: `spr_tartan_ghost_idle.png` (accepted 256×256 batch-1 file, supplied through built-in imagegen edit/reference mode for colours and style).
+
+256×256 review: A compact cyan and loch-blue spiral with opaque outlined mist curls. Broad painted facets and spectral colours match the tartan-ghost reference. All curls fit inside the frame, with clear margins. Visually flat magenta; no character, unwanted text, border, signature, gore or style clash.
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure (or object), full body, facing the viewer, centred, feet (or base) at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground
+Reference image 1 is spr_tartan_ghost_idle.png, the accepted 256x256 batch-1 sprite, supplied in edit/reference mode as a style and ghost-cyan colour reference. Match its chunky charcoal outlines, broad hand-painted facets and pale cyan spectral accents; this projectile has no character, face or cloth.
+A small swirling ball of cold ghost-cyan mist, a projectile thrown by the tartan ghost. One compact roughly round spiral of three or four curling pale cyan, loch-blue and bone-white mist lobes with a darker cool-blue core. Suggest cold mist with separate opaque outlined wisps curling around the ball and clear magenta gaps, using broad painted facets rather than soft alpha haze. The lowest complete curl is the base. Simple bold silhouette, affectionate comic magic. No eyes, mouth, person, tartan fabric, ice shards, action lettering or extra objects.
+Square 1:1 production sprite for Bogle Castle, readable when reduced to 64 pixels. The entire object and all effects must fit inside the canvas with clear top and side margins; complete uncut lowest base at the bottom edge. The backdrop is an opaque visually flat magenta #FF00FF chroma-key matte: every clear background pixel within 24 of RGB(255,0,255) on each channel, including corners and gaps. Keep all painted shading and texture inside the outlined subject. No ground plane, scenery, cast shadow, gradient, vignette, diffuse glow, transparency or checkerboard. No text, lettering, numbers, logos, border, signature, watermark, blood, wounds or gore.
+~~~
+
+### prj_mars_bar.png
+
+Attempt 1 — accepted (session 4, 2026-10-29).
+
+Reference used: `wpn_mars_bar.png` (accepted 256×256 batch-1 file, supplied through built-in imagegen edit/reference mode).
+
+256×256 review: A whole golden battered bar tumbling diagonally, with the reference's amber crust, pale highlights, chunky outline and proportions. No hand, cuff or wrapper. Complete uncut bar and visually flat magenta; no unwanted text, border, signature, gore or style clash.
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure (or object), full body, facing the viewer, centred, feet (or base) at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground
+Reference image 1 is wpn_mars_bar.png, the accepted 256x256 batch-1 weapon sprite. Use edit/reference mode: match that exact thick closed deep-fried Mars bar, its irregular golden amber batter, ochre crust, pale yellow crispy highlights, chunky charcoal outline, dimensions and proportions. Preserve the reference's colours and painted style exactly; remove the hand and cuff for this standalone projectile.
+A single battered deep-fried Mars bar tumbling in the air, diagonally tilted as a thrown projectile. The whole elongated battered bar is visible, with its broad top and side giving a sense of rotation. Its lowest rounded end is the sprite base. Keep the batter closed around the chocolate bar, as in the reference. No wrapper, branding, lettering, hands, arms, plate, motion streaks, crumbs or other objects.
+Square 1:1 production sprite for Bogle Castle, readable when reduced to 64 pixels. The entire object and all effects must fit inside the canvas with clear top and side margins; complete uncut lowest base at the bottom edge. The backdrop is an opaque visually flat magenta #FF00FF chroma-key matte: every clear background pixel within 24 of RGB(255,0,255) on each channel, including corners and gaps. Keep all painted shading and texture inside the outlined subject. No ground plane, scenery, cast shadow, gradient, vignette, diffuse glow, transparency or checkerboard. No text, lettering, numbers, logos, border, signature, watermark, blood, wounds or gore.
+~~~
+
+### prj_mars_splat.png
+
+Attempt 1 — accepted (session 4, 2026-10-29).
+
+Reference used: `wpn_mars_bar.png` (accepted 256×256 batch-1 file, supplied through built-in imagegen edit/reference mode for colours and style).
+
+256×256 review: A low wide chocolate-and-golden-batter puddle with separate outlined bone-grey steam curls. Batter colours and painted texture match the bar reference. Complete splat and steam inside the canvas, with the floor omitted in favour of magenta. No unwanted text, border, signature, gore or style clash.
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure (or object), full body, facing the viewer, centred, feet (or base) at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground
+Reference image 1 is wpn_mars_bar.png, the accepted 256x256 batch-1 weapon sprite, supplied in edit/reference mode as the exact golden batter colour and hand-painted style reference. Match the bar's amber crust, ochre edges, pale yellow highlights and chunky dark outlines; no hand or cuff in this image.
+A comic splat of hot golden batter and melted chocolate with steam, lying flat on the floor as one low wide puddle object, seen from a gentle high angle so its shape reads clearly. A broad peat-brown melted chocolate centre and several thick irregular golden amber batter lobes spreading outward, with a few connected rounded splashes. Two or three short opaque bone-grey curled steam wisps rise above it. The floor itself is absent: only the complete self-contained splat and steam are drawn over the magenta matte. The lower complete batter lobe forms the base. Warm appetising chip-shop slapstick, no creature, face, hand, plate, smoke cloud, wrappers or letters. The steam has crisp painted outlines, no diffuse haze or glow.
+Square 1:1 production sprite for Bogle Castle, readable when reduced to 64 pixels. The entire object and all effects must fit inside the canvas with clear top and side margins; complete uncut lowest base at the bottom edge. The backdrop is an opaque visually flat magenta #FF00FF chroma-key matte: every clear background pixel within 24 of RGB(255,0,255) on each channel, including corners and gaps. Keep all painted shading and texture inside the outlined subject. No ground plane, scenery, cast shadow, gradient, vignette, diffuse glow, transparency or checkerboard. No text, lettering, numbers, logos, border, signature, watermark, blood, wounds or gore.
+~~~
+
+### wpn_sgian_dubh_stab.png
+
+Attempt 1 — accepted (session 4, 2026-10-29).
+
+Reference used: `wpn_sgian_dubh.png` (accepted 256×256 batch-1 file, supplied through built-in imagegen edit/reference mode).
+
+256×256 review: The reference knife and warm-skinned gripping hand extend forward from the green tartan cuff; the shortened blade reads as foreshortening for the stab. Iron-blue blade, grey edge, brass fittings, carved brown handle, skin colours, cuff and underlying proportions match the ready frame. Complete tip and visible fingers, with only the forearm entering at bottom-centre. Visually flat magenta; no unwanted text, border, signature, victim, gore or style clash.
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+Square 1:1 production first-person weapon-view sprite for Bogle Castle, bottom-centre of the screen, hands visible, on a flat pure magenta #FF00FF background, no shadow on the ground.
+Reference image 1 is wpn_sgian_dubh.png, the accepted 256x256 batch-1 ready pose. Use edit/reference mode: keep the exact same single-edged iron-blue sgian-dubh blade with its pale grey cutting edge, short brass guard and pommel, carved dark peat-brown handle, warm-skinned hand and moss-green tartan tweed cuff. Match the reference's colours, outfit details, weapon proportions, hand proportions and broad painted charcoal-outlined style exactly. Change only the weapon animation pose.
+First person: the same hand thrusting the sgian-dubh forward and up in a quick melee stab, viewed from the player's eyes. The forearm extends from bottom-centre toward the centre and slightly upward, the clenched fingers still naturally gripping the carved handle, the complete blade foreshortened toward the upper centre with its tip visibly inside the canvas. An energetic forward extension distinct from the upright idle pose, keeping the knife recognizable and the hand readable. No target, impact, action lettering, speed lines or extra weapon.
+Show the complete weapon or food, all visible fingers and all requested effects comfortably inside the top and side edges. Only the wrist and tweed cuff naturally enter through the bottom-centre edge. The opaque backdrop is visually flat magenta #FF00FF, every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps. Keep all painted shading and texture inside the outlined subject. No full player body, face, scenery, ground, cast shadow, gradient, vignette, glow, transparency or checkerboard. No text, lettering, numbers, symbols, logos, border, signature, watermark, victim, blood, wounds or gore.
+~~~
+
+### wpn_mars_throw.png
+
+Attempt 1 — accepted (session 4, 2026-10-29).
+
+Reference used: `wpn_mars_bar.png` (accepted 256×256 batch-1 file, supplied through built-in imagegen edit/reference mode).
+
+256×256 review: The reference's battered bar separates above an open throwing hand, with clear magenta between food and fingertips. Golden batter, pale highlights, skin, green tweed checks and proportions match the reference. Whole bar and fingers fit inside the canvas; cuff enters from bottom-centre. Visually flat magenta; no unwanted text, border, signature, gore or style clash.
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+Square 1:1 production first-person weapon-view sprite for Bogle Castle, bottom-centre of the screen, hands visible, on a flat pure magenta #FF00FF background, no shadow on the ground.
+Reference image 1 is wpn_mars_bar.png, the accepted 256x256 batch-1 ready pose. Use edit/reference mode: preserve the exact golden amber deep-fried Mars bar with its thick irregular ochre crust and pale yellow highlights, the warm-skinned hand and moss-green tweed cuff with red and muted gold checks. Match all reference colours, outfit details, bar proportions, hand proportions, broad painted facets and chunky charcoal outlines exactly. Change only the throwing pose and release the bar from the hand.
+First person: the arm mid-throw, the single battered Mars bar just leaving the opened hand. The forearm extends upward from bottom-centre; the palm and naturally extended fingers show a clear throwing follow-through. The same complete bar has separated a short distance above the fingertips and is tilting as it starts its forward arc. Show clear magenta between the hand and bar. The whole food and every finger are visible, with generous room above and at the sides. No wrapper, writing, crumbs, trajectory arrows, speed lettering, extra bar or extra hand.
+Show the complete weapon or food, all visible fingers and all requested effects comfortably inside the top and side edges. Only the wrist and tweed cuff naturally enter through the bottom-centre edge. The opaque backdrop is visually flat magenta #FF00FF, every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps. Keep all painted shading and texture inside the outlined subject. No full player body, face, scenery, ground, cast shadow, gradient, vignette, glow, transparency or checkerboard. No text, lettering, numbers, symbols, logos, border, signature, watermark, victim, blood, wounds or gore.
+~~~
+
+### Session 4 results — 2026-10-29
+
+Exactly five images generated with built-in imagegen, all first attempts and all accepted: `prj_wail.png`, `prj_mars_bar.png`, `prj_mars_splat.png`, `wpn_sgian_dubh_stab.png` and `wpn_mars_throw.png`. No rejections or regenerations. Every prompt starts with the exact shared style preamble from design section 4.4, verified against the document. All references were inspected at 256×256 and supplied in edit/reference mode.
+
+Each output was copied to its requested source-art filename, reduced in place with `sips -Z 256`, and then visually reviewed only at 256×256. All five pass framing, reference identity or style, and absence of unwanted text, border, signature and gore. Clear matte cores pass the 24-per-channel near-magenta tolerance, excluding the two-pixel antialiased silhouette boundary. Numerical measurements and full prompts are retained in `.scratch/art2-session4-review.json` and `.scratch/art2-session4-attempts.json`. No background repair or colour normalization was applied.
+
+All 37 pre-existing PNG assets remain unchanged, checked against their starting SHA-256 hashes. No cargo or git write commands were run; no code was written outside `.scratch`.
+
+Twenty of the 44 manifest lines now have source-art files; 24 remain. The next missing entry is `wpn_blunderbuss.png`. This session stops at its five-image cap.
+
+### wpn_blunderbuss.png
+
+Attempt 1 — accepted (session 5, 2026-10-29).
+
+Reference used: `wpn_sgian_dubh.png` (256×256), supplied through built-in imagegen edit/reference mode.
+
+256×256 review: Both matching warm-skinned hands hold a short wooden flintlock with a broad flared brass muzzle. The green tweed checks, skin facets and charcoal outlines match the batch-1 hand reference. Complete muzzle and fingers fit within the frame; sleeves enter naturally at the bottom. Visually flat magenta; no unwanted text, border, signature, gore or style clash.
+
+Matte core: 40,701 pixels; RGB ranges R246–254, G0–16, B244–252; 0 pixels outside the per-channel tolerance of 24. The two-pixel antialiased silhouette boundary is excluded from matte measurements. No background repair or colour normalization was applied.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+Square 1:1 production first-person weapon-view sprite for Bogle Castle, bottom-centre of the screen, hands visible, on a flat pure magenta #FF00FF background, no shadow on the ground.
+Reference image 1 is wpn_sgian_dubh.png, the accepted 256x256 batch-1 weapon sprite, supplied in edit/reference mode only as the exact hand, sleeve, palette and painted-style reference. Match its warm skin colours, chunky hand proportions, moss-green tweed sleeves with subtle red and muted gold checks, charcoal outlines and broad hand-painted facets. Replace the knife with the requested blunderbuss and add the matching second hand.
+First person: both hands holding one brass-mouthed flintlock blunderbuss, muzzle flaring wide, held ready at the bottom centre. A short chunky dark peat-brown wooden stock, simple iron-grey flintlock mechanism, broad warm brass barrel with a clearly flared bell-shaped muzzle and a dark inner opening. View from the player's eyes along the top of the weapon toward the upper centre; rear hand grips the stock near the trigger, forward hand supports the barrel. The complete flared muzzle is above the hands and comfortably inside the frame. Broad comic proportions, restrained brass highlights, simple readable wood shapes. Ready pose, no firing, smoke, sparks, extra weapons or knife.
+Show the complete instrument or weapon, all visible fingers and all requested effects comfortably inside the top and side edges. Only the wrists and moss-green tweed cuffs naturally enter through the bottom edge. The opaque backdrop is visually flat magenta #FF00FF, every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps. Keep all painted shading and texture inside the outlined subject. No full player body, scenery, ground, cast shadow, gradient, vignette, diffuse glow, transparency or checkerboard. No text, lettering, numbers, symbols, logos, border, signature, watermark, victim, blood, wounds or gore.
+~~~
+
+### wpn_blunderbuss_fire.png
+
+Attempt 1 — accepted (session 5, 2026-10-29).
+
+Reference used: `wpn_blunderbuss.png` (256×256), supplied through built-in imagegen edit/reference mode.
+
+256×256 review: The same brass flared muzzle, wooden stock, iron flintlock, warm hands and green tweed sleeves match the accepted ready frame. A broad cream-and-grey cartoon smoke puff, crisp orange flash and sparks sit above the muzzle. All effects and fingers remain inside the frame; only sleeves enter at the bottom. Visually flat magenta; no unwanted text, border, signature, gore or style clash.
+
+Matte core: 38,520 pixels; RGB ranges R246–254, G1–19, B243–252; 0 pixels outside the per-channel tolerance of 24. The two-pixel antialiased silhouette boundary is excluded from matte measurements. No background repair or colour normalization was applied.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+Square 1:1 production first-person weapon-view sprite for Bogle Castle, bottom-centre of the screen, hands visible, on a flat pure magenta #FF00FF background, no shadow on the ground.
+Reference image 1 is wpn_blunderbuss.png, the accepted 256x256 ready frame created earlier in this session. Use edit/reference mode: match the exact same flared brass muzzle and barrel, dark peat-brown wooden stock, iron-grey flintlock, warm-skinned hands, moss-green tartan tweed sleeves, colours and proportions. Keep the same first-person viewpoint, weapon scale and bottom-centred hand placement. Change only to its firing animation.
+First person: the blunderbuss firing, a big cartoon puff of smoke and sparks at the flared muzzle. Show one broad rounded cluster of bone-white and granite-grey smoke lobes, with a small crisp torch-orange flash and a handful of chunky orange sparks in front of the mouth. Smoke, flash and sparks are separate opaque outlined painted shapes on the magenta, no diffuse haze. The brass rim and recognizable gun silhouette stay visible below the puff. Keep the whole puff and every spark inside the canvas with generous top and side clearance; no action lettering or second weapon.
+Show the complete instrument or weapon, all visible fingers and all requested effects comfortably inside the top and side edges. Only the wrists and moss-green tweed cuffs naturally enter through the bottom edge. The opaque backdrop is visually flat magenta #FF00FF, every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps. Keep all painted shading and texture inside the outlined subject. No full player body, scenery, ground, cast shadow, gradient, vignette, diffuse glow, transparency or checkerboard. No text, lettering, numbers, symbols, logos, border, signature, watermark, victim, blood, wounds or gore.
+~~~
+
+### wpn_bagpipes_empty.png
+
+Attempt 1 — accepted (session 5, 2026-10-29).
+
+Reference used: `wpn_bagpipes_full.png` (256×256), supplied through built-in imagegen edit/reference mode.
+
+256×256 review: The red tartan bag sags into broad loose folds under the left arm, clearly less inflated than the full reference. The same three dark drones, bone-and-brass fittings, chanter, warm hands and tweed sleeves match the reference construction, colours and proportions. Complete pipe tips and fingers fit inside the canvas. Visually flat magenta; no unwanted text, border, signature, gore or style clash.
+
+Matte core: 35,416 pixels; RGB ranges R242–251, G2–21, B242–251; 0 pixels outside the per-channel tolerance of 24. The two-pixel antialiased silhouette boundary is excluded from matte measurements. No background repair or colour normalization was applied.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+Square 1:1 production first-person weapon-view sprite for Bogle Castle, bottom-centre of the screen, hands visible, on a flat pure magenta #FF00FF background, no shadow on the ground.
+Reference image 1 is wpn_bagpipes_full.png, the accepted 256x256 batch-1 sprite. Use edit/reference mode: preserve the exact same red tartan bag with broad moss-green and dark loch-blue crossing bands and thin muted golden lines, three stout dark peat-brown drone pipes with bone-coloured ferrules and brass rims, the dark chanter with pale fittings, warm-skinned hands and moss-green tweed sleeves. Match the reference colours, outfit, hands, instrument construction and proportions exactly. Change only the requested bagpipe animation state; keep the same first-person viewpoint and hand positions wherever possible.
+First person: the same bagpipes held under the arm, bag deflated and floppy. Let the red tartan bag sag loosely and fold inward beneath the left forearm, clearly thin and wrinkled instead of the reference's inflated round bulge. All three drones, bone fittings and chanter remain the same instruments and retain their original lengths and relative arrangement. Both hands remain visible on the chanter, with the left arm resting on the empty bag. Friendly comic slackness, no smoke, sound rings, face, mouth, extra bagpipes or floating musical symbols.
+Show the complete instrument or weapon, all visible fingers and all requested effects comfortably inside the top and side edges. Only the wrists and moss-green tweed cuffs naturally enter through the bottom edge. The opaque backdrop is visually flat magenta #FF00FF, every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps. Keep all painted shading and texture inside the outlined subject. No full player body, scenery, ground, cast shadow, gradient, vignette, diffuse glow, transparency or checkerboard. No text, lettering, numbers, symbols, logos, border, signature, watermark, victim, blood, wounds or gore.
+~~~
+
+### wpn_bagpipes_filling.png
+
+Attempt 1 — accepted (session 5, 2026-10-29).
+
+Reference used: `wpn_bagpipes_full.png` (256×256), supplied through built-in imagegen edit/reference mode.
+
+256×256 review: The same red tartan bag is partly rounded with loose lower folds, between the collapsed and full frames. Three original drones, pale fittings, chanter, hands and green tweed sleeves preserve reference colours and proportions. A tiny cropped skin-coloured cheek-and-mouth fragment meets the lower blowpipe at the bottom-left edge; the instrument remains the dominant first-person view. Whole drone tips and visible fingers fit inside the canvas. Visually flat magenta; no unwanted text, border, signature, gore or style clash.
+
+Matte core: 34,185 pixels; RGB ranges R242–252, G1–18, B242–252; 0 pixels outside the per-channel tolerance of 24. The two-pixel antialiased silhouette boundary is excluded from matte measurements. No background repair or colour normalization was applied.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+Square 1:1 production first-person weapon-view sprite for Bogle Castle, bottom-centre of the screen, hands visible, on a flat pure magenta #FF00FF background, no shadow on the ground.
+Reference image 1 is wpn_bagpipes_full.png, the accepted 256x256 batch-1 sprite. Use edit/reference mode: preserve the exact same red tartan bag with broad moss-green and dark loch-blue crossing bands and thin muted golden lines, three stout dark peat-brown drone pipes with bone-coloured ferrules and brass rims, the dark chanter with pale fittings, warm-skinned hands and moss-green tweed sleeves. Match the reference colours, outfit, hands, instrument construction and proportions exactly. Change only the requested bagpipe animation state; keep the same first-person viewpoint and hand positions wherever possible.
+First person: the same bagpipes half inflated, midway between the empty floppy state and the full round reference. The red tartan bag has a moderate rounded bulge with a few remaining loose folds under the left arm. Both hands are clearly visible holding the chanter. Show the slim blowpipe rising from the bag toward the player; a small partial first-person crop of the player's puffed cheeks and lips meets the near end of the blowpipe at the lower edge, expressing blowing into it. This is only a tiny self-view fragment nearest the camera, not a separate head, portrait or third-person character. Keep the instrument dominant, in the same viewpoint and construction as the reference. No sound rings, musical symbols, extra instrument, lettering or smoke.
+Show the complete instrument or weapon, all visible fingers and all requested effects comfortably inside the top and side edges. Only the wrists and moss-green tweed cuffs naturally enter through the bottom edge. The opaque backdrop is visually flat magenta #FF00FF, every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps. Keep all painted shading and texture inside the outlined subject. No full player body, scenery, ground, cast shadow, gradient, vignette, diffuse glow, transparency or checkerboard. No text, lettering, numbers, symbols, logos, border, signature, watermark, victim, blood, wounds or gore.
+~~~
+
+### wpn_bagpipes_blast.png
+
+Attempt 1 — accepted (session 5, 2026-10-29).
+
+Reference used: `wpn_bagpipes_full.png` (256×256), supplied through built-in imagegen edit/reference mode.
+
+256×256 review: The same red tartan bag is visibly squeezed under the arm with broad taut folds. Three dark drones with matching pale fittings emit crisp cyan sound rings, with clean magenta gaps between the arcs. Reference hands, chanter, sleeve colours and instrument construction match. Every sound ring, pipe tip and visible finger fits inside the top and side edges; wrists enter at the bottom. Visually flat magenta; no unwanted text, border, signature, gore or style clash.
+
+Matte core: 29,858 pixels; RGB ranges R243–252, G1–18, B242–252; 0 pixels outside the per-channel tolerance of 24. The two-pixel antialiased silhouette boundary is excluded from matte measurements. No background repair or colour normalization was applied.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+Square 1:1 production first-person weapon-view sprite for Bogle Castle, bottom-centre of the screen, hands visible, on a flat pure magenta #FF00FF background, no shadow on the ground.
+Reference image 1 is wpn_bagpipes_full.png, the accepted 256x256 batch-1 sprite. Use edit/reference mode: preserve the exact same red tartan bag with broad moss-green and dark loch-blue crossing bands and thin muted golden lines, three stout dark peat-brown drone pipes with bone-coloured ferrules and brass rims, the dark chanter with pale fittings, warm-skinned hands and moss-green tweed sleeves. Match the reference colours, outfit, hands, instrument construction and proportions exactly. Change only the requested bagpipe animation state; keep the same first-person viewpoint and hand positions wherever possible.
+First person: the same bagpipes squeezed hard under the left arm, the red tartan bag compressed with broad taut folds. Both hands remain visible holding the chanter. Visible cartoon sound rings blast out of the three drone ends, represented by three or four bold outlined expanding ghost-cyan and pale loch-blue curved rings above and around the drones. Keep the rings crisp and opaque with clean magenta gaps, not diffuse glow or translucent haze. All three original dark drone pipes and bone fittings remain readable, unchanged in length and colour. The complete sound rings, pipe tips, bag, chanter and fingers fit inside the top and side edges. No words, music notes, extra pipes, separate face or smoke.
+Show the complete instrument or weapon, all visible fingers and all requested effects comfortably inside the top and side edges. Only the wrists and moss-green tweed cuffs naturally enter through the bottom edge. The opaque backdrop is visually flat magenta #FF00FF, every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps. Keep all painted shading and texture inside the outlined subject. No full player body, scenery, ground, cast shadow, gradient, vignette, diffuse glow, transparency or checkerboard. No text, lettering, numbers, symbols, logos, border, signature, watermark, victim, blood, wounds or gore.
+~~~
+
+### Session 5 results — 2026-10-29
+
+Exactly five images generated with built-in imagegen, all first attempts and all accepted: `wpn_blunderbuss.png`, `wpn_blunderbuss_fire.png`, `wpn_bagpipes_empty.png`, `wpn_bagpipes_filling.png`, `wpn_bagpipes_blast.png`. No rejections or regenerations. Every prompt starts with the exact shared style preamble from design section 4.4, verified against the document. Every reference was inspected at 256×256 and supplied through edit/reference mode. The blunderbuss ready pose uses the batch-1 knife image for hand, sleeve and style consistency; its firing pose uses the newly accepted blunderbuss. All bagpipe frames use the batch-1 full bagpipe reference.
+
+Every output was copied to its requested source-art filename, shrunk in place with `sips -Z 256`, and then visually reviewed only at 256×256. All five pass framing, reference identity or style, and absence of unwanted text, border, signature and gore. Clear matte cores pass the 24-per-channel near-magenta tolerance, excluding the two-pixel antialiased silhouette boundary: 178,680 sampled matte pixels, zero outliers. No background repair or colour normalization was applied. Full prompts and measurements are retained in `.scratch/art2-session5-attempts.json` and `.scratch/art2-session5-review.jsonl`.
+
+All 42 pre-existing PNG assets remain unchanged, verified against their starting SHA-256 hashes. Prior prompt-log content is preserved byte for byte. No cargo or git write commands were run; no code was written outside `.scratch`.
+
+25 of the 44 manifest lines now have source-art files; 19 remain. The next missing entry is `pick_oatcake.png`. This session stops at its five-image cap.
+
+### pick_oatcake.png
+
+Attempt 1 — accepted (session 6, 2026-10-29).
+
+Reference used: `pick_shortbread.png` (256×256), supplied through built-in imagegen edit/reference mode.
+
+256×256 review: One whole round golden oatcake with a thick crumbly rim and broad docking holes. Complete uncut outline with a small magenta margin below the base. Warm painted food colours and chunky dark outline match the shortbread reference; no text, border, signature, gore or style clash. Visually flat magenta.
+
+Matte core: 27,536 pixels; RGB ranges R244–254, G1–17, B241–253; 0 pixels outside the per-channel tolerance of 24. The two-pixel antialiased silhouette boundary is excluded from matte measurements. No background repair or colour normalization was applied.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure (or object), full body, facing the viewer, centred, feet (or base) at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+Reference image 1 is pick_shortbread.png, the accepted 256x256 batch-1 pickup, supplied in reference mode for its thick charcoal outlines, broad warm oat-gold painted facets and chunky food proportions. Create a different food item in exactly the same painted game style; do not include the tin, thistles or shortbread fingers.
+A single round Scottish oatcake, a thick flat circular biscuit of pale golden oatmeal with a rough crumbly rim, a few broad toasted peat-brown speckles and simple shallow docking holes. Face its broad circular surface toward the viewer with only a slight tilt to show the chunky thickness of its lower edge. One whole intact oatcake, no bite, stack, plate, hands, face, wrapper or additional objects. No text, lettering, numbers, labels, symbols or logos.
+Square 1:1 production pickup sprite for Bogle Castle. Show the entire object and all its outlines, with clear magenta room above and on both sides; the complete uncut base meets the bottom edge. Large simple forms must read at 64 pixels. The opaque backdrop is visually flat magenta #FF00FF, every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps. Keep all painted shading and texture inside the outlined subject. No scenery, ground plane, cast shadow, gradient, vignette, diffuse glow, transparency or checkerboard. No border, signature, watermark or gore.
+~~~
+
+### pick_girder_bottle.png
+
+Attempt 1 — accepted (session 6, 2026-10-29).
+
+Reference used: `pick_girder_juice.png` (256×256), supplied through built-in imagegen edit/reference mode.
+
+256×256 review: One whole upright orange bottle with a grey screw cap, the same friendly grey I-beam character and correctly spelled Girder Juice label as the can reference. Colours, cartoon girder and painted outlines match. Cap and base remain inside the canvas, with the base close to the bottom edge. Only the requested label text appears; no real brand logo, stripe design, border, signature, gore or style clash. Visually flat magenta.
+
+Matte core: 35,729 pixels; RGB ranges R243–252, G2–20, B240–251; 0 pixels outside the per-channel tolerance of 24. The two-pixel antialiased silhouette boundary is excluded from matte measurements. No background repair or colour normalization was applied.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure (or object), full body, facing the viewer, centred, feet (or base) at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+Reference image 1 is pick_girder_juice.png, the accepted 256x256 batch-1 Girder Juice can, supplied in edit/reference mode. Match the exact bright torch-orange drink colours, friendly iron-grey cartoon I-beam girder with eyes, dark hand-painted lettering, chunky proportions, broad painted facets and charcoal outlines. Adapt this same fictional drink design to a large bottle rather than a can; preserve the same girder character and label artwork.
+One complete big squat bottle of orange Girder Juice parody drink, upright and facing the viewer. A simple broad orange bottle body with gently rounded shoulders, short neck and a plain iron-grey screw cap. On the front, the same friendly cartoon steel girder from the reference above the exact words "Girder Juice" in large dark letters on two lines. Make the whole cap, neck and bottle base visible. The words "Girder Juice" are the sole exception to the preamble's no-text rule; no other text or numbers. Fictional parody packaging: no real brand's logo or bottle design, no stripes or branded band pattern, never the word "Irn-Bru". No can, glass, hands, extra bottle or other object.
+Square 1:1 production pickup sprite for Bogle Castle. Show the entire object and all its outlines, with clear magenta room above and on both sides; the complete uncut base meets the bottom edge. Large simple forms must read at 64 pixels. The opaque backdrop is visually flat magenta #FF00FF, every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps. Keep all painted shading and texture inside the outlined subject. No scenery, ground plane, cast shadow, gradient, vignette, diffuse glow, transparency or checkerboard. No border, signature, watermark or gore.
+~~~
+
+### pick_mars_box.png
+
+Attempt 1 — accepted (session 6, 2026-10-29).
+
+Reference used: `wpn_mars_bar.png` (256×256), supplied through built-in imagegen edit/reference mode.
+
+256×256 review: One open chip-shop cardboard box containing exactly five distinct countable golden battered bars, matching the reference coating and painted food colours. Complete flaps, food and box base remain visible and uncut, with a narrow magenta margin below. No hands, wrappers, text, brand marks, border, signature, gore or style clash. Visually flat magenta.
+
+Matte core: 20,132 pixels; RGB ranges R242–253, G1–19, B240–252; 0 pixels outside the per-channel tolerance of 24. The two-pixel antialiased silhouette boundary is excluded from matte measurements. No background repair or colour normalization was applied.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure (or object), full body, facing the viewer, centred, feet (or base) at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+Reference image 1 is wpn_mars_bar.png, the accepted 256x256 batch-1 weapon sprite, supplied in reference mode for the exact golden amber battered Mars bar appearance, irregular chunky crispy coating, dark outlines and broad hand-painted facets. Make the same battered food as a pickup with no hand, arm or sleeve.
+A single small open plain peat-brown cardboard chip-shop takeaway box containing exactly five deep-fried Mars bars. Five distinct thick elongated closed bars in chunky golden amber batter sit neatly side by side and remain visibly countable, with no wrappers or chocolate branding. Gentle high front three-quarter angle so the five bars and the open box read clearly; the box's complete lower edge is the base. Simple broad folded cardboard flaps and plain bone-coloured inside, thick charcoal outlines. No food outside the box, no utensils, plate, hands, face, steam, labels or additional objects. No text, lettering, numbers, symbols or logos.
+Square 1:1 production pickup sprite for Bogle Castle. Show the entire object and all its outlines, with clear magenta room above and on both sides; the complete uncut base meets the bottom edge. Large simple forms must read at 64 pixels. The opaque backdrop is visually flat magenta #FF00FF, every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps. Keep all painted shading and texture inside the outlined subject. No scenery, ground plane, cast shadow, gradient, vignette, diffuse glow, transparency or checkerboard. No border, signature, watermark or gore.
+~~~
+
+### pick_powder_shot.png
+
+Attempt 1 — accepted (session 6, 2026-10-29).
+
+Reference used: `pick_shortbread.png` (256×256), supplied through built-in imagegen edit/reference mode.
+
+256×256 review: One complete curved bone-coloured powder horn with wooden stopper, brown leather strap and small gold buckle beside an open brown shot pouch containing grey pellets. Whole horn, stopper, strap and pouch remain inside the canvas; the low base leaves a narrow magenta margin. Bold outlines and broad painted facets match batch 1. No text, extra objects, border, signature, gore or style clash. Visually flat magenta.
+
+Matte core: 36,277 pixels; RGB ranges R245–254, G0–18, B244–253; 0 pixels outside the per-channel tolerance of 24. The two-pixel antialiased silhouette boundary is excluded from matte measurements. No background repair or colour normalization was applied.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure (or object), full body, facing the viewer, centred, feet (or base) at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+Reference image 1 is pick_shortbread.png, the accepted 256x256 batch-1 pickup, supplied in reference mode only for its chunky object scale, bold charcoal outlines and broad hand-painted facets. Use the same simple painted game style for a different pickup; do not include the tin, biscuits or thistle pattern.
+One compact ammunition pickup: a curved bone-coloured powder horn with a small peat-brown wooden stopper and simple dark leather strap, beside one little squat brown leather drawstring pouch of lead shot. The pouch is open just enough to show a handful of broad round iron-grey shot pellets inside. Arrange the horn and pouch close together as one clear balanced object cluster, both bases at the lower edge. Warm peat-brown leather with a few broad seam marks, muted gold strap buckle, simple bone-grey facets on the horn. No loose pellets outside the pouch, no gun, hands, people, fire, sparks, scene or extra objects. No text, lettering, numbers, runes, labels, symbols or logos.
+Square 1:1 production pickup sprite for Bogle Castle. Show the entire object and all its outlines, with clear magenta room above and on both sides; the complete uncut base meets the bottom edge. Large simple forms must read at 64 pixels. The opaque backdrop is visually flat magenta #FF00FF, every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps. Keep all painted shading and texture inside the outlined subject. No scenery, ground plane, cast shadow, gradient, vignette, diffuse glow, transparency or checkerboard. No border, signature, watermark or gore.
+~~~
+
+### pick_blunderbuss.png
+
+Attempt 1 — accepted (session 6, 2026-10-29).
+
+Reference used: `wpn_blunderbuss.png` (256×256), supplied through built-in imagegen edit/reference mode.
+
+256×256 review: One whole side-on brass-mouthed flintlock blunderbuss, wooden butt on the left and flared brass muzzle on the right. Brass barrel, dark wood, iron flintlock, trigger guard, colours and chunky proportions match the reference weapon. Entire butt, muzzle rim and mechanism remain visible and uncut, with clear magenta below the low horizontal silhouette. No hands, sleeves, text, smoke, border, signature, gore or style clash. Visually flat magenta.
+
+Matte core: 48,894 pixels; RGB ranges R244–253, G1–18, B244–252; 0 pixels outside the per-channel tolerance of 24. The two-pixel antialiased silhouette boundary is excluded from matte measurements. No background repair or colour normalization was applied.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure (or object), full body, facing the viewer, centred, feet (or base) at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+Reference image 1 is wpn_blunderbuss.png, the accepted 256x256 ready weapon sprite, supplied in edit/reference mode. Match exactly the same brass-mouthed flintlock blunderbuss: warm brass flared bell muzzle and barrel, dark peat-brown wooden stock, iron-grey flintlock mechanism, chunky proportions, charcoal outlines and broad painted facets. Remove all hands and sleeves and show this same weapon as a pickup from the side.
+One complete brass-mouthed flintlock blunderbuss lying on its side, stock toward the left, broad flared brass muzzle toward the right. Broad side profile with a slight high front angle so the flintlock, trigger guard and dark inside of the flared muzzle remain visible. The entire wooden butt, short brass barrel, flared muzzle and small iron mechanism must fit comfortably inside the canvas. It is a compact squat comic weapon pickup lying at rest with its lowest complete outline meeting the bottom edge. No hands, arms, sleeves, firing, smoke, sparks, bullets, extra gun, stand or other objects. No text, lettering, numbers, markings, symbols or logos.
+Square 1:1 production pickup sprite for Bogle Castle. Show the entire object and all its outlines, with clear magenta room above and on both sides; the complete uncut base meets the bottom edge. Large simple forms must read at 64 pixels. The opaque backdrop is visually flat magenta #FF00FF, every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps. Keep all painted shading and texture inside the outlined subject. No scenery, ground plane, cast shadow, gradient, vignette, diffuse glow, transparency or checkerboard. No border, signature, watermark or gore.
+~~~
+
+### Session 6 results — 2026-10-29
+
+Exactly five images generated with built-in imagegen, all first attempts and all accepted: `pick_oatcake.png`, `pick_girder_bottle.png`, `pick_mars_box.png`, `pick_powder_shot.png`, `pick_blunderbuss.png`. No rejections or regenerations. Every prompt starts with the exact shared style preamble from design section 4.4. All five use the required pickup wording. References were inspected at 256×256 and supplied through edit/reference mode: batch-1 shortbread for the oatcake and powder-and-shot style, the Girder Juice can for the bottle identity and label, the batch-1 battered-bar weapon for the five-bar box, and the accepted blunderbuss ready frame for its pickup.
+
+Every output was copied to its requested source-art filename, shrunk in place with `sips -Z 256`, and then visually reviewed only at 256×256. All five pass complete-object framing, matching reference identity or painted style, and absence of unwanted text, border, signature and gore. The bottle has only the requested words "Girder Juice" and the reference cartoon girder. Clear matte cores pass the 24-per-channel near-magenta tolerance, excluding the two-pixel antialiased silhouette boundary: 168,568 sampled matte pixels, zero outliers. No background repair or colour normalization was applied.
+
+All 47 pre-existing PNG assets remain unchanged, verified against starting SHA-256 hashes. Prior prompt-log content is preserved byte for byte. No cargo or git write commands were run; no code was written outside `.scratch`.
+
+30 of the 44 manifest lines now have source-art files; 14 remain. The next missing entry is `pick_bagpipes.png`. This session stops at its five-image cap.
+
+### pick_bagpipes.png
+
+Attempt 1 — accepted (session 7, 2026-10-29).
+
+Reference used: `wpn_bagpipes_full.png` (256×256), supplied through built-in imagegen edit/reference mode.
+
+256×256 review: One complete red-tartan bagpipe set lying on its side, with three whole drone tips, chanter and bag visible. Tartan colours, dark wood, bone-and-brass ferrules, chunky proportions and painted outlines match the batch-1 weapon reference. No hands, sleeves, text, image border, signature, gore, clipping or style clash. Uncut lower outline sits at the bottom with a narrow magenta clearance. Visually flat magenta.
+
+Matte core: 39,222 pixels; RGB ranges R241–252, G1–19, B242–251; 0 pixels outside the per-channel tolerance of 24. The two-pixel antialiased silhouette boundary is excluded from matte measurements. No background repair or colour normalization was applied.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure (or object), full body, facing the viewer, centred, feet (or base) at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+Reference image 1 is wpn_bagpipes_full.png, the accepted 256x256 batch-1 weapon sprite, supplied in edit/reference mode. Match exactly the same bagpipes: red tartan bag crossed by broad dark green bands and thin muted gold lines, dark peat-brown wooden pipes, bone-and-brass ferrules, chunky proportions, charcoal outlines and broad painted facets. Remove all hands, arms and sleeves and show the instrument as a ground pickup.
+One complete set of red-tartan Scottish Highland bagpipes lying on its side. The soft red tartan bag rests low in the frame, three stout drone pipes extend diagonally to the upper right, with the blowpipe and chanter nestled alongside the bag. Gentle high frontal angle so the complete instrument and tartan pattern read clearly. All pipes, ferrules and bag edges remain visible and uncut. One instrument only; no hands, people, stand, sound rings, smoke, labels or other objects.
+Square 1:1 production sprite for Bogle Castle. Show the entire object and every outline, with clear magenta room above and at both sides; the complete uncut base meets the bottom edge. Large simple forms must read at 64 pixels. The opaque backdrop is visually flat magenta #FF00FF, every clear background pixel within 24 of RGB(255,0,255) on each channel, including every corner and gap. Keep all painted shading and texture inside the outlined subject. No scenery, floor surface, ground plane, cast shadow, gradient, vignette, diffuse glow, transparency or checkerboard. No text, letters, numbers, logo, signature, watermark, outer image border or gore.
+~~~
+
+### pick_key_silver.png
+
+Attempt 1 — accepted (session 7, 2026-10-29).
+
+Reference used: `pick_key_tartan.png` (256×256), supplied through built-in imagegen edit/reference mode.
+
+256×256 review: One complete silver key with blue-and-green tartan wrapping. Round open bow, shaft, two squared teeth, diagonal pose, proportions and painted outlines match pick_key_tartan.png, with the requested material and colour changes. Whole outline remains uncut, with a narrow magenta gap beneath the lowest tooth. No text, image border, signature, gore or style clash. Visually flat magenta, including the bow hole.
+
+Matte core: 48,474 pixels; RGB ranges R247–254, G1–17, B245–253; 0 pixels outside the per-channel tolerance of 24. The two-pixel antialiased silhouette boundary is excluded from matte measurements. No background repair or colour normalization was applied.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure (or object), full body, facing the viewer, centred, feet (or base) at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+Reference image 1 is pick_key_tartan.png, the accepted 256x256 batch-1 tartan-wrapped key, supplied in edit/reference mode. Preserve the exact same key design, scale, chunky proportions, large round open bow, tightly wrapped upper shaft, lower shaft, two broad squared teeth, upper-left to lower-right diagonal composition, bold charcoal outlines and broad painted facets. Change only the requested materials and colours: the exposed metal becomes bright silver with cool granite-grey facets and bone-white highlights; the tartan wrapping becomes blue-and-green with dark loch-blue and moss-green crossing bands and thin bone-coloured lines.
+One complete silver castle key tightly wrapped in blue-and-green Scottish tartan around its round bow and upper shaft. Keep the bow hole visibly open and the two squared teeth exposed near the lower right. Every bit of tartan belongs to this one key. No red tartan, loose scarf, ribbon, keyring, extra key, hands, face, stand, runes or other objects.
+Square 1:1 production sprite for Bogle Castle. Show the entire object and every outline, with clear magenta room above and at both sides; the complete uncut base meets the bottom edge. Large simple forms must read at 64 pixels. The opaque backdrop is visually flat magenta #FF00FF, every clear background pixel within 24 of RGB(255,0,255) on each channel, including every corner and gap. Keep all painted shading and texture inside the outlined subject. No scenery, floor surface, ground plane, cast shadow, gradient, vignette, diffuse glow, transparency or checkerboard. No text, letters, numbers, logo, signature, watermark, outer image border or gore.
+~~~
+
+### dec_stag_head.png
+
+Attempt 1 — accepted (session 7, 2026-10-29).
+
+Reference used: `pick_shortbread.png` (256×256), supplied through built-in imagegen edit/reference mode.
+
+256×256 review: Complete front-facing comic shaggy stag head mounted on a peat-brown wooden shield. Both antlers, every rounded tine, ears, muzzle and shield point remain visible and uncut. Large bemused eyes and rounded nose read clearly. Bold charcoal outlines, broad painted facets and warm palette match the batch-1 style reference. No text, outer image border, signature, gore or style clash. Visually flat magenta.
+
+Matte core: 34,071 pixels; RGB ranges R244–254, G0–17, B243–253; 0 pixels outside the per-channel tolerance of 24. The two-pixel antialiased silhouette boundary is excluded from matte measurements. No background repair or colour normalization was applied.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure (or object), full body, facing the viewer, centred, feet (or base) at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+Reference image 1 is pick_shortbread.png, the accepted 256x256 batch-1 pickup, supplied in reference mode only for its bold charcoal outlines, chunky proportions, broad hand-painted facets and palette. Create a different object in that exact painted game style; do not include biscuits, tin, lettering or the thistle decoration.
+One mounted stuffed stag head on a simple peat-brown wooden shield plaque, facing directly towards the viewer. Friendly comic expression: shaggy brown fur, big rounded muzzle, an oversized dark nose, one raised eyebrow and slightly bemused large eyes. Two broad branching antlers in pale bone-grey curve upwards, each with a few large simple rounded tines. Ears stick out to either side below the antlers. The wooden shield is a plain broad backing with a pointed lower base. Show the complete antler tips, ears, muzzle and shield within the canvas. Read unmistakably as a silly castle wall trophy, never anatomical, no blood, exposed neck, realistic taxidermy detail, wall, nails, hands or extra objects. The wooden shield is part of the object; no decorative border around the image.
+Square 1:1 production sprite for Bogle Castle. Show the entire object and every outline, with clear magenta room above and at both sides; the complete uncut base meets the bottom edge. Large simple forms must read at 64 pixels. The opaque backdrop is visually flat magenta #FF00FF, every clear background pixel within 24 of RGB(255,0,255) on each channel, including every corner and gap. Keep all painted shading and texture inside the outlined subject. No scenery, floor surface, ground plane, cast shadow, gradient, vignette, diffuse glow, transparency or checkerboard. No text, letters, numbers, logo, signature, watermark, outer image border or gore.
+~~~
+
+### dec_armour.png
+
+Attempt 1 — accepted (session 7, 2026-10-29).
+
+Reference used: `pick_shortbread.png` (256×256), supplied through built-in imagegen edit/reference mode.
+
+256×256 review: One complete squat front-facing empty suit of iron-blue armour with a red-tartan tam o shanter and orange pompom. Whole hat, helmet, rounded shoulder plates, gauntlets and metal boots remain inside the canvas with uncut soles. Chunky proportions, dark outlines and broad painted metallic facets match the batch-1 style. No text, outer image border, signature, gore, additional weapons or style clash. Visually flat magenta.
+
+Matte core: 32,345 pixels; RGB ranges R243–254, G0–17, B241–252; 0 pixels outside the per-channel tolerance of 24. The two-pixel antialiased silhouette boundary is excluded from matte measurements. No background repair or colour normalization was applied.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure (or object), full body, facing the viewer, centred, feet (or base) at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+Reference image 1 is pick_shortbread.png, the accepted 256x256 batch-1 pickup, supplied in reference mode only for its bold charcoal outlines, chunky proportions, broad hand-painted facets and palette. Create a different object in that exact painted game style; do not include biscuits, tin, lettering or the thistle decoration.
+One complete freestanding empty medieval suit of armour wearing a jaunty Scottish tam o' shanter. Front-facing comically squat knight silhouette: chunky granite-grey and iron-blue helmet, rounded breastplate, broad shoulder plates, articulated arms with gauntlets resting at the hips, short plated legs and two broad metal boots. The closed visor has two dark simple eye slits, with no visible person inside. A floppy red-tartan tam o' shanter with a small torch-orange pompom sits askew on the helmet. A few broad bone-grey metallic highlights, thick dark joints and large readable plates. Show the entire hat, pompom, helmet, shoulder plates, fingers and complete boots; both uncut boot soles meet the lower edge. No sword, spear, shield, pedestal, person, bones, floor or other objects.
+Square 1:1 production sprite for Bogle Castle. Show the entire object and every outline, with clear magenta room above and at both sides; the complete uncut base meets the bottom edge. Large simple forms must read at 64 pixels. The opaque backdrop is visually flat magenta #FF00FF, every clear background pixel within 24 of RGB(255,0,255) on each channel, including every corner and gap. Keep all painted shading and texture inside the outlined subject. No scenery, floor surface, ground plane, cast shadow, gradient, vignette, diffuse glow, transparency or checkerboard. No text, letters, numbers, logo, signature, watermark, outer image border or gore.
+~~~
+
+### dec_brazier.png
+
+Attempt 1 — accepted (session 7, 2026-10-29).
+
+Reference used: `pick_shortbread.png` (256×256), supplied through built-in imagegen edit/reference mode.
+
+256×256 review: One complete lit iron brazier with exactly three splayed legs and a broad basket of chunky coals. All three feet, rim and highest flame tip remain visible and uncut. Bright orange-and-yellow flames have crisp outlines with no diffuse glow or light spill. Broad painted facets and charcoal outlines match the batch-1 style reference. No text, image border, signature, gore, clipping or style clash. Visually flat magenta through the legs and basket gaps.
+
+Matte core: 38,192 pixels; RGB ranges R244–253, G1–19, B245–252; 0 pixels outside the per-channel tolerance of 24. The two-pixel antialiased silhouette boundary is excluded from matte measurements. No background repair or colour normalization was applied.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure (or object), full body, facing the viewer, centred, feet (or base) at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+Reference image 1 is pick_shortbread.png, the accepted 256x256 batch-1 pickup, supplied in reference mode only for its bold charcoal outlines, chunky proportions, broad hand-painted facets and palette. Create a different object in that exact painted game style; do not include biscuits, tin, lettering or the thistle decoration.
+One lit iron brazier on a sturdy tripod. A squat open iron-grey basket bowl with broad charcoal bands holds a few chunky black coals. Big bright torch-orange and golden-yellow flame tongues rise from the bowl, with a few simple pale yellow cores. Exactly three thick dark iron legs splay out below the basket, ending in broad simple feet. Front-facing object with a gentle view into the bowl; all three legs read clearly. Flames are crisp opaque outlined painted shapes, full-bright colours contained inside the flame silhouette, no light spill or glow on the magenta. Show the entire highest flame tip, basket rim, three legs and uncut feet. No smoke cloud, flying embers, person, floor, background lighting or additional objects.
+Square 1:1 production sprite for Bogle Castle. Show the entire object and every outline, with clear magenta room above and at both sides; the complete uncut base meets the bottom edge. Large simple forms must read at 64 pixels. The opaque backdrop is visually flat magenta #FF00FF, every clear background pixel within 24 of RGB(255,0,255) on each channel, including every corner and gap. Keep all painted shading and texture inside the outlined subject. No scenery, floor surface, ground plane, cast shadow, gradient, vignette, diffuse glow, transparency or checkerboard. No text, letters, numbers, logo, signature, watermark, outer image border or gore.
+~~~
+
+### Session 7 results — 2026-10-29
+
+Exactly five images generated with built-in imagegen, all first attempts and all accepted: `pick_bagpipes.png`, `pick_key_silver.png`, `dec_stag_head.png`, `dec_armour.png`, `dec_brazier.png`. No rejections or regenerations. Every prompt starts with the exact shared preamble from design section 4.4 and includes the required sprite/pickup/dressing wording. The batch-1 full bagpipes supplied the pickup identity, the tartan key supplied the silver-key design with the requested material and tartan colour changes, and the batch-1 shortbread pickup supplied the dressing style reference. All references were inspected at 256×256 and supplied through edit/reference mode.
+
+Every output was copied to its requested source-art filename and shrunk in place with `sips -Z 256` before visual review. Only the resized 256×256 files were opened for review. All five are opaque PNGs and pass complete-object framing, style and reference checks, with no unwanted text, outer image border, signature or gore. Visually flat magenta backgrounds pass the per-channel tolerance of 24: 192,304 sampled matte-core pixels, zero outliers. The two-pixel antialiased silhouette boundary is excluded from matte measurements. No background repair or colour normalization was applied.
+
+All 54 pre-existing art and palette files remain unchanged, verified against starting SHA-256 hashes. Prior prompt-log content is preserved byte for byte. Full prompt records, numerical reviews and the handover summary are in `.scratch/art2-session7-attempts.json`, `.scratch/art2-session7-review.jsonl` and `.scratch/art2-session7-results.json`. No cargo or git write commands were run; no code was written outside `.scratch`.
+
+35 of the 44 manifest lines now have source-art files; 9 remain. The next missing entry is `dec_thistle_pot.png`. This session ends at its five-image cap.
+
+### dec_thistle_pot.png
+
+Attempt 1 — accepted (session 8, 2026-10-29).
+
+References used: `pick_shortbread.png` (256×256), `tex_tapestry_thistle.png` (256×256), supplied through built-in imagegen edit/reference mode.
+
+256×256 review: One complete big thistle in a squat terracotta clay pot. Purple flower head, broad moss-green spiky leaves and green flower cup match the batch-1 tapestry. Whole flower tip, leaf tips, rim and pot base remain visible and uncut. Bold painted facets and charcoal outlines match the batch-1 pickup style. No text, image border, signature, gore or style clash. Visually flat magenta; narrow clearance under the complete pot base.
+
+Matte core: 34,497 pixels; RGB ranges R244–253, G0–17, B243–253; 0 pixels outside the per-channel tolerance of 24. The two-pixel antialiased silhouette boundary is excluded from matte measurements. No background repair or colour normalization was applied.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure (or object), full body, facing the viewer, centred, feet (or base) at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+Reference image 1 is pick_shortbread.png, the accepted 256x256 batch-1 pickup, supplied in reference mode only for its bold charcoal outlines, chunky proportions, broad hand-painted facets and palette. Create a different object in that exact painted game style; do not include biscuits, tin or lettering.
+Reference image 2 is tex_tapestry_thistle.png, the accepted 256x256 batch-1 tapestry, supplied as the botanical shape and palette reference. Match its broad moss-green spiky leaves, chunky green flower cups and heather-purple flower heads, rendered as one living plant rather than a fabric pattern.
+One big Scottish thistle growing in a squat warm peat-brown terracotta clay pot. A thick short central stalk rises above the broad pot rim, with two broad pairs of angular spiky moss-green leaves and one large upright purple thistle flower at the top. Simple bold flower spikes and a few broad green facets, no tiny botanical detail. The plain clay pot has a thick rounded lip, a broad simple belly and a flat uncut base. Show the whole flower tip, all leaf tips, stalk, rim and pot base. One complete front-facing potted plant, affectionate chunky castle dressing. No face, cloth, tapestry field, decorative pot markings, loose soil, separate tray or extra plants.
+Square 1:1 production sprite for Bogle Castle. Show the entire object and every outline, with clear magenta room above and at both sides; the complete uncut base meets the bottom edge. Large simple forms must read at 64 pixels. The opaque backdrop is visually flat magenta #FF00FF, every clear background pixel within 24 of RGB(255,0,255) on each channel, including every corner and gap. Keep all painted shading and texture inside the outlined subject. No scenery, floor surface, ground plane, cast shadow, gradient, vignette, diffuse glow, transparency or checkerboard. No text, letters, numbers, logo, signature, watermark, outer image border or gore.
+~~~
+
+### dec_cow_portrait.png
+
+Attempt 1 — accepted (session 8, 2026-10-29).
+
+References used: `pick_shortbread.png` (256×256), supplied through built-in imagegen edit/reference mode.
+
+256×256 review: A complete gilt-framed painted portrait of one shaggy ginger Highland cow against a loch-blue field contained inside the frame. Bemused face, chunky muzzle, fringe and two whole horns read clearly. All four gold frame corners and the uncut lower frame remain visible with magenta around the object. The requested gilt picture frame is part of the subject; no outer canvas border. No text, signature, gore, clipping or style clash. Visually flat magenta.
+
+Matte core: 17,005 pixels; RGB ranges R238–248, G2–21, B242–252; 0 pixels outside the per-channel tolerance of 24. The two-pixel antialiased silhouette boundary is excluded from matte measurements. No background repair or colour normalization was applied.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure (or object), full body, facing the viewer, centred, feet (or base) at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+Reference image 1 is pick_shortbread.png, the accepted 256x256 batch-1 pickup, supplied in reference mode only for its bold charcoal outlines, chunky proportions, broad hand-painted facets and palette. Create a different object in that exact painted game style; do not include biscuits, tin or lettering.
+One gilt-framed portrait painting of a shaggy Highland cow, a complete wall-dressing object facing directly towards the viewer. A broad rectangular antique gold picture frame with chunky rounded corners encloses a close front-facing bust of a shaggy ginger-peat-brown Highland cow. The silly cow has a long tousled fringe partly covering its eyes, two short curving bone-grey horns and an oversized rounded dark muzzle, with a placid bemused expression. A plain deep loch-blue painted field exists only inside the picture frame. Broad simple gold moulding facets, a few readable corner curls, no fine filigree. Show the complete outer gold frame, every corner and its full bottom edge with magenta visible all around. The requested gilt picture frame belongs to the depicted object and is the sole exception to the no-border instruction; do not add any border at the canvas edges. No title plaque, writing, signature within the painting, hanging chain, wall, floor or extra objects.
+Square 1:1 production sprite for Bogle Castle. Show the entire object and every outline, with clear magenta room above and at both sides; the complete uncut base meets the bottom edge. Large simple forms must read at 64 pixels. The opaque backdrop is visually flat magenta #FF00FF, every clear background pixel within 24 of RGB(255,0,255) on each channel, including every corner and gap. Keep all painted shading and texture inside the outlined subject. No scenery, floor surface, ground plane, cast shadow, gradient, vignette, diffuse glow, transparency or checkerboard. No text, letters, numbers, logo, signature, watermark, outer image border or gore.
+~~~
+
+### dec_banner.png
+
+Attempt 1 — accepted (session 8, 2026-10-29).
+
+References used: `pick_shortbread.png` (256×256), `wpn_bagpipes_full.png` (256×256), supplied through built-in imagegen edit/reference mode.
+
+256×256 review: One complete hanging red tartan cloth banner on a peat-brown rod, with two cloth loops, rounded finials and two intact swallowtail points. Broad red checks crossed by dark green and loch-blue bands and muted gold lines match the batch-1 bagpipes tartan. Full rod and cloth silhouette remain inside the canvas, lower tips near the bottom edge. Bold dark outlines and broad painted folds match batch 1. No text, crest, outer image border, signature, gore or clipping. Visually flat magenta, including the gap below the rod and the swallowtail notch.
+
+Matte core: 29,846 pixels; RGB ranges R241–250, G1–18, B242–251; 0 pixels outside the per-channel tolerance of 24. The two-pixel antialiased silhouette boundary is excluded from matte measurements. No background repair or colour normalization was applied.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure (or object), full body, facing the viewer, centred, feet (or base) at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+Reference image 1 is pick_shortbread.png, the accepted 256x256 batch-1 pickup, supplied in reference mode only for its bold charcoal outlines, chunky proportions, broad hand-painted facets and palette. Create a different object in that exact painted game style; do not include biscuits, tin or lettering.
+Reference image 2 is wpn_bagpipes_full.png, the accepted 256x256 batch-1 weapon sprite, supplied only as the red tartan fabric reference. Match exactly its tartan palette and broad crossing bands: tartan red, dark moss-green and loch-blue checks, thin muted gold lines. Do not include bagpipes, hands or sleeves.
+One hanging red tartan castle banner, front-facing and fully visible. A broad simple rectangular cloth hangs vertically from a single short peat-brown horizontal wooden rod with small rounded finials. Two broad red cloth loops connect it to the rod. A shallow central fold and two broad side folds keep the large tartan checks readable; a simple swallowtail notch forms two complete lower cloth points. Keep the banner one intact cloth object, clear square-on silhouette. Show the whole rod, both finials, both loops and uncut cloth tips. No crest, badge, letters, symbols, fringe, cords, wall, hook or additional objects.
+Square 1:1 production sprite for Bogle Castle. Show the entire object and every outline, with clear magenta room above and at both sides; the complete uncut base meets the bottom edge. Large simple forms must read at 64 pixels. The opaque backdrop is visually flat magenta #FF00FF, every clear background pixel within 24 of RGB(255,0,255) on each channel, including every corner and gap. Keep all painted shading and texture inside the outlined subject. No scenery, floor surface, ground plane, cast shadow, gradient, vignette, diffuse glow, transparency or checkerboard. No text, letters, numbers, logo, signature, watermark, outer image border or gore.
+~~~
+
+### dec_curling_stone.png
+
+Attempt 1 — accepted (session 8, 2026-10-29).
+
+References used: `pick_shortbread.png` (256×256), `tex_granite.png` (256×256), supplied through built-in imagegen edit/reference mode.
+
+256×256 review: One complete squat round granite curling stone with a thick red curved handle, visible grip opening and two broad metal bolts. Granite-grey and loch-blue broad stone facets match the batch-1 wall texture; chunky dark outlines and warm red accents match the pickup style. The whole handle and rounded base remain uncut, with a small magenta clearance below. No text, logo, outer image border, signature, gore, extra objects or style clash. Visually flat magenta, including the handle opening.
+
+Matte core: 25,562 pixels; RGB ranges R244–253, G0–18, B244–253; 0 pixels outside the per-channel tolerance of 24. The two-pixel antialiased silhouette boundary is excluded from matte measurements. No background repair or colour normalization was applied.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure (or object), full body, facing the viewer, centred, feet (or base) at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+Reference image 1 is pick_shortbread.png, the accepted 256x256 batch-1 pickup, supplied in reference mode only for its bold charcoal outlines, chunky proportions, broad hand-painted facets and palette. Create a different object in that exact painted game style; do not include biscuits, tin or lettering.
+Reference image 2 is tex_granite.png, the accepted 256x256 batch-1 stone texture, supplied only for its granite-grey and loch-blue painted stone facets. Do not reproduce the brick grid or mortar.
+One complete granite curling stone with a chunky curved handle, viewed facing the viewer from a gentle raised angle so the broad top and squat sidewall are both readable. A single wide flattened circular stone in mottled granite grey and muted loch blue, with thick charcoal outlines, a few broad hand-painted stone facets and a dark lower running band. One bright tartan-red arch-shaped handle is bolted securely to the top, with a visible open grip hole. Exaggerated heavy squat proportions and a crisp simple silhouette, complete uncut rounded lower base. No face, writing, numbers, logos, broom, ice, floor, person or extra stones.
+Square 1:1 production sprite for Bogle Castle. Show the entire object and every outline, with clear magenta room above and at both sides; the complete uncut base meets the bottom edge. Large simple forms must read at 64 pixels. The opaque backdrop is visually flat magenta #FF00FF, every clear background pixel within 24 of RGB(255,0,255) on each channel, including every corner and gap. Keep all painted shading and texture inside the outlined subject. No scenery, floor surface, ground plane, cast shadow, gradient, vignette, diffuse glow, transparency or checkerboard. No text, letters, numbers, logo, signature, watermark, outer image border or gore.
+~~~
+
+### tex_fryer_oil.png
+
+Attempt 1 — accepted (session 8, 2026-10-29).
+
+References used: `tex_granite.png` (256×256), supplied through built-in imagegen edit/reference mode.
+
+256×256 review: Square edge-to-edge bubbling golden fryer oil, seen straight down with broad orange-and-amber ripples, outlined round bubbles and pale yellow painted highlights. Bright heat colours are distributed over the full tile without a central spotlight, vignette or border. Chunky hand-painted forms match the batch-1 textures; no text, signature, gore, scenery, magenta or photographic style clash. Source-art review used only this 256x256 file; the later baker tile-preview gate has not been run.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+seamless tileable texture, edges wrap left-right and top-bottom, orthographic straight-on view, no perspective.
+Square 1:1 seamless game floor source texture: bubbling golden deep-fat fryer oil, glowing. A continuous edge-to-edge field of hot golden amber and torch-orange oil, dotted evenly with large simple round rising bubbles and broad curling ripple shapes, with pale buttery-yellow bubble highlights and chunky dark amber outlines. Suggest full-bright heat using saturated painted colours distributed uniformly over the whole tile, with no central light source, darkened edges, cast shadows or glow outside the image. Broad hand-painted colour facets and simplified chunky forms remain readable at 64 pixels; keep detail sparse and avoid photographic foam or fine noise. No fryer rim, pan, cooking basket, food, objects, scene, text, signature, watermark, frame or magenta. Opposite edges must continue the same oil colour, bubbles and ripples without a visible join in either direction; avoid an enclosing ring or central motif. Fill the entire square with the repeating oil surface.
+Reference image 1 is tex_granite.png, the accepted 256x256 batch-1 castle texture, supplied in reference mode only to match its broad hand-painted facets, chunky forms and bold dark outlines. Create the new oil material in that same game-art style; no granite blocks or mortar.
+~~~
+
+### Session 8 results — 2026-10-29
+
+Exactly five images generated with built-in imagegen, all first attempts and all accepted: `dec_thistle_pot.png`, `dec_cow_portrait.png`, `dec_banner.png`, `dec_curling_stone.png`, `tex_fryer_oil.png`. No rejections or regenerations. Every prompt begins with the exact section 4.4 shared style preamble, verified against the design document. Dressing prompts include the required full-object wording; the fryer texture includes the exact seamless-tile wording. All supplied references were existing 256×256 batch-1 files inspected before use.
+
+Every output was copied to its requested source-art filename and shrunk in place with `sips -Z 256` before visual review. Only the resized 256×256 files were opened for review. All are opaque PNGs and pass source-art framing, style and unwanted-text, image-border, signature and gore checks. The cow portrait's requested gilt frame is part of the depicted object. All four dressing backgrounds are visually flat magenta and pass the per-channel tolerance of 24: 106,910 edge-connected matte-core pixels, zero outliers. The two-pixel antialiased silhouette boundary and outlined foreground regions are excluded from matte measurements. No background repair or colour normalization was applied.
+
+The fryer texture was reviewed as a 256×256 source image. Its opposite-edge mean channel differences are 7.09 horizontally and 7.23 vertically. The design's later baked-64×64 and 3×3 tile-preview gate remains for the lead before committing the texture; no baker or cargo was run in this source-art session.
+
+All pre-existing art and the prior prompt-log contents remain unchanged, checked against starting SHA-256 hashes. No git write commands were run, and code was written only under `.scratch`. Full prompts, generated-source paths and review measurements are also recorded in `.scratch/art2-session8-attempts.json`, `.scratch/art2-session8-results.json` and `.scratch/art2-session8-review.jsonl`.
+
+Four of the 44 manifest lines remain, in order: `tex_bog.png`, `tex_loch_water.png`, `tex_chapel_stone.png`, `tex_lever_wall.png`. The next session starts with `tex_bog.png`, attempt 1. This session ends at its five-image cap.
+
+
+### Session 9 source-art attempts — 2026-10-29
+
+Built-in imagegen reference mode used. Five images generated in total, including one chapel regeneration. Existing manifest assets were skipped. All reference files were existing 256×256 source-art files opened before use; the regeneration also used the resized first chapel attempt.
+
+### tex_bog.png
+
+Attempt 1 — accepted (session 9, 2026-10-29).
+
+References used: `tex_peat_straw.png` (256×256), `tex_flagstone_moss.png` (256×256), supplied through built-in imagegen edit/reference mode.
+
+256×256 review: Square edge-to-edge dark peat bog with murky olive-blue pools between chunky brown mud clods and sparse moss-green tufts. Broad painted facets and dark outlines match the batch-1 floor references. No scenery, text, outer border, signature, gore or style clash.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+seamless tileable texture, edges wrap left-right and top-bottom, orthographic straight-on view, no perspective.
+Square 1:1 seamless game floor source texture: dark peat bog, murky water and moss tufts. A continuous edge-to-edge top-down surface of dark peat-brown muddy clods and irregular shallow pools of murky olive and dark loch-blue water, with sparse chunky moss-green grass tufts rooted between them. Use broad irregular interlocking mud and water shapes, thick charcoal contours, a few simple flat water-ripple strokes and broad painted facets. Evenly scatter the moss tufts over the entire repeat; keep the bog dark and treacherous while the different shapes stay readable at 64 pixels. No isolated island or central motif, horizon, reflected scenery, plants viewed from the side, rocks protruding in perspective, insects, creatures or objects. Uniform flat brightness, no vignette, shadows, border, magenta, text, signature or fine photographic noise. Opposite edges must continue the mud, pools and moss without a visible join in either direction.
+Reference image 1 is tex_peat_straw.png, the accepted 256x256 batch-1 floor texture, supplied in reference mode to match its peat-brown palette, chunky clods, bold outlines and broad painted facets; replace straw with murky pools and moss. Reference image 2 is tex_flagstone_moss.png, the accepted 256x256 batch-1 floor texture, supplied only for its moss-green tufts and bold painted game style; do not include flagstone paving.
+~~~
+
+### tex_loch_water.png
+
+Attempt 1 — accepted (session 9, 2026-10-29).
+
+References used: `tex_dungeon_brick.png` (256×256), supplied through built-in imagegen edit/reference mode.
+
+256×256 review: Square edge-to-edge cold dark loch-blue water with small repeated short ripples and restrained slate-blue highlights. Chunky painted shapes and dark contours match batch 1. Even visual density, no shore, objects, scenery, text, border, signature, gore or style clash.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+seamless tileable texture, edges wrap left-right and top-bottom, orthographic straight-on view, no perspective.
+Square 1:1 seamless game floor source texture: cold dark-blue loch water with small ripples. A continuous edge-to-edge top-down field of deep loch-blue water, with evenly scattered small simple ripples: short broad dark-blue wavy strokes and sparse muted slate-blue highlights, each with chunky charcoal-blue contours and broad flat hand-painted facets. Suggest chilly gently moving water without making white surf, foam, whirlpools or a single central ring. All regions have consistent density and brightness, and the small ripples remain readable at 64 pixels. No shore, land, rocks, objects, plants, animals, reflections of scenery, horizon, sky, perspective, directional spotlight, gradient, vignette, border, text, signature, magenta or photographic noise. Opposite edges must continue the same blue water field and ripple rhythm without a visible join in either direction.
+Reference image 1 is tex_dungeon_brick.png, the accepted 256x256 batch-1 wall texture, supplied in reference mode only for its cold loch-blue and slate-blue painted wet highlights, broad facets and bold dark outlines. Create a new water material in that exact game-art style; do not include bricks, mortar or masonry.
+~~~
+
+### tex_chapel_stone.png
+
+Attempt 1 — rejected (session 9, 2026-10-29).
+
+References used: `tex_granite.png` (256×256), supplied through built-in imagegen edit/reference mode.
+
+256×256 review: Square edge-to-edge pale bone-grey chapel masonry in four staggered courses with small readable ringed Celtic cross carvings. Broad block proportions, angular painted facets and dark mortar match the granite reference. Crosses are requested ornament; no lettering, scene, outer border, signature, gore or style clash.
+
+Rejection: Top and bottom masonry edges do not continue into each other: the top edge exposes dark mortar while bottom block faces and joints do not align with it. Opposite-edge mean absolute RGB difference is 28.83 vertically (batch-1 granite is 12.08). Source style, subject and unwanted-text checks otherwise pass.
+
+Preserved resized rejection: `.scratch/art2-session9-tex_chapel_stone-attempt1.png`.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+seamless tileable texture, edges wrap left-right and top-bottom, orthographic straight-on view, no perspective.
+Square 1:1 seamless game wall source texture: pale carved chapel stone blocks with small Celtic crosses. Four staggered horizontal courses of broad chunky pale bone-grey sandstone blocks, broad flat warm-grey and cool-grey hand-painted stone facets, thick charcoal mortar and a few small simple Celtic crosses shallowly carved into selected block faces. Each Celtic cross is a plain short-armed cross with a clear ring around its crossing; use broad dark incised strokes, simple rounded ends, no filigree or runic writing. Scatter the few crosses evenly, each well within a block face, with no single shrine or central medallion. The requested Celtic crosses are decorative stone carvings, not text. Match the size and broad chunky stone proportions of the reference while making the chapel stone distinctly paler. Uniform even flat brightness, no cast shadows, vignette, frame, plaque, arch, windows, scene, gold decoration, text, letters, numbers, signature, magenta or fine photographic noise. Fill every edge with continuing masonry; all opposite mortar courses, stone colours and carved-pattern spacing must wrap without a visible join.
+Reference image 1 is tex_granite.png, the accepted 256x256 batch-1 castle wall texture, supplied in reference mode to match its broad block shapes, bold charcoal joints and hand-painted facets exactly. Change the material to pale carved chapel stone and add the small simple Celtic crosses; do not reproduce the moss accents.
+~~~
+
+### tex_chapel_stone.png
+
+Attempt 2 — rejected (session 9, 2026-10-29).
+
+References used: `tex_chapel_stone.png` (256×256), `tex_granite.png` (256×256), supplied through built-in imagegen edit/reference mode.
+
+256×256 review: Square edge-to-edge pale bone-grey chapel masonry in four staggered courses with small readable ringed Celtic cross carvings. Broad block proportions, angular painted facets and dark mortar match the granite reference. Crosses are requested ornament; no lettering, scene, outer border, signature, gore or style clash.
+
+Rejection: The targeted reference edit retains the mismatched top-bottom masonry join; opposite-edge mean absolute RGB difference is 27.59 vertically, only slightly below attempt 1. Source style, requested Celtic carvings, framing and unwanted-text checks otherwise pass. Rejected at the fifth-image session cap.
+
+Preserved resized rejection: `.scratch/art2-session9-tex_chapel_stone-attempt2.png`.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+seamless tileable texture, edges wrap left-right and top-bottom, orthographic straight-on view, no perspective.
+Square 1:1 seamless game wall source texture: pale carved chapel stone blocks with small Celtic crosses. Reference image 1 is tex_chapel_stone.png, the already-reviewed 256x256 first attempt. Preserve its pale bone-grey sandstone palette, broad angular hand-painted facets, bold charcoal mortar, four staggered courses and simple small ringed Celtic cross carvings. Reference image 2 is tex_granite.png, the accepted 256x256 batch-1 wall texture, supplied as the chunky masonry style reference. Match the established game-art style exactly.
+Correct the repeat geometry: the top and bottom edges must be the same continuous horizontal mortar joint, split equally between the top and bottom boundary, so the final course meets the first course without a light or dark stripe or shifted stones when repeated vertically. Put the centres of the four horizontal mortar joints exactly at 0%, 25%, 50% and 75% of image height, with the joint at 0% continuing at 100%. Keep stone face colours and every vertical joint aligned across this top-bottom join. Left and right edges must also continue matching block halves and charcoal joints exactly. Use four broad, evenly spaced staggered courses of large pale stones, with sparse small Celtic crosses fully inside selected stone faces, away from every canvas edge. Each cross has four short rounded arms and a plain ring around its crossing, made of broad dark incised strokes; no runic text or fine filigree.
+Fill the entire square edge to edge with this flat masonry repeat. Uniform flat frontal brightness, simple large forms readable at 64 pixels. No outer image border, frame, enclosing rectangle, scene, perspective, arch, plaque, windows, cast shadows, vignette, directional spotlight, text, letters, numbers, signature, watermark, gore, magenta or photographic noise. All ornament is carved stone within the wall surface. The small requested Celtic crosses are the sole decorative symbols.
+~~~
+
+### tex_lever_wall.png
+
+Attempt 1 — accepted (session 9, 2026-10-29).
+
+References used: `tex_granite.png` (256×256), `tex_cell_door.png` (256×256), supplied through built-in imagegen edit/reference mode.
+
+256×256 review: Square granite wall filling the canvas edge to edge, with one complete large central iron lever, chunky grip, readable pivot, backplate and four round rivets. Whole lever assembly fits comfortably inside the wall. Granite matches tex_granite.png and ironwork matches tex_cell_door.png. No text, outer image border, signature, gore, clipping or style clash. Deliberately non-tileable as requested.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+Square wall texture, not tileable, orthographic straight-on view, no perspective.
+Square 1:1 game wall source texture: a granite wall with a big iron lever in the centre, the level exit. Keep the accepted castle granite wall's four staggered courses of broad grey-blue blocks, thick charcoal mortar and simple angular painted facets filling the canvas edge to edge. Mount one large dark iron lever assembly in the centre: a complete squat rectangular iron backplate with four broad round rivets, one large readable pivot, and one thick upright iron-blue handle rising from it to a chunky rounded grip. Make the complete lever handle and backplate clearly visible with ample masonry around them, a bold readable interactive silhouette at 64 pixels. Restrained broad pale metal edge highlights and thick charcoal outlines match the reference ironwork. This is a single non-repeating exit control on a wall, with no surrounding doorway, door, casing, outer image border, plaque, arrows, labels, lettering, runes, signature, hands, characters, gore, magenta, vignette or cast shadows. Flat frontal lighting; the wall remains a flat texture, not a perspective room scene.
+Reference image 1 is tex_granite.png, the accepted 256x256 batch-1 wall texture, supplied in reference mode as the granite material reference: match its block proportions, colours, outlines and broad painted facets exactly. Reference image 2 is tex_cell_door.png, the accepted 256x256 batch-1 door texture, supplied only for its iron-blue metal palette, chunky rivets and thick painted dark ironwork. Replace the door object with the specified iron lever; include no oak, peephole or ring pull.
+~~~
+
+### Session 9 results — 2026-10-29
+
+Five images generated with built-in imagegen. Three accepted source-art files: `tex_bog.png`, `tex_loch_water.png` and `tex_lever_wall.png`. Two rejected images: `tex_chapel_stone.png` attempts 1 and 2, both for a mismatched top-bottom masonry join. The fifth and final generation was a targeted reference edit, but it did not sufficiently correct the join. Both 256×256 rejected copies are preserved in `.scratch`; no rejected chapel texture remains in `art/src/`.
+
+Every output was first copied to its requested source-art filename, shrunk in place using `sips -Z 256`, and visually reviewed only at 256×256. All five are opaque PNGs. The accepted textures match the established broad painted facets and dark outlines, with no unwanted text, outer image border, signature, gore or style clash. The lever is complete within the wall texture and is deliberately non-tileable as specified. The three first-attempt tile prompts and the chapel regeneration begin with the exact shared style preamble and exact seamless-tile wording; the non-tileable lever prompt begins with the same preamble and its explicit square non-tileable wording.
+
+Source-edge measurements for the accepted repeat textures: bog mean absolute RGB differences are 5.69 horizontally and 7.41 vertically; loch water is 2.50 horizontally and 3.39 vertically. These measurements are source-art checks, not proof of a seamless baked texture. The design's baked-64×64 and 3×3 tiled-preview review remains for the lead before committing textures; no baker or cargo was run. Only the saved 256-pixel source images were opened for review.
+
+All pre-existing source art remains unchanged, checked against starting SHA-256 hashes. The prior prompt-log contents are preserved as an unchanged prefix. No git write commands were run, and code was written only under `.scratch`. Full prompts, generated-source paths and measurements are recorded in `.scratch/art2-session9-attempts.json`, `.scratch/art2-session9-chapel-attempt2.json`, `.scratch/art2-session9-results.json` and `.scratch/art2-session9-review.json`.
+
+One of the 44 manifest lines remains: `tex_chapel_stone.png`. Next attempt is 3. Reference its rejected 256-pixel attempts for material and style, but correct the top-bottom masonry repeat. All other 43 manifest source files exist. This session ends at the five-image cap.
+
+### Session 10 source-art attempts — 2026-10-29
+
+Built-in imagegen used. The 43 existing manifest assets were skipped; only `tex_chapel_stone.png` remained. Two images generated in this session, counting the regeneration. Each output was copied to the requested source-art filename, shrunk in place with `sips -Z 256`, and reviewed only at 256×256.
+
+### tex_chapel_stone.png
+
+Attempt 3 — rejected (session 10, 2026-10-29).
+
+Reference used: `tex_granite.png` (256×256), supplied through built-in imagegen edit/reference mode for stone proportions, angular painted facets and dark outlines.
+
+256×256 review: Pale carved chapel masonry and small ringed Celtic crosses match the requested subject and broad painted style. No text, outer frame, signature or gore.
+
+Rejection: The reference edit retains mismatched top/bottom mortar bands instead of a continuous masonry repeat. Opposite-edge mean absolute RGB differences are 7.77 horizontally and 22.67 vertically; the batch-1 granite comparison is 6.12 horizontally and 12.08 vertically. The top-bottom join still fails source review.
+
+Preserved resized rejection: `.scratch/art2-session10-tex_chapel_stone-attempt3.png`.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+seamless tileable texture, edges wrap left-right and top-bottom, orthographic straight-on view, no perspective.
+Square 1:1 seamless game wall source texture: pale carved chapel stone blocks with small Celtic crosses. Reference image 1 is tex_granite.png, the accepted 256x256 batch-1 castle wall texture, supplied in edit/reference mode for its broad chunky block proportions, charcoal mortar outlines and broad angular hand-painted facets. Match that exact game-art style. Change the stone to pale warm bone-grey and cool ivory-grey sandstone, remove all moss, and carve a few small simple Celtic crosses into selected stone faces. Each cross is four short rounded arms with a plain circular ring around their intersection, rendered in broad dark incised strokes. Four small readable carvings spaced over the repeat, fully inside block faces, no runes or lettering, no central shrine or medallion.
+Build a genuine continuous running-bond masonry repeat, with four equal course heights per tile. Crucial repeat geometry: the top and bottom canvas boundaries both cut through the MIDDLE of the SAME pale stone course, not through a mortar line. There is half a course at the top, three complete courses in between, and the matching other half-course at the bottom. Horizontal mortar joints are at one eighth, three eighths, five eighths and seven eighths of image height. The stone colours, broad facets and vertical joints at the top edge continue exactly at the bottom edge, completing those same stones when tiled vertically. Likewise cut through matching block faces at the left and right edges; stones and mortar continue across that join. No dark line or pale stripe along any outside edge. Treat every edge as a crop through an infinite repeated wall, never as the outside of a panel. Keep all cross carvings away from the canvas edges.
+Fill the square edge to edge with broad chunky pale stone faces and thick irregular charcoal mortar. Simple large shapes readable at 64 pixels, restrained broad brush facets, uniform flat frontal brightness. No enclosing rectangle, frame, border, plaque, arch, windows, perspective, scenery, cast shadows, vignette, directional spotlight, text, numbers, signature, watermark, gore, magenta or fine photographic noise. The small requested Celtic cross carvings are the only symbols.
+~~~
+
+### tex_chapel_stone.png
+
+Attempt 4 — accepted (session 10, 2026-10-29).
+
+Reference used: None supplied to the tool. Fresh generation using the exact shared preamble and the already-reviewed batch-1 stone art as the visual style comparison.
+
+256×256 review: Square edge-to-edge pale bone-grey chapel masonry with broad angular hand-painted facets, chunky dark joints and four small ringed Celtic cross carvings. The top and bottom now cut through matching pale stone faces, with the mortar courses inside the swatch. The carvings are the requested ornament; no unwanted lettering, border, signature, gore, scenery or style clash. Opposite-edge mean absolute RGB differences are 4.03 horizontally and 10.43 vertically, both below the batch-1 granite comparison. Accepted as source art; edge measurements support the visual source check but do not prove a seamless baked texture.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+seamless tileable texture, edges wrap left-right and top-bottom, orthographic straight-on view, no perspective.
+Square seamless texture swatch of pale carved Scottish chapel stone blocks with small Celtic crosses. A flat infinite wall surface in chunky hand-painted game art, broad ivory-grey and warm bone-grey stone faces with a few large angular cool-grey painted facets, thick charcoal mortar and bold dark carved outlines. Four simple small Celtic crosses on different stones: each has short rounded arms and one clear ring around the crossing; large simple incised marks, no lettering or runes. Sparse crosses, large stone shapes, readable at 64 pixels.
+EDGE DESIGN IS THE MAIN REQUIREMENT. This is a cropped swatch of an infinite periodic wall, not a finished rectangular wall panel. The top edge and bottom edge must consist of the matching upper and lower halves of the SAME CUT STONES, with PALE STONE FACES touching both canvas boundaries. There must be NO horizontal dark mortar line along either the top or bottom outside edge. Put the four horizontal course joints well inside the canvas at 12.5%, 37.5%, 62.5% and 87.5% height, leaving half a stone course cut across the top and the matching half course across the bottom. A stone's left-right position, colour and broad painted facets at the very top must continue at the very bottom. The left and right edges similarly crop through matching stone faces to complete the same cut blocks when tiled sideways. All joints and facets wrap continuously. The whole image is one flat tile, no margin, no surrounding room. Keep all Celtic crosses completely inside stones away from the outer edges.
+Broad simple uneven granite-like blocks with softly chipped corners and broad opaque angular brush marks, bold charcoal joints and outlines, restrained painted highlights. Pale chapel material, no moss or plants. Uniform flat frontal lighting across the whole canvas. No border, no dark perimeter, no top frame, no bottom frame, no arch, no doorway, no plaque, no perspective, no shadows, no vignette, no scenery, no central shrine, no gold, no text, no numbers, no signature, no watermark, no gore, no magenta, no fine photographic detail.
+~~~
+
+### Session 10 results — 2026-10-29
+
+One file made: `tex_chapel_stone.png`, accepted attempt 4, opaque 256×256 PNG. One rejection: attempt 3 retained the mismatched top-bottom masonry join. Two images generated in total; no further generation was needed. All 44 manifest source-art files now exist; zero manifest lines remain.
+
+Every pre-existing art file is unchanged, verified against starting SHA-256 hashes, and the prior prompt log is preserved as an unchanged prefix. No cargo or git write commands were run, and code was written only under `.scratch`. Full prompts and source-edge measurements are preserved in `.scratch/art2-session10-*`. The design section 4.4 baked-64×64 and 3×3 tiled-preview review remains for the lead before committing textures; no baker was run in this source-art session.
