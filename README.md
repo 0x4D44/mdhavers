@@ -1226,6 +1226,12 @@ cargo test --no-default-features --features minimal
 **Note:** On Windows, use `graphics` for graphics + audio (raylib's built-in audio), or
 `audio` for standalone audio (miniaudio). LLVM native compilation is best-effort on Windows (requires LLVM 19).
 
+LLVM native builds use reference counting by default. Set `MDH_RC=0` or `MDH_RC=off`
+when ye build tae disable it (`off` is case-insensitive); leave it unset or set it tae
+`1` tae enable it. Any other value makes the build fail. See the
+[performance guide](docs/src/advanced/performance.md#native-memory-management) for the
+`MDH_RC_REPORT` and `MDH_RC_NOFREE` runtime diagnostics.
+
 ### Minimal Build (CI / No Optional Dependencies)
 
 If you don't need LLVM, graphics, or audio:

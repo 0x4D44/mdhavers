@@ -178,7 +178,8 @@ void __mdh_rc_check(MdhValue v, const char *op);
 /* Objects of `kind` allocated and not yet dead. */
 int64_t __mdh_rc_live(uint32_t kind);
 /* Turn counting on (MDH_RC_KINDS, else MDH_RC_DEFAULT_KINDS): called first thing by a
- * program compiled with counting (MDH_RC=1); without it nothing is counted. */
+ * program compiled with counting (the default; MDH_RC=0/off opts out); without it
+ * nothing is counted. */
 void __mdh_rc_enable(void);
 /* Read MDH_RC_REPORT; called once at program start. */
 void __mdh_rc_init(void);

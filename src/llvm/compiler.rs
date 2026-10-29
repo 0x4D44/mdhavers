@@ -527,24 +527,36 @@ fn link_native_executable_from_object(
 pub struct LLVMCompiler {
     // Configuration options
     opt_level: OptimizationLevel,
-    /// Reference counting (stage R1: counts with DEAD marking, no frees). Off by default:
-    /// counts are not yet atomic and a counting bug aborts. `MDH_RC=1` in the compiler's
-    /// environment turns it on.
-    refcounting: bool,
+    /// Native builds count references by default. `MDH_RC=0` or `off` (ignoring case)
+    /// opts out; an invalid setting becomes a compile error at either output entry point.
+    refcounting: Result<bool, String>,
 }
 
 impl LLVMCompiler {
     pub fn new() -> Self {
         LLVMCompiler {
             opt_level: OptimizationLevel::Default,
-            refcounting: std::env::var("MDH_RC").is_ok_and(|v| v == "1"),
+            refcounting: match std::env::var("MDH_RC") {
+                Err(std::env::VarError::NotPresent) => Ok(true),
+                Ok(value) if value == "1" => Ok(true),
+                Ok(value) if value == "0" || value.eq_ignore_ascii_case("off") => Ok(false),
+                _ => Err(
+                    "Dinnae ken that MDH_RC setting: use 1 for RC on, 0 or off (ony case) \
+                          for RC aff, or leave it unset for RC on."
+                        .to_string(),
+                ),
+            },
         }
     }
 
     /// Turn reference counting on or off, whatever `MDH_RC` says.
     pub fn with_refcounting(mut self, on: bool) -> Self {
-        self.refcounting = on;
+        self.refcounting = Ok(on);
         self
+    }
+
+    fn refcounting(&self) -> Result<bool, HaversError> {
+        self.refcounting.clone().map_err(HaversError::CompileError)
     }
 
     /// Set optimization level (0-3)
@@ -562,7 +574,7 @@ impl LLVMCompiler {
     pub fn compile_to_ir(&self, program: &Program) -> Result<String, HaversError> {
         let context = Context::create();
         let mut codegen =
-            CodeGen::new_with_refcounting(&context, "mdhavers_module", self.refcounting);
+            CodeGen::new_with_refcounting(&context, "mdhavers_module", self.refcounting()?);
 
         codegen.compile(program)?;
 
@@ -603,7 +615,7 @@ impl LLVMCompiler {
 
         let context = Context::create();
         let mut codegen =
-            CodeGen::new_with_refcounting(&context, "mdhavers_module", self.refcounting);
+            CodeGen::new_with_refcounting(&context, "mdhavers_module", self.refcounting()?);
         if let Some(path) = source_path {
             codegen.set_source_path(path);
         }
@@ -697,7 +709,7 @@ impl LLVMCompiler {
         let obj_path = output_path.with_extension("o");
         let compiler = LLVMCompiler::new()
             .with_optimization(opt_level)
-            .with_refcounting(self.refcounting);
+            .with_refcounting(self.refcounting()?);
         let uses_screen = match compiler.compile_to_object_with_source_status(
             program,
             &obj_path,
@@ -765,7 +777,7 @@ impl LLVMCompiler {
             .run_passes(pipeline, target_machine, options)
             .map_err(failed)?;
         // Counting on: let the heap tests see the constant tags (`rc_split_tag_phis`).
-        if self.refcounting && crate::llvm::codegen::rc_split_tag_phis(module) {
+        if self.refcounting()? && crate::llvm::codegen::rc_split_tag_phis(module) {
             // A malformed split would otherwise surface far away (or not at all).
             if let Err(e) = module.verify() {
                 return Err(HaversError::CompileError(format!(

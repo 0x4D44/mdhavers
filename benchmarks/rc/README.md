@@ -1,6 +1,6 @@
 # Native RC benchmark baseline
 
-`run.sh` builds each `.braw` as a native executable with `-O 2`, once with `MDH_RC` unset and once with `MDH_RC=1`. Pass it the release compiler built with `--no-default-features --features cli,llvm,native`:
+`run.sh` builds each `.braw` as a native executable with `-O 2`, once with `MDH_RC=0` and once with `MDH_RC=1`. Pass it the release compiler built with `--no-default-features --features cli,llvm,native`:
 
 ```sh
 ./benchmarks/rc/run.sh /path/to/mdhavers [runs-per-variant] [--check-baseline]

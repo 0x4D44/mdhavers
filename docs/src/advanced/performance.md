@@ -2,6 +2,25 @@
 
 Optimize your mdhavers programs for speed and efficiency.
 
+## Native Memory Management
+
+LLVM native builds use reference counting by default. The compiler reads `MDH_RC`
+when ye build the program, and bakes that choice into the executable. Leave it
+unset or set it tae `1` tae enable reference counting; set it tae `0` or `off`
+tae disable it. `off` is case-insensitive. Any other value, including an empty
+value, is an error when building.
+
+```sh
+MDH_RC=off mdhavers build program.braw -o program
+```
+
+At run time, `MDH_RC_REPORT=1` prints the live object count for each kind when
+the program exits. `MDH_RC_NOFREE=1` keeps objects whose count reaches zero and
+marks them dead, so a later checked access can abort with the line where the
+object died. These settings keep their same meanings whether reference counting
+was selected by default or explicitly with `MDH_RC=1`; they do not turn it on
+for an executable built with `MDH_RC=0` or `off`.
+
 ## General Principles
 
 ### 1. Avoid Repeated Work

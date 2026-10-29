@@ -38,7 +38,11 @@ fn expected() -> i64 {
 #[test]
 fn function_value_calls_do_not_blow_up_ir() {
     let program = parse(&source()).expect("parse");
-    let ir = LLVMCompiler::new().compile_to_ir(&program).expect("ir");
+    // This size bound measures dispatch code without reference-counting instrumentation.
+    let ir = LLVMCompiler::new()
+        .with_refcounting(false)
+        .compile_to_ir(&program)
+        .expect("ir");
     let lines = ir.lines().count();
     // Measured: about 49k lines with an inline chain at every site, about 28k with the
     // shared dispatcher (most of the rest is per-statement code, not dispatch).

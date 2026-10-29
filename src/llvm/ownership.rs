@@ -310,8 +310,8 @@ pub const RUNTIME_OWNERSHIP: &[(&str, &str, Ret)] = &[
     ("__mdh_random_int", "bb", Ret::None),
     ("__mdh_range", "---", Ret::Fresh),
     ("__mdh_range_o", "b", Ret::None),
-    // Reference counting (runtime/gc_stub.c): turned on by main's prologue (MDH_RC=1), then
-    // the object's data after the inline tag test.
+    // Reference counting (runtime/gc_stub.c): main's prologue calls this (the default;
+    // MDH_RC=0/off opts out), then the object's data follows the inline tag test.
     ("__mdh_rc_check", "b-", Ret::None), // debug builds: aborts on a DEAD object
     ("__mdh_rc_enable", "", Ret::None),
     ("__mdh_rc_release_obj", "-", Ret::None),

@@ -142,7 +142,7 @@ measure_variant() {
       return 1
     fi
   else
-    if ! capture_capped "$compile_log" deltic timeout 120 env -u MDH_RC -u MDH_RC_NOFREE -u MDH_RC_REPORT \
+    if ! capture_capped "$compile_log" deltic timeout 120 env -u MDH_RC_NOFREE -u MDH_RC_REPORT MDH_RC=0 \
       "$compiler" "${compile_args[@]}"; then
       printf 'failed to compile %s with RC off\n' "$benchmark" >&2
       cat "$compile_log" >&2

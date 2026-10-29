@@ -12,8 +12,8 @@
  * is marked DEAD and kept, and any later retain or release of it aborts, naming the kind
  * and the line it died at, so every would-be use-after-free shows up without a crash.
  *
- * Per-kind counters (allocated, died) are kept while counting is on (a program compiled
- * with MDH_RC=1, see __mdh_rc_enable); MDH_RC_REPORT=1 prints the live
+ * Per-kind counters (allocated, died) are kept while counting is on (the default for
+ * native builds; MDH_RC=0/off omits it, see __mdh_rc_enable); MDH_RC_REPORT=1 prints the
  * objects per kind at exit. Build with -DMDH_ALLOC_STATS to count buffers too.
  */
 
@@ -404,9 +404,10 @@ void *__mdh_buf_realloc_checked(void *buf, size_t size) {
 /* ========== Reference counting ========== */
 
 /* Kinds whose objects are counted (bit 1 << kind). Retain and release ignore the others,
- * so an uncounted container never releases its children. None until a program compiled
- * with counting (MDH_RC=1) calls __mdh_rc_enable: code compiled without it takes no
- * references, so counting there would only kill objects it still uses. */
+ * so an uncounted container never releases its children. Counting stays off until a
+ * program compiled with it (the default; MDH_RC=0/off opts out) calls __mdh_rc_enable.
+ * Code compiled without counting takes no references; counting there would only kill
+ * objects it still uses. */
 uint32_t __mdh_rc_kinds = 0;
 
 /* Counted kinds whose objects are freed on reaching zero (stage R2); the other counted
