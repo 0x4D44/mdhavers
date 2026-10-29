@@ -1,26 +1,25 @@
 # MDH-BUG-FLU-00214 — Native: operator-overload default cannae see an earlier parameter (Undefined variable)
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** llvm
 - **Raised:** 2026-10-28T22:58:08Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261029T163736Z-d84bcff3
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00214-run-fix-20261029T163736Z-d84bcff3
-- **Owner base:** a8453ca1d5cd8fb16d8b4522efc806bf82b6b41c
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-29T16:37:36Z
-- **Owner until:** 2026-10-29T20:37:36Z
-- **Owner session:** flux/2a9090d7-08f7-48c7-bee8-7b7d1d963ab2 (run fix-20261029T163736Z-d84bcff3)
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-28T22:58:08Z, raised via `deltic bugs new --land`)
+- **State history:** Open (2026-10-28T22:58:08Z, raised via `deltic bugs new --land`) -> Fixed (2026-10-29T17:03:37Z, deltic:auto role=fix run=fix-20261029T163736Z-d84bcff3 branch=task/bug-MDH-BUG-FLU-00214-run-fix-20261029T163736Z-d84bcff3 code=d1b20ee gate=manual)
 
 ## Observation
 
