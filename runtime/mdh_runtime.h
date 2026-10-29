@@ -210,6 +210,9 @@ extern int32_t __mdh_line_threaded;
  * the old value after unlocking. Before the first spawn both are the plain operations. */
 MdhValue __mdh_shared_load(MdhValue *slot);
 void __mdh_shared_store(MdhValue *slot, MdhValue value);
+/* The same atomic slot access/publication for RC-off headerless values, no RC work. */
+MdhValue __mdh_shared_load_uncounted(MdhValue *slot);
+void __mdh_shared_store_uncounted(MdhValue *slot, MdhValue value);
 
 /* ========== Value Creation ========== */
 

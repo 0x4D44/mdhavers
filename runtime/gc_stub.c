@@ -659,6 +659,26 @@ static inline void __mdh_slot_unlock(int32_t *lock) {
     __atomic_store_n(lock, 0, __ATOMIC_RELEASE);
 }
 
+/* RC-off shared values need the same indivisible pair and publication ordering,
+ * without retaining/releasing headerless allocations. Always lock: these helpers
+ * are only emitted for programs that can spawn, and avoid racing plain accesses
+ * against locked ones. Unlock publishes the string/container's initialized bytes
+ * as well as both words of the slot; the reader's acquire observes all of them. */
+MdhValue __mdh_shared_load_uncounted(MdhValue *slot) {
+    int32_t *lock = __mdh_slot_lock_for(slot);
+    __mdh_slot_lock(lock);
+    MdhValue value = *slot;
+    __mdh_slot_unlock(lock);
+    return value;
+}
+
+void __mdh_shared_store_uncounted(MdhValue *slot, MdhValue value) {
+    int32_t *lock = __mdh_slot_lock_for(slot);
+    __mdh_slot_lock(lock);
+    *slot = value;
+    __mdh_slot_unlock(lock);
+}
+
 MdhValue __mdh_shared_load(MdhValue *slot) {
     if (!__mdh_line_threaded) {
         MdhValue v = *slot;

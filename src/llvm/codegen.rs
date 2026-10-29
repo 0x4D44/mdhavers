@@ -37,6 +37,7 @@ use crate::ast::{
 use crate::error::HaversError;
 
 mod rc;
+mod shared;
 mod toplevel;
 pub(crate) use rc::{rc_split_tag_phis, RC_TAG_CLEANUP};
 
@@ -839,6 +840,8 @@ pub struct CodeGen<'ctx> {
 
     /// Reference counting (see `codegen/rc.rs`): on unless a test turns it off.
     rc_enabled: bool,
+    /// Captured-cell element pointers for deferred RC-off shared-slot lowering.
+    uncounted_cells: HashSet<PointerValue<'ctx>>,
     /// Temp scopes of the function being compiled.
     rc_state: rc::RcFnState<'ctx>,
     /// Deferred local-slot ownership decisions (RC7 C).
@@ -1003,6 +1006,7 @@ impl<'ctx> CodeGen<'ctx> {
             fmt_nil,
             fmt_newline,
             rc_enabled: rc,
+            uncounted_cells: HashSet::new(),
             rc_state: rc::RcFnState::default(),
             rc_slots: rc::RcSlotState::default(),
             rc_fn_slots: Vec::new(),
@@ -4935,6 +4939,8 @@ impl<'ctx> CodeGen<'ctx> {
             "__mdh_release",
             "__mdh_shared_load",
             "__mdh_shared_store",
+            "__mdh_shared_load_uncounted",
+            "__mdh_shared_store_uncounted",
         ];
         let is_runtime_call = |module: &Module<'ctx>, call: InstructionValue<'ctx>| -> bool {
             let callee = unsafe { LLVMGetCalledValue(call.as_value_ref()) };
@@ -5422,6 +5428,8 @@ impl<'ctx> CodeGen<'ctx> {
         let globals = self.rc_user_globals();
         self.rc_emit_epilogues(&globals);
         self.rc_elide_borrows();
+
+        self.synchronize_uncounted_shared_slots();
 
         // Last: every function body is complete, so its blocks can be split.
         self.emit_thread_line_notes();
@@ -10316,6 +10324,7 @@ impl<'ctx> CodeGen<'ctx> {
         if self.rc_enabled {
             return Ok(self.rc_shared_load(elem_ptr, "box_get"));
         }
+        self.uncounted_cells.insert(elem_ptr);
         let val = self
             .builder
             .build_load(self.types.value_type, elem_ptr, "box_get")
@@ -10328,6 +10337,9 @@ impl<'ctx> CodeGen<'ctx> {
         let cell_data = self.extract_data(cell).unwrap();
         let zero = self.types.i64_type.const_int(0, false);
         let elem_ptr = self.get_list_element_ptr(cell_data, zero).unwrap();
+        if !self.rc_enabled {
+            self.uncounted_cells.insert(elem_ptr);
+        }
         if self.rc_enabled && self.rc_is_value(value) && self.rc_active() {
             // A shared slot, as in `box_get`.
             self.rc_note_write(elem_ptr);

@@ -27,18 +27,18 @@ The runner appends `thr_*.braw` after the original corpus. These rows use exact 
 
 The intended results are independent of scheduling. Workers return nonnegative integers and every handle is joined. The interpreter only supports builtins in `thread_spawn`, so `launch` catches that specific limitation, evaluates the same kernel serially, and wraps its result in a builtin thread handle. Native builds run real worker threads. Unexpected errors are rethrown. Update `threaded-expected.txt` and recheck the interpreter if a work size changes.
 
-Measured on 0.3.125 (RC7 phases 0, A, B, 2b, C and D landed), three runs each, instructions retired:
+Measured on 0.3.127 with the MDH-BUG-FLU-00216 fix, three runs each, instructions retired:
 
 | Fixture | RC off | RC on | RC cost | RC-off output |
 |---|---:|---:|---:|---|
-| `thr_closure` | 131.6M | 336.3M | +155.6% | correct |
-| `thr_globals` | 351.5M | 623.4M | +77.4% | wrong (MDH-BUG-FLU-00216) |
-| `thr_cell` | 354.8M | 620.9M | +75.0% | wrong (MDH-BUG-FLU-00216) |
-| `thr_containers` | 372.8M | 583.4M | +56.5% | correct |
-| `thr_spawn` | 1,053.3M | 1,094.3M | +3.9% | correct |
-| `thr_chars` | 625.3M | 492.6M | -21.2% | correct |
+| `thr_closure` | 157.7M | 334.1M | +111.8% | correct |
+| `thr_globals` | 374.8M | 639.8M | +70.7% | correct |
+| `thr_cell` | 372.6M | 618.8M | +66.1% | correct |
+| `thr_containers` | 370.8M | 562.9M | +51.8% | correct |
+| `thr_spawn` | 1,003.9M | 1,036.7M | +3.3% | correct |
+| `thr_chars` | 622.1M | 490.0M | -21.2% | correct |
 
-RC on gives the exact checksum on every fixture, with zero live objects under `MDH_RC_REPORT` (with and without `MDH_RC_NOFREE`). RC off reads torn strings from a global or captured variable that another thread reassigns, so the two 00216 rows compare RC on against an incorrect baseline. Threaded programs get none of the RC7 borrowing (C(a) excludes programs that spawn), which is why their cost is far above the single-threaded corpus.
+Both modes give the exact checksum on every fixture; RC on has zero live objects under `MDH_RC_REPORT` (with and without `MDH_RC_NOFREE`). In a program that spawns, RC off now reads and writes globals and captured variables under the same striped locks as RC on, without the counting. Against 0.3.125, when RC off still tore those strings, that raised the RC-off counts of `thr_globals` by 6.6%, `thr_cell` by 5.0% and `thr_closure` (which reads a global closure list) by 20%. Threaded programs get none of the RC7 borrowing (C(a) excludes programs that spawn), which is why their RC cost is far above the single-threaded corpus.
 
 ## Phase 0 measurement status
 

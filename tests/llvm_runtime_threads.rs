@@ -242,3 +242,151 @@ blether run(20000)
         }
     }
 }
+
+/// Build once with RC explicitly disabled, then collect every run before asserting:
+/// the ARM publication race can produce a wrong checksum without crashing.
+#[cfg(feature = "cli")]
+fn assert_rc_off_thread_checksum(source: &str) {
+    let scratch = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(".scratch");
+    std::fs::create_dir_all(&scratch).expect("create scratch directory");
+    let dir = tempfile::tempdir_in(&scratch).expect("temp dir");
+    let source_path = dir.path().join("shared_slot.braw");
+    let exe_path = dir.path().join("shared_slot_exe");
+    std::fs::write(&source_path, source).expect("write source");
+    let build = Command::new("deltic")
+        .args(["timeout", "30"])
+        .arg(env!("CARGO_BIN_EXE_mdhavers"))
+        .arg("build")
+        .arg(&source_path)
+        .args(["-O", "2", "-o"])
+        .arg(&exe_path)
+        .env("MDH_RC", "0")
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("build native executable");
+    assert!(
+        build.status.success(),
+        "build failed: stdout={}, stderr={}",
+        String::from_utf8_lossy(&build.stdout),
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    let runs = 10;
+    let mut failures = Vec::new();
+    for run in 1..=runs {
+        let output = Command::new("deltic")
+            .args(["timeout", "30"])
+            .arg(&exe_path)
+            .env("MDH_RC", "0")
+            .stdin(std::process::Stdio::null())
+            .output()
+            .expect("run executable");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        if !output.status.success() || stdout.trim() != "2800000" {
+            failures.push(format!(
+                "run {run}: status={}, stdout={stdout:?}, stderr={:?}",
+                output.status,
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+    }
+    eprintln!(
+        "RC-off shared-slot checksum: {}/{runs} failed",
+        failures.len()
+    );
+    assert!(
+        failures.is_empty(),
+        "{}/{runs} RC-off runs failed:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
+}
+
+/// MDH-BUG-FLU-00216: the original captured-string reproducer, without the
+/// benchmark's interpreter compatibility wrapper.
+#[cfg(feature = "cli")]
+#[test]
+fn llvm_threads_original_captured_string_repro_without_refcounting() {
+    assert_rc_off_thread_checksum(
+        r#"
+dae run(n) {
+    ken shared = "shared0"
+    dae writer(count) {
+        ken i = 0
+        whiles i < count {
+            shared = "shared" + tae_string(i % 10)
+            i = i + 1
+        }
+        gie 0
+    }
+    dae reader(count) {
+        ken total = 0
+        ken i = 0
+        whiles i < count {
+            ken snapshot = shared
+            total = total + len(snapshot)
+            i = i + 1
+        }
+        gie total
+    }
+    ken a = thread_spawn(writer, [n])
+    ken b = thread_spawn(reader, [n])
+    ken c = thread_spawn(reader, [n])
+    gie thread_join(a) + thread_join(b) + thread_join(c)
+}
+blether run(200000)
+"#,
+    );
+}
+
+#[cfg(feature = "cli")]
+#[test]
+fn llvm_threads_global_benchmark_without_refcounting() {
+    assert_rc_off_thread_checksum(include_str!("../benchmarks/rc/thr_globals.braw"));
+}
+
+#[cfg(feature = "cli")]
+#[test]
+fn llvm_threads_captured_cell_benchmark_without_refcounting() {
+    assert_rc_off_thread_checksum(include_str!("../benchmarks/rc/thr_cell.braw"));
+}
+
+/// Synchronizing RC-off shared slots must keep the no-spawn fast path free of
+/// shared-slot helper calls, for both global bindings and captured cells.
+#[test]
+fn llvm_no_spawn_without_refcounting_has_no_shared_slot_calls() {
+    let source = r#"
+ken global = "start"
+dae run() {
+    ken captured = "start"
+    dae update() {
+        global = captured
+        captured = global
+        global = global + "g"
+        captured = captured + "c"
+        gie len(global) + len(captured)
+    }
+    gie update()
+}
+blether run()
+"#;
+    let ir = LLVMCompiler::new()
+        .with_refcounting(false)
+        .compile_to_ir(&parse(source).expect("parse"))
+        .expect("compile to IR");
+    for line in ir.lines().filter(|line| line.contains("call ")) {
+        assert!(!line.contains("@__mdh_shared_"), "{line}");
+    }
+    let threaded_source =
+        format!("{source}\ndae worker() {{ gie run() }}\nthread_join(thread_spawn(worker, []))\n");
+    let threaded_ir = LLVMCompiler::new()
+        .with_refcounting(false)
+        .compile_to_ir(&parse(&threaded_source).expect("parse threaded variant"))
+        .expect("compile threaded variant to IR");
+    assert!(
+        threaded_ir
+            .lines()
+            .any(|line| line.contains("call ") && line.contains("@__mdh_shared_")),
+        "RC-off threaded code must synchronize shared slots"
+    );
+}
