@@ -1,5 +1,6 @@
 # Scratchpad
 
+- [ ] 2026-10-29 games/bogle/shell/frame.braw:33 `sound_open` hurls "couldnae open the audio device" when AudioQueue fails (seen in a sandbox: kAudioQueueErr_InvalidDevice, -66680), and the shell does not catch it, so the game stops instead of running silent. Wrap it in `hae_a_bash` and leave `bogle_sound` unset on failure; test with a failing-device hook or MDH_SOUND=fail if one is added.
 - [ ] 2026-10-29 src/interpreter.rs (22), tests/llvm_rc_toplevel.rs (5), tests/interpreter_misc_coverage.rs (2), src/value.rs, src/parser.rs, src/logging.rs: `cargo clippy --tests -- -D warnings` (cli,llvm,native) reports 32 errors on 0.3.129 that plain `cargo clippy` does not: thread_local initialisers that can be `const` (11), `io::Error::other` (8), let-else to `?` (4), single-arm matches (3), and others. Fix them, then consider making `--tests` part of `make clippy`. Found by the 00213 worker.
 - [ ] 2026-10-29 src/llvm/codegen/rc/slots.rs:429 RC7 C leaves particle_sim's pj owning (R5-8): unlock by a constant tag-set dataflow through phi/select, or an audited list-initialisation store exception (see Revision 5 addendum, R5-7 review).
 
