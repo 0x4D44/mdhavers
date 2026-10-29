@@ -1023,6 +1023,76 @@ fn cli_fmt_write_error_path_is_covered() {
     assert!(err.contains("Cannae write"), "stderr: {err}");
 }
 
+#[cfg(feature = "llvm")]
+#[test]
+fn cli_build_emit_llvm_resolves_sibling_import_from_source_directory() {
+    let dir = tempdir().unwrap();
+    let sub = dir.path().join("sub");
+    fs::create_dir(&sub).unwrap();
+    write_file(&sub.join("helper.braw"), "dae twice(x) { gie x * 2 }\n");
+    write_file(
+        &sub.join("main.braw"),
+        "fetch \"helper\"\nblether twice(21)\n",
+    );
+
+    let (code, out, err) = run_mdhavers_in_dir(
+        &["build", "sub/main.braw", "--emit-llvm", "-o", "m.ll"],
+        None,
+        dir.path(),
+        dir.path(),
+    );
+    assert_eq!(
+        code, 0,
+        "sibling import failed: stdout: {out}\nstderr: {err}"
+    );
+    let ir = fs::read_to_string(dir.path().join("m.ll")).unwrap();
+    assert!(
+        ir.lines()
+            .any(|line| line.starts_with("define ") && line.contains("@__mdh_fn_twice(")),
+        "IR should define the imported twice function"
+    );
+}
+
+#[cfg(feature = "llvm")]
+#[test]
+fn cli_build_emit_llvm_resolves_nested_relative_imports() {
+    let dir = tempdir().unwrap();
+    let sub = dir.path().join("sub");
+    let modules = sub.join("modules");
+    let shared = sub.join("shared");
+    fs::create_dir_all(&modules).unwrap();
+    fs::create_dir(&shared).unwrap();
+    write_file(&shared.join("double.braw"), "dae twice(x) { gie x * 2 }\n");
+    write_file(
+        &modules.join("helper.braw"),
+        "fetch \"../shared/double\"\ndae answer(x) { gie twice(x) }\n",
+    );
+    write_file(
+        &sub.join("main.braw"),
+        "fetch \"modules/helper\"\nblether answer(21)\n",
+    );
+
+    let (code, out, err) = run_mdhavers_in_dir(
+        &["build", "sub/main.braw", "--emit-llvm", "-o", "m.ll"],
+        None,
+        dir.path(),
+        dir.path(),
+    );
+    assert_eq!(
+        code, 0,
+        "nested import failed: stdout: {out}\nstderr: {err}"
+    );
+    let ir = fs::read_to_string(dir.path().join("m.ll")).unwrap();
+    for name in ["twice", "answer"] {
+        assert!(
+            ir.lines()
+                .any(|line| line.starts_with("define ")
+                    && line.contains(&format!("@__mdh_fn_{name}("))),
+            "IR should define the imported {name} function"
+        );
+    }
+}
+
 #[test]
 fn cli_build_emit_llvm_error_path_is_covered() {
     let dir = tempdir().unwrap();

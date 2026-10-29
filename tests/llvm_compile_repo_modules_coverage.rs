@@ -68,7 +68,7 @@ fn compile_repo_modules_to_ir() {
 
         // Not all repo modules are guaranteed to compile under the LLVM backend yet.
         // For coverage, we accept either Ok or Err, but avoid panics and ensure errors are non-empty.
-        match compiler.compile_to_ir(&program) {
+        match compiler.compile_to_ir_with_source(&program, Some(&path)) {
             Ok(ir) => assert!(
                 !ir.is_empty(),
                 "IR output should not be empty for {}",

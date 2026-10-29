@@ -544,7 +544,7 @@ fn build_native(
     if emit_llvm {
         // Emit LLVM IR
         let compiler = mdhavers::LLVMCompiler::new().with_optimization(opt_level);
-        let ir = match compiler.compile_to_ir(&program) {
+        let ir = match compiler.compile_to_ir_with_source(&program, Some(path)) {
             Ok(ir) => ir,
             Err(e) => return Err(format!("{}", e)),
         };

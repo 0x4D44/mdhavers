@@ -587,9 +587,21 @@ impl LLVMCompiler {
 
     /// Compile to LLVM IR (text format)
     pub fn compile_to_ir(&self, program: &Program) -> Result<String, HaversError> {
+        self.compile_to_ir_with_source(program, None)
+    }
+
+    /// Compile to LLVM IR with a source path for resolving relative imports.
+    pub fn compile_to_ir_with_source(
+        &self,
+        program: &Program,
+        source_path: Option<&Path>,
+    ) -> Result<String, HaversError> {
         let context = Context::create();
         let mut codegen =
             CodeGen::new_with_refcounting(&context, "mdhavers_module", self.refcounting()?);
+        if let Some(path) = source_path {
+            codegen.set_source_path(path);
+        }
 
         codegen.compile(program)?;
 
