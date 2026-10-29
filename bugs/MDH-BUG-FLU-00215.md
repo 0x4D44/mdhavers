@@ -1,26 +1,25 @@
 # MDH-BUG-FLU-00215 — Native coverage: module_variable_global panics on a missing module ID (regressed in 96d07e4)
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Must
 - **Severity:** Medium
 - **Area:** llvm
 - **Raised:** 2026-10-29T00:00:13Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261029T000022Z-423cd4fb
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00215-run-fix-20261029T000022Z-423cd4fb
-- **Owner base:** 8fdde6e69a96ef03095dd4b3e87e18e6bf502b5e
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-29T00:00:22Z
-- **Owner until:** 2026-10-29T04:00:22Z
-- **Owner session:** flux/2a9090d7-08f7-48c7-bee8-7b7d1d963ab2 (run fix-20261029T000022Z-423cd4fb)
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-29T00:00:13Z, raised via `deltic bugs new --land`)
+- **State history:** Open (2026-10-29T00:00:13Z, raised via `deltic bugs new --land`) -> Fixed (2026-10-29T00:02:08Z, deltic:auto role=fix run=fix-20261029T000022Z-423cd4fb branch=task/bug-MDH-BUG-FLU-00215-run-fix-20261029T000022Z-423cd4fb code=177a92a gate=manual)
 
 ## Observation
 
