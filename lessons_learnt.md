@@ -1,5 +1,10 @@
 # Lessons learnt
 
+- games/bogle/art/src:PROMPTS.md - a Codex worker that generates images through the deltic codex pool keeps every
+  image in its session history, so after about ten 2 MB images the request passes the pool's 32 MiB cap (HTTP 413) and
+  the thread cannot be resumed. Run image generation as a chain of fresh sessions of at most five images each
+  (.scratch/w28/art-chain.sh pattern), shrink to the committed size before review, and state chroma-key tolerances
+  numerically: a brief saying "pure #FF00FF" made five sessions reject every good sprite (backgrounds ~245,10,245).
 - tests/interpreter_dict_remove_perf.rs:heave_oot_removal_costs_a_small_multiple_of_a_plain_loop - on the shared FLUX
   Mac (load 60-250) a perf test must compare against a same-size control loop timed in the same process, not a
   wall-clock limit and not a ratio across sizes: even a plain interpreter loop there scales superlinearly with size
