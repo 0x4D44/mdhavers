@@ -14,6 +14,14 @@
 
 use super::*;
 
+mod slots;
+pub(super) use slots::RcSlotState;
+mod constant_arms;
+mod native_arms;
+#[cfg(test)]
+mod r55_tests;
+use native_arms::rc_elide_native_arms;
+
 use inkwell::values::{AsValueRef, BasicValue, CallSiteValue, InstructionOpcode, InstructionValue};
 
 use crate::llvm::ownership::{ownership_of, Ret};
@@ -102,6 +110,11 @@ pub(super) struct RcBorrow<'ctx> {
     owned_edges: bool,
     /// A shared-slot read: the threaded branch's `__mdh_shared_load` call.
     shared_load: Option<InstructionValue<'ctx>>,
+    /// C proved the named slot borrowed; only this authority grants C's terminal query.
+    downgraded_by_c: bool,
+    /// Eager materialisation at scope close, only needed if C borrows the slot.
+    /// A note_write record still keeps the ordinary R5 safety decision.
+    materialized_for_c: bool,
     /// The value was read from this variable slot (a global or a local), which holds a
     /// reference until it is written: only a write of it, or compiled code, can drop it.
     holder_slot: Option<PointerValue<'ctx>>,
@@ -199,6 +212,7 @@ type LLVMValueRefAlias = inkwell::llvm_sys::prelude::LLVMValueRef;
 
 /// The marker function a borrowed retain is emitted as until `rc_elide_borrows` decides.
 const RC_BORROW_MARKER: &str = "__mdh_rc_borrow_retain";
+const RC_BORROW_RELEASE_MARKER: &str = "__mdh_rc_borrow_release";
 
 fn value_id(v: impl AsValueRef) -> usize {
     v.as_value_ref() as usize
@@ -382,6 +396,15 @@ pub(crate) fn rc_drops_heap<'ctx>(
     owning_allocas: &HashSet<usize>,
     owned_return_fns: &HashSet<FunctionValue<'ctx>>,
 ) -> HashSet<FunctionValue<'ctx>> {
+    rc_drops_heap_query(module, owning_allocas, owned_return_fns, false)
+}
+
+fn rc_drops_heap_query<'ctx>(
+    module: &Module<'ctx>,
+    owning_allocas: &HashSet<usize>,
+    owned_return_fns: &HashSet<FunctionValue<'ctx>>,
+    c_terminal_errors: bool,
+) -> HashSet<FunctionValue<'ctx>> {
     let mut drops = HashSet::new();
     let mut callers: HashMap<FunctionValue<'ctx>, Vec<FunctionValue<'ctx>>> = HashMap::new();
     for function in module.get_functions() {
@@ -389,6 +412,9 @@ pub(crate) fn rc_drops_heap<'ctx>(
             let mut next = bb.get_first_instruction();
             while let Some(inst) = next {
                 next = inst.get_next_instruction();
+                if c_terminal_errors && rc_c_terminal_error_arm(inst) {
+                    continue;
+                }
                 let effect = rc_call_effect(module, inst);
                 if effect == RcCallEffect::None {
                     continue;
@@ -400,7 +426,7 @@ pub(crate) fn rc_drops_heap<'ctx>(
                     }
                     if matches!(
                         callee.get_name().to_bytes(),
-                        b"__mdh_release" | b"__mdh_rc_release_obj"
+                        b"__mdh_release" | b"__mdh_rc_release_obj" | b"__mdh_rc_borrow_release"
                     ) {
                         if !CodeGen::rc_operand(inst, 0).is_some_and(|v| {
                             rc_release_is_own(v, function, owning_allocas, owned_return_fns)
@@ -429,6 +455,109 @@ pub(crate) fn rc_drops_heap<'ctx>(
         }
     }
     drops
+}
+
+/// Audited terminal errors release only the thread's previous-error reference,
+/// after storing the replacement, then longjmp or exit. This exception is exclusively
+/// for C's rooted-chain proof; ordinary A/R5 summaries retain their original meaning.
+/// Audit: runtime/mdh_runtime.c:504-520 (text), 550-563 (overflow),
+/// 1076-1150 (type), 12199-12201 (raw hurl), 12250-12264 (line hurl),
+/// and 11827-11846 (replacement before release); runtime/gc_stub.c:568-595
+/// tears down children without running compiled code.
+fn rc_c_terminal_error_arm(inst: InstructionValue<'_>) -> bool {
+    let Some(callee) = CodeGen::rc_callee(inst) else {
+        return false;
+    };
+    callee.count_basic_blocks() == 0
+        && matches!(
+            callee.get_name().to_bytes(),
+            b"__mdh_hurl_text_at_line"
+                | b"__mdh_hurl"
+                | b"__mdh_hurl_at"
+                | b"__mdh_type_error"
+                | b"__mdh_int_overflow_error"
+        )
+        && inst
+            .get_next_instruction()
+            .is_some_and(|next| next.get_opcode() == InstructionOpcode::Unreachable)
+}
+
+/// C's instruction query; ordinary R5 callers must continue using `rc_call_effect`.
+fn rc_c_call_effect<'ctx>(module: &Module<'ctx>, inst: InstructionValue<'ctx>) -> RcCallEffect {
+    if rc_c_terminal_error_arm(inst) {
+        RcCallEffect::None
+    } else {
+        rc_call_effect(module, inst)
+    }
+}
+
+pub(super) struct RcCEffects<'ctx> {
+    pub(super) c_drops_heap: HashSet<FunctionValue<'ctx>>,
+    pub(super) c_writes_globals: HashSet<FunctionValue<'ctx>>,
+}
+
+/// Revision 5 effect query used only when deciding C slots. The ordinary summaries
+/// deliberately still count terminal errors. All remaining local effects propagate
+/// through the same direct-caller fixpoint, including recursion and late dispatchers.
+pub(super) fn rc_c_effects<'ctx>(
+    module: &Module<'ctx>,
+    owning_allocas: &HashSet<usize>,
+    owned_return_fns: &HashSet<FunctionValue<'ctx>>,
+    user_globals: &[PointerValue<'ctx>],
+) -> RcCEffects<'ctx> {
+    let globals: HashSet<usize> = user_globals.iter().map(|p| value_id(*p)).collect();
+    let is_global = |v: Option<BasicValueEnum<'ctx>>| matches!(v, Some(BasicValueEnum::PointerValue(p)) if globals.contains(&value_id(p)));
+    let mut writers = HashSet::new();
+    let mut callers: HashMap<FunctionValue<'ctx>, Vec<FunctionValue<'ctx>>> = HashMap::new();
+    for function in module.get_functions() {
+        for bb in function.get_basic_blocks() {
+            let mut next = bb.get_first_instruction();
+            while let Some(inst) = next {
+                next = inst.get_next_instruction();
+                if rc_c_terminal_error_arm(inst) {
+                    continue;
+                }
+                match inst.get_opcode() {
+                    InstructionOpcode::Store if is_global(CodeGen::rc_operand(inst, 1)) => {
+                        writers.insert(function);
+                    }
+                    InstructionOpcode::Call
+                    | InstructionOpcode::Invoke
+                    | InstructionOpcode::CallBr => {
+                        if let Some(callee) =
+                            CodeGen::rc_callee(inst).filter(|f| f.count_basic_blocks() > 0)
+                        {
+                            callers.entry(callee).or_default().push(function);
+                            continue;
+                        }
+                        let effect = rc_call_effect(module, inst);
+                        let args = inst.get_num_operands().saturating_sub(1);
+                        if effect == RcCallEffect::RunsCode
+                            || effect == RcCallEffect::Drops
+                                && (0..args).any(|i| is_global(CodeGen::rc_operand(inst, i)))
+                        {
+                            writers.insert(function);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+    let mut work: Vec<_> = writers.iter().copied().collect();
+    while let Some(callee) = work.pop() {
+        if let Some(cs) = callers.get(&callee) {
+            for caller in cs {
+                if writers.insert(*caller) {
+                    work.push(*caller);
+                }
+            }
+        }
+    }
+    RcCEffects {
+        c_drops_heap: rc_drops_heap_query(module, owning_allocas, owned_return_fns, true),
+        c_writes_globals: writers,
+    }
 }
 
 impl<'ctx> CodeGen<'ctx> {
@@ -1021,12 +1150,45 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_load(self.types.value_type, ptr, "rc_old")
             .unwrap();
-        self.rc_take_or_move(v, inline);
-        self.builder.build_store(ptr, v).unwrap();
-        if inline {
-            self.rc_release_inline(old);
+        let local = ptr
+            .as_instruction()
+            .is_some_and(|i| i.get_opcode() == InstructionOpcode::Alloca)
+            && !self.rc_slots.excluded.contains(&value_id(ptr));
+        if local {
+            let before = self.rc_borrows.len();
+            let moved = inline && self.rc_move_from_temp(v, false);
+            let marker = if moved {
+                None
+            } else if self.rc_class(v) == RcClass::Borrowed {
+                Some(self.rc_build_borrow_marker(v))
+            } else {
+                self.rc_take_mode(v, inline);
+                None
+            };
+            let moved_borrow = moved
+                .then(|| {
+                    self.rc_borrows[..before]
+                        .iter()
+                        .rposition(|r| r.value == v && r.keep)
+                })
+                .flatten();
+            let store = self.builder.build_store(ptr, v).unwrap();
+            self.rc_slots.stores.push(slots::RcSlotStore {
+                slot: ptr,
+                value: v,
+                store,
+                marker,
+                moved_borrow,
+            });
+            self.rc_slot_release(ptr, old, inline);
         } else {
-            self.rc_release(old);
+            self.rc_take_or_move(v, inline);
+            self.builder.build_store(ptr, v).unwrap();
+            if inline {
+                self.rc_release_inline(old);
+            } else {
+                self.rc_release(old);
+            }
         }
     }
 
@@ -1135,6 +1297,8 @@ impl<'ctx> CodeGen<'ctx> {
             keep: false,
             owned_edges: false,
             shared_load: locked.as_instruction_value(),
+            downgraded_by_c: false,
+            materialized_for_c: false,
             holder_slot: self.rc_is_shared_slot(ptr).then_some(ptr),
         });
         v
@@ -1217,6 +1381,7 @@ impl<'ctx> CodeGen<'ctx> {
     /// Bind a parameter in the prologue. It stays borrowed (no reference, not released)
     /// unless the body writes the slot (see `RcParam`).
     pub(super) fn store_param(&mut self, ptr: PointerValue<'ctx>, v: BasicValueEnum<'ctx>) {
+        self.rc_slots.params.insert(value_id(ptr));
         let store = self.builder.build_store(ptr, v).unwrap();
         if !self.rc_active() || !self.rc_is_value(v) {
             return;
@@ -1242,23 +1407,37 @@ impl<'ctx> CodeGen<'ctx> {
                 p.written = true;
             }
         }
+        self.rc_materialize_reads(Some(ptr));
+    }
+
+    // Materialise while the scope still owns its initialization and early-exit sites.
+    // The C decision later downgrades successful borrowed-slot records to holder None.
+    fn rc_materialize_reads(&mut self, only: Option<PointerValue<'ctx>>) {
         let function = match self.current_function {
             Some(f) => f,
             None => return,
         };
-        for si in 0..self.rc_state.scopes.len() {
+        let first = if only.is_none() {
+            // Outer scopes can still be written later: keep their reads deferred
+            // until their own close, so note_write retains its original authority.
+            self.rc_state.scopes.len().saturating_sub(1)
+        } else {
+            0
+        };
+        for si in first..self.rc_state.scopes.len() {
             let reads = &mut self.rc_state.scopes[si].reads;
-            if !reads.iter().any(|r| r.slot == ptr) {
+            if !reads.iter().any(|r| only.is_none_or(|ptr| r.slot == ptr)) {
                 continue;
             }
             let (hit, kept): (Vec<RcRead<'ctx>>, Vec<RcRead<'ctx>>) = std::mem::take(reads)
                 .into_iter()
-                .partition(|r| r.slot == ptr);
+                .partition(|r| only.is_none_or(|ptr| r.slot == ptr));
             self.rc_state.scopes[si].reads = kept;
             for r in hit {
                 // Right after the read: retain and park (load the temp's old value,
                 // store, release the old one), as `rc_own_temp` would have done there.
                 let temp = self.create_entry_block_alloca_raw("rc_tmp");
+                self.rc_exclude_temp(temp);
                 self.rc_temp_pins.entry(function).or_default().push(temp);
                 self.rc_state.scopes[si].slots.push(temp);
                 let b = self.context.create_builder();
@@ -1284,6 +1463,8 @@ impl<'ctx> CodeGen<'ctx> {
                     keep: false,
                     owned_edges: false,
                     shared_load: None,
+                    downgraded_by_c: false,
+                    materialized_for_c: only.is_none(),
                     holder_slot: Some(r.slot),
                 });
                 // An early exit compiled before this temp existed (a `gie` in a loop
@@ -1452,6 +1633,8 @@ impl<'ctx> CodeGen<'ctx> {
                 keep: false,
                 owned_edges,
                 shared_load: None,
+                downgraded_by_c: false,
+                materialized_for_c: false,
                 holder_slot: None,
             }),
             // A shared-slot read (`rc_shared_load`) parked here.
@@ -1490,6 +1673,7 @@ impl<'ctx> CodeGen<'ctx> {
             .is_some_and(|s| s.opened_at.is_some());
         if !in_statement {
             let slot = self.create_entry_block_alloca(name);
+            self.rc_exclude_temp(slot);
             match self.rc_state.scopes.last_mut() {
                 Some(scope) => scope.slots.push(slot),
                 None => self.rc_state.scopes.push(RcScope {
@@ -1503,6 +1687,7 @@ impl<'ctx> CodeGen<'ctx> {
             return slot;
         }
         let slot = self.create_entry_block_alloca_raw(name);
+        self.rc_exclude_temp(slot);
         let function = self.current_function.expect("rc temp outside a function");
         self.rc_temp_pins.entry(function).or_default().push(slot);
         if let Some(scope) = self.rc_state.scopes.last_mut() {
@@ -1536,6 +1721,9 @@ impl<'ctx> CodeGen<'ctx> {
     /// already ended (`gie`, `brak`, `haud`) released them on its way out
     /// (`rc_release_scopes_from`); a `hurl` leaks them (accepted).
     pub(super) fn rc_scope_close(&mut self) {
+        if self.rc_enabled && self.current_function.is_some() {
+            self.rc_materialize_reads(None);
+        }
         let Some(scope) = self.rc_state.scopes.pop() else {
             return;
         };
@@ -1585,7 +1773,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .build_load(self.types.value_type, *slot, "rc_tmp_done")
                 .unwrap();
             self.builder.build_store(*slot, nil).unwrap();
-            self.rc_release_unknown(v);
+            self.rc_slot_release(*slot, v, true);
         }
     }
 
@@ -1781,10 +1969,9 @@ impl<'ctx> CodeGen<'ctx> {
         use inkwell::llvm_sys::core::{
             LLVMGetFirstUse, LLVMGetUser, LLVMInstructionEraseFromParent, LLVMReplaceAllUsesWith,
         };
-        let borrows = std::mem::take(&mut self.rc_borrows);
-        let Some(marker_fn) = self.module.get_function(RC_BORROW_MARKER) else {
+        if !self.rc_enabled {
             return;
-        };
+        }
         let threaded = self
             .module
             .get_function("__mdh_thread_spawn")
@@ -1794,6 +1981,12 @@ impl<'ctx> CodeGen<'ctx> {
                     .get_first_use()
                     .is_some()
             });
+        if !threaded {
+            self.rc_remove_native_arms();
+        }
+        let edits = constant_arms::rc_fold_constant_arms(self.context, &self.module);
+        self.rc_apply_arm_edits(edits);
+        self.rc_collect_slot_candidates();
         let mut preds: RcPredMaps<'ctx> = HashMap::new();
         // Slots that hold a reference of their own to what is stored in them.
         let holders: HashSet<usize> = self
@@ -1802,6 +1995,7 @@ impl<'ctx> CodeGen<'ctx> {
             .flat_map(|(_, slots)| slots.iter())
             .chain(self.rc_temp_pins.values().flatten())
             .map(|s| value_id(*s))
+            .filter(|id| !self.rc_slots.candidates.contains(id))
             .collect();
         let global_writers = if threaded {
             HashSet::new()
@@ -1813,12 +2007,58 @@ impl<'ctx> CodeGen<'ctx> {
         } else {
             rc_drops_heap(&self.module, &holders, &self.rc_owned_return_fns)
         };
+        let c_effects = rc_c_effects(
+            &self.module,
+            &holders,
+            &self.rc_owned_return_fns,
+            &self.rc_user_globals(),
+        );
+        let borrowed = self.rc_decide_slots(threaded, &holders, &c_effects);
+        let moved = self.rc_finish_slots(&borrowed);
+        let borrows = std::mem::take(&mut self.rc_borrows);
+        let marker_fn = self.module.get_function(RC_BORROW_MARKER);
         let b = self.context.create_builder();
-        for rec in borrows {
+        for (index, mut rec) in borrows.into_iter().enumerate() {
+            if rec.materialized_for_c
+                && rec
+                    .holder_slot
+                    .is_some_and(|slot| !borrowed.contains(&value_id(slot)))
+            {
+                // The owning slot never needed an extra read reference. Preserve
+                // pre-C R5 behaviour, including catches that abandon temp cleanup.
+                // These reads saw no write while their scope remained open.
+                if let Some((park, _)) = rec.park {
+                    park.erase_from_basic_block();
+                }
+                for marker in &rec.markers {
+                    marker.erase_from_basic_block();
+                }
+                continue;
+            }
+            if moved.contains(&index) {
+                for m in &rec.markers {
+                    m.erase_from_basic_block();
+                }
+                continue;
+            }
+            if rec
+                .holder_slot
+                .is_some_and(|slot| borrowed.contains(&value_id(slot)))
+            {
+                rec.downgraded_by_c = true;
+                rec.holder_slot = None;
+            }
             let elide = !threaded
                 && !rec.keep
                 && rec.park.is_some()
-                && self.rc_borrow_is_safe(&rec, &holders, &global_writers, &drops_heap, &mut preds);
+                && self.rc_borrow_is_safe(
+                    &rec,
+                    &holders,
+                    &global_writers,
+                    &drops_heap,
+                    &mut preds,
+                    Some(&c_effects),
+                );
             if elide && rec.owned_edges && !self.rc_park_fresh_edges(&rec) {
                 for m in &rec.markers {
                     self.rc_marker_to_retain(*m, &b);
@@ -1853,7 +2093,11 @@ impl<'ctx> CodeGen<'ctx> {
                 }
             }
         }
+        self.rc_lower_inline_slot_releases();
         // Defensive: any marker call not recorded keeps its retain.
+        let Some(marker_fn) = marker_fn else {
+            return;
+        };
         loop {
             // SAFETY: walking the use list of a live function.
             let user = unsafe {
@@ -1935,10 +2179,18 @@ impl<'ctx> CodeGen<'ctx> {
         global_writers: &HashSet<FunctionValue<'ctx>>,
         drops_heap: &HashSet<FunctionValue<'ctx>>,
         preds: &mut RcPredMaps<'ctx>,
+        c_slot_effects: Option<&RcCEffects<'ctx>>,
     ) -> bool {
         use inkwell::llvm_sys::core::{
             LLVMGetFirstUse, LLVMGetNextUse, LLVMGetUser, LLVMIsAInstruction,
         };
+        // R5-5: only a read downgraded from a successful C slot inherits C's
+        // rooted-chain effect query. Other unrooted R5 records retain A's facts.
+        let c_slot_effects = c_slot_effects.filter(|_| rec.downgraded_by_c);
+        let (global_writers, drops_heap) = c_slot_effects
+            .map_or((global_writers, drops_heap), |effects| {
+                (&effects.c_writes_globals, &effects.c_drops_heap)
+            });
         let Some((park, _)) = rec.park else {
             return false;
         };
@@ -1986,10 +2238,19 @@ impl<'ctx> CodeGen<'ctx> {
                     InstructionOpcode::Store => {
                         // Storing the value (or a pointer into it) lets it outlive the
                         // reference; storing into it is only a use.
+                        if matches!(Self::rc_operand(inst, 1), Some(p) if self.rc_slots.candidates.contains(&value_id(p))
+                            && rec.holder_slot.map(BasicValueEnum::PointerValue) != Some(p))
+                            && matches!(Self::rc_operand(inst, 0), Some(v) if v.as_value_ref() == x)
+                        {
+                            escapes.insert(id);
+                        }
                         let scratch = match Self::rc_operand(inst, 1) {
                             Some(BasicValueEnum::PointerValue(p)) => {
                                 p.as_instruction().is_some_and(|a| {
                                     a.get_opcode() == InstructionOpcode::Alloca
+                                        // A failed candidate still owns its own holder.
+                                        // Successful C records have already cleared it.
+                                        && rec.holder_slot != Some(p)
                                         && !holders.contains(&value_id(p))
                                         && a.get_name().is_none_or(|n| n.to_bytes() != b"rc_ret")
                                 })
@@ -2071,6 +2332,7 @@ impl<'ctx> CodeGen<'ctx> {
                 &use_blocks,
                 holders,
                 preds,
+                c_slot_effects.is_some(),
             )
         })
     }
@@ -2090,6 +2352,7 @@ impl<'ctx> CodeGen<'ctx> {
         use_blocks: &HashSet<BasicBlock<'ctx>>,
         holders: &HashSet<usize>,
         preds: &mut RcPredMaps<'ctx>,
+        c_slot_downgrade: bool,
     ) -> bool {
         let Some(m_block) = marker.get_parent() else {
             return false;
@@ -2155,7 +2418,11 @@ impl<'ctx> CodeGen<'ctx> {
             }
             let mut i = first;
             while let Some(inst) = i {
-                let effect = self.rc_call_effect(inst);
+                let effect = if c_slot_downgrade {
+                    rc_c_call_effect(&self.module, inst)
+                } else {
+                    self.rc_call_effect(inst)
+                };
                 let code_unsafe = effect == RcCallEffect::RunsCode
                     && match holder_slot {
                         // No other code can reach an unboxed local's slot.
@@ -2821,7 +3088,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_load(self.types.value_type, *slot, "rc_slot_done")
                     .unwrap();
-                self.rc_release_unknown(v);
+                self.rc_slot_release(*slot, v, true);
             }
             if is_main {
                 // A thread still running may read the globals: swap each to nil (under

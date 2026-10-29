@@ -13776,8 +13776,8 @@ mod tests {
     #[cfg(any(feature = "native", feature = "dtls"))]
     use rcgen::generate_simple_self_signed;
     #[cfg(all(feature = "native", unix))]
-    use rustls::{Certificate, ServerName};
-    #[cfg(all(feature = "native", unix))]
+    use rustls::ServerName;
+    #[cfg(all(feature = "dtls", unix))]
     use std::time::SystemTime;
 
     fn assert_error_variant(actual: &HaversError, expected: HaversError) {
@@ -23894,7 +23894,7 @@ soond_steek()
         let mut new: libc::sigaction = unsafe { std::mem::zeroed() };
         unsafe {
             libc::sigemptyset(&mut new.sa_mask);
-            new.sa_sigaction = handle_sigusr1 as usize;
+            new.sa_sigaction = handle_sigusr1 as *const () as usize;
             new.sa_flags = 0;
             assert_eq!(libc::sigaction(libc::SIGUSR1, &new, &mut old), 0);
         }
@@ -25887,7 +25887,7 @@ len(ys) + len(zs) + len(t) + len(u)
 
     #[test]
     fn get_user_variables_builtin_prefix_without_suffix_is_included_for_coverage() {
-        let mut interp = Interpreter::new();
+        let interp = Interpreter::new();
         interp.environment.borrow_mut().define(
             "__builtin_fake".to_string(),
             Value::String("__builtin_fake".to_string()),

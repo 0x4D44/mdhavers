@@ -1,5 +1,7 @@
 # Scratchpad
 
+- [ ] 2026-10-29 src/llvm/codegen/rc/slots.rs:429 RC7 C leaves particle_sim's pj owning (R5-8): unlock by a constant tag-set dataflow through phi/select, or an audited list-initialisation store exception (see Revision 5 addendum, R5-7 review).
+
 - [ ] 2026-10-29 games/bogle/tools/bake.braw: baked sprites keep a faint purple fringe (visible round the haggis in the stage 3 PPM): antialiased edge pixels between the figure and the #FF00FF key fall outside the 24-per-channel key and quantise to purple. Consider keying by magenta dominance (e.g. r and b both well above g) or a one-pixel despill toward the neighbour colour; re-bless the bake fixtures after.
 - [ ] 2026-10-29 games/bogle/tests/render_review.braw:68 the queue/visit-cap cases render 64-sector chains at 160x100, about 80 s on the debug interpreter, so tests/bogle_unit.rs needs a 300 s run timeout. Shrink them to 80x50 if the caps still trigger there (prove with the cap fix reverted).
 - [ ] 2026-10-28 src/wasm_runner.rs:1102 a native that mutates a bytes argument and then returns a value WASM cannot hold loses the mutation (`intern_value(...)?` fails before `updates.extend(bridge.bytes_updates)`); under `hae_a_bash` the program carries on with the old bytes. No such native today (stage 8b review, suspected).

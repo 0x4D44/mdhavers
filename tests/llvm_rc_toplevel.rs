@@ -639,9 +639,13 @@ fn eligible_closure_benchmark_bindings_are_main_allocas_and_function_references_
     }
     // The line-note pass assigns numeric names to entry allocas. Named MdhValue loads for
     // s/f and the int shadow loads for r let the test trace each local back to that entry
-    // block. fs is read through the local list-pointer shadow instead of a named MdhValue
-    // load, so check its cached pointer slot the same way.
-    for name in ["s", "r", "f", "list_ptr_shadow_rd"] {
+    // block. R5-3 gives RC-on indexing a real owning fs load for C's root proof;
+    // RC-off continues to read its cached list-pointer shadow.
+    let fs_load = match mode {
+        RcMode::On => "fs",
+        RcMode::Off => "list_ptr_shadow_rd",
+    };
+    for name in ["s", "r", "f", fs_load] {
         assert!(
             named_load_uses_entry_alloca(main, name),
             "{name} does not load from an entry-block alloca:\n{main}"

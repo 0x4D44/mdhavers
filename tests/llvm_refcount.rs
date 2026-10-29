@@ -874,9 +874,9 @@ blether d["ab"] + d["cd"]
         .expect("bump's body");
     let retains = body.matches("call void @__mdh_retain_fast(").count()
         + body.matches("call void @__mdh_rc_retain_obj_fast(").count();
-    // The per-element retain of `xs` is gone; the rest are on cold paths (`+` joining
-    // lists or strings) and the returned value's own reference (trunk: 6).
-    assert_eq!(retains, 5, "{body}");
+    // R5-6 removes the impossible list-concat arm of `xs[i] + 1` (two retains).
+    // Only the written parameter, dict-set result and returned reference remain.
+    assert_eq!(retains, 3, "{body}");
     for envs in [
         &[("MDH_RC_REPORT", "1")][..],
         &[("MDH_RC_REPORT", "1"), ("MDH_RC_NOFREE", "1")][..],
@@ -942,7 +942,9 @@ dae ins(xs) {
 }
 blether ins(["a" + "b"])
 "#;
-    assert_eq!(retains_in(src, "ins"), 3);
+    // R5-6 removes the impossible list-concat arm of the string literal + string
+    // result (two retains). Only the written parameter's prologue reference remains.
+    assert_eq!(retains_in(src, "ins"), 1);
     assert_exact_run(src, "101\n");
 }
 
@@ -972,7 +974,9 @@ dae drain(n) {
 }
 blether drain(500)
 "#;
-    assert_eq!(retains_in(src, "drain"), 6);
+    // C excludes structural candidates from owning-holder proofs even when they fail.
+    // x is such a candidate: the assignment result keeps its conservative temp retain.
+    assert_eq!(retains_in(src, "drain"), 7);
     assert_exact_run(src, "1890\n");
 }
 

@@ -841,6 +841,8 @@ pub struct CodeGen<'ctx> {
     rc_enabled: bool,
     /// Temp scopes of the function being compiled.
     rc_state: rc::RcFnState<'ctx>,
+    /// Deferred local-slot ownership decisions (RC7 C).
+    rc_slots: rc::RcSlotState<'ctx>,
     /// Per function (in first-registration order), the slots its epilogue releases.
     rc_fn_slots: Vec<(FunctionValue<'ctx>, Vec<PointerValue<'ctx>>)>,
     rc_fn_index: HashMap<FunctionValue<'ctx>, usize>,
@@ -1002,6 +1004,7 @@ impl<'ctx> CodeGen<'ctx> {
             fmt_newline,
             rc_enabled: rc,
             rc_state: rc::RcFnState::default(),
+            rc_slots: rc::RcSlotState::default(),
             rc_fn_slots: Vec::new(),
             rc_fn_index: HashMap::new(),
             rc_taken: HashSet::new(),
@@ -4974,9 +4977,13 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 if let Some(first_other) = first_other {
                     for alloca in late_allocas {
+                        let name = self
+                            .rc_enabled
+                            .then(|| alloca.get_name().map(|n| n.to_string_lossy().into_owned()))
+                            .flatten();
                         alloca.remove_from_basic_block();
                         self.builder.position_before(&first_other);
-                        self.builder.insert_instruction(&alloca, None);
+                        self.builder.insert_instruction(&alloca, name.as_deref());
                     }
                 }
             }
@@ -5043,8 +5050,12 @@ impl<'ctx> CodeGen<'ctx> {
                             break;
                         }
                         instr = current.get_next_instruction();
+                        let name = self
+                            .rc_enabled
+                            .then(|| current.get_name().map(|n| n.to_string_lossy().into_owned()))
+                            .flatten();
                         current.remove_from_basic_block();
-                        self.builder.insert_instruction(&current, None);
+                        self.builder.insert_instruction(&current, name.as_deref());
                     }
                     let line = self
                         .builder
@@ -10258,6 +10269,8 @@ impl<'ctx> CodeGen<'ctx> {
             )));
         };
 
+        self.rc_exclude_slot(alloca);
+
         // Load current value
         let current = self
             .builder
@@ -11170,9 +11183,15 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.hurl, &[msg.into()], "sqrt_hurl")
             .unwrap();
         let err_result = self.make_nil();
-        self.builder
-            .build_unconditional_branch(merge_block)
-            .unwrap();
+        if self.rc_enabled {
+            // The audited raw raiser exits or longjmps. Make this an actual
+            // terminal arm for C's exact effect query (R5-1).
+            self.builder.build_unreachable().unwrap();
+        } else {
+            self.builder
+                .build_unconditional_branch(merge_block)
+                .unwrap();
+        }
         let err_end = self.builder.get_insert_block().unwrap();
 
         self.builder.position_at_end(merge_block);
@@ -11180,11 +11199,10 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_phi(self.types.value_type, "sqrt_result")
             .unwrap();
-        phi.add_incoming(&[
-            (&float_result, float_end),
-            (&int_result, int_end),
-            (&err_result, err_end),
-        ]);
+        phi.add_incoming(&[(&float_result, float_end), (&int_result, int_end)]);
+        if !self.rc_enabled {
+            phi.add_incoming(&[(&err_result, err_end)]);
+        }
         Ok(phi.as_basic_value())
     }
 
@@ -14058,6 +14076,7 @@ impl<'ctx> CodeGen<'ctx> {
                         a
                     };
 
+                    self.rc_exclude_slot(alloca);
                     let init_val = if let Some(init) = initializer {
                         self.compile_expr(init)?
                     } else {
@@ -30683,7 +30702,7 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
         // Try to get list data from shadow (fastest path - avoids loading full MdhValue)
         let list_data = if let Expr::Variable { name, .. } = object {
-            if let Some(&shadow) = self.list_ptr_shadows.get(name) {
+            if let Some(&shadow) = self.list_ptr_shadows.get(name).filter(|_| !self.rc_enabled) {
                 // Load raw pointer from shadow
                 self.builder
                     .build_load(self.types.i64_type, shadow, "list_ptr_shadow_rd")
