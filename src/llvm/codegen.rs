@@ -23,7 +23,7 @@ use inkwell::basic_block::BasicBlock;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::{Linkage, Module};
-use inkwell::types::BasicMetadataTypeEnum;
+use inkwell::types::{BasicMetadataTypeEnum, BasicType};
 use inkwell::values::{
     BasicMetadataValueEnum, BasicValueEnum, FunctionValue, GlobalValue, IntValue, PointerValue,
 };
@@ -11503,7 +11503,7 @@ impl<'ctx> CodeGen<'ctx> {
         let done_block = self.context.append_basic_block(function, "tail_done");
 
         // i = 0
-        let i_ptr = self.builder.build_alloca(self.types.i64_type, "i").unwrap();
+        let i_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "i");
         let zero = self.types.i64_type.const_int(0, false);
         self.builder.build_store(i_ptr, zero).unwrap();
         self.builder.build_unconditional_branch(loop_block).unwrap();
@@ -11570,7 +11570,7 @@ impl<'ctx> CodeGen<'ctx> {
         let loop_block = self.context.append_basic_block(function, "scran_loop");
         let done_block = self.context.append_basic_block(function, "scran_done");
 
-        let i_ptr = self.builder.build_alloca(self.types.i64_type, "i").unwrap();
+        let i_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "i");
         let zero = self.types.i64_type.const_int(0, false);
         self.builder.build_store(i_ptr, zero).unwrap();
         self.builder.build_unconditional_branch(loop_block).unwrap();
@@ -11696,7 +11696,7 @@ impl<'ctx> CodeGen<'ctx> {
         let body1 = self.context.append_basic_block(function, "slap_body1");
         let done1 = self.context.append_basic_block(function, "slap_done1");
 
-        let i_ptr = self.builder.build_alloca(self.types.i64_type, "i").unwrap();
+        let i_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "i");
         let zero = self.types.i64_type.const_int(0, false);
         let one = self.types.i64_type.const_int(1, false);
         self.builder.build_store(i_ptr, zero).unwrap();
@@ -11949,10 +11949,7 @@ impl<'ctx> CodeGen<'ctx> {
         let body_block = self.context.append_basic_block(function, "zipwith_body");
         let done_block = self.context.append_basic_block(function, "zipwith_done");
 
-        let i_ptr = self
-            .builder
-            .build_alloca(self.types.i64_type, "zipwith_i")
-            .unwrap();
+        let i_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "zipwith_i");
         let zero = self.types.i64_type.const_int(0, false);
         let one = self.types.i64_type.const_int(1, false);
         self.builder.build_store(i_ptr, zero).unwrap();
@@ -12079,10 +12076,7 @@ impl<'ctx> CodeGen<'ctx> {
         let list_body = self.context.append_basic_block(function, "list_rev_body");
         let list_done = self.context.append_basic_block(function, "list_rev_done");
 
-        let list_i_ptr = self
-            .builder
-            .build_alloca(self.types.i64_type, "list_i")
-            .unwrap();
+        let list_i_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "list_i");
         let zero = self.types.i64_type.const_int(0, false);
         self.builder.build_store(list_i_ptr, zero).unwrap();
         self.builder.build_unconditional_branch(list_loop).unwrap();
@@ -12193,23 +12187,12 @@ impl<'ctx> CodeGen<'ctx> {
             .append_basic_block(function, "sum_elem_invalid");
         let continue_block = self.context.append_basic_block(function, "sum_continue");
 
-        let i_ptr = self.builder.build_alloca(self.types.i64_type, "i").unwrap();
-        let sum_i_ptr = self
-            .builder
-            .build_alloca(self.types.i64_type, "sum_i")
-            .unwrap();
-        let sum_f_ptr = self
-            .builder
-            .build_alloca(self.types.f64_type, "sum_f")
-            .unwrap();
-        let has_float_ptr = self
-            .builder
-            .build_alloca(self.context.bool_type(), "has_float")
-            .unwrap();
-        let invalid_ptr = self
-            .builder
-            .build_alloca(self.context.bool_type(), "invalid")
-            .unwrap();
+        let i_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "i");
+        let sum_i_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "sum_i");
+        let sum_f_ptr = self.create_entry_block_alloca_typed(self.types.f64_type, "sum_f");
+        let has_float_ptr =
+            self.create_entry_block_alloca_typed(self.context.bool_type(), "has_float");
+        let invalid_ptr = self.create_entry_block_alloca_typed(self.context.bool_type(), "invalid");
 
         let zero_i64 = self.types.i64_type.const_int(0, false);
         let one_i64 = self.types.i64_type.const_int(1, false);
@@ -12501,10 +12484,7 @@ impl<'ctx> CodeGen<'ctx> {
             .compile_ok_or("make_list returned void")
             .unwrap();
 
-        let idx_ptr = self
-            .builder
-            .build_alloca(self.types.i64_type, "wheesht_i")
-            .unwrap();
+        let idx_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "wheesht_i");
         let zero = self.types.i64_type.const_int(0, false);
         let one = self.types.i64_type.const_int(1, false);
         self.builder.build_store(idx_ptr, zero).unwrap();
@@ -12629,19 +12609,11 @@ impl<'ctx> CodeGen<'ctx> {
             .context
             .append_basic_block(function, "product_continue");
 
-        let i_ptr = self.builder.build_alloca(self.types.i64_type, "i").unwrap();
-        let prod_f_ptr = self
-            .builder
-            .build_alloca(self.types.f64_type, "prod_f")
-            .unwrap();
-        let has_float_ptr = self
-            .builder
-            .build_alloca(self.context.bool_type(), "has_float")
-            .unwrap();
-        let invalid_ptr = self
-            .builder
-            .build_alloca(self.context.bool_type(), "invalid")
-            .unwrap();
+        let i_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "i");
+        let prod_f_ptr = self.create_entry_block_alloca_typed(self.types.f64_type, "prod_f");
+        let has_float_ptr =
+            self.create_entry_block_alloca_typed(self.context.bool_type(), "has_float");
+        let invalid_ptr = self.create_entry_block_alloca_typed(self.context.bool_type(), "invalid");
 
         let zero_i64 = self.types.i64_type.const_int(0, false);
         let one_i64 = self.types.i64_type.const_int(1, false);
@@ -13030,7 +13002,7 @@ impl<'ctx> CodeGen<'ctx> {
         let body_block = self.context.append_basic_block(function, "upper_body");
         let done_block = self.context.append_basic_block(function, "upper_done");
 
-        let i_ptr = self.builder.build_alloca(self.types.i64_type, "i").unwrap();
+        let i_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "i");
         let zero = self.types.i64_type.const_int(0, false);
         self.builder.build_store(i_ptr, zero).unwrap();
         self.builder.build_unconditional_branch(loop_block).unwrap();
@@ -13153,7 +13125,7 @@ impl<'ctx> CodeGen<'ctx> {
         let body_block = self.context.append_basic_block(function, "lower_body");
         let done_block = self.context.append_basic_block(function, "lower_done");
 
-        let i_ptr = self.builder.build_alloca(self.types.i64_type, "i").unwrap();
+        let i_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "i");
         let zero = self.types.i64_type.const_int(0, false);
         self.builder.build_store(i_ptr, zero).unwrap();
         self.builder.build_unconditional_branch(loop_block).unwrap();
@@ -13289,11 +13261,9 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Loop setup
         self.builder.position_at_end(loop_block);
-        let i_ptr = self.builder.build_alloca(self.types.i64_type, "i").unwrap();
-        let has_letter_ptr = self
-            .builder
-            .build_alloca(self.types.bool_type, "has_letter")
-            .unwrap();
+        let i_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "i");
+        let has_letter_ptr =
+            self.create_entry_block_alloca_typed(self.types.bool_type, "has_letter");
         self.builder.build_store(i_ptr, zero).unwrap();
         self.builder
             .build_store(has_letter_ptr, self.types.bool_type.const_int(0, false))
@@ -13683,14 +13653,8 @@ impl<'ctx> CodeGen<'ctx> {
         let find_end_body = self.context.append_basic_block(function, "find_end_body");
         let copy = self.context.append_basic_block(function, "copy");
 
-        let start_ptr = self
-            .builder
-            .build_alloca(self.types.i64_type, "start")
-            .unwrap();
-        let end_ptr = self
-            .builder
-            .build_alloca(self.types.i64_type, "end")
-            .unwrap();
+        let start_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "start");
+        let end_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "end");
         let zero = self.types.i64_type.const_int(0, false);
         let one = self.types.i64_type.const_int(1, false);
         self.builder.build_store(start_ptr, zero).unwrap();
@@ -13943,11 +13907,8 @@ impl<'ctx> CodeGen<'ctx> {
         let found_block = self.context.append_basic_block(function, "coont_found");
         let done_block = self.context.append_basic_block(function, "coont_done");
 
-        let count_ptr = self
-            .builder
-            .build_alloca(self.types.i64_type, "count")
-            .unwrap();
-        let pos_ptr = self.builder.build_alloca(i8_ptr_type, "pos").unwrap();
+        let count_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "count");
+        let pos_ptr = self.create_entry_block_alloca_typed(i8_ptr_type, "pos");
         let zero = self.types.i64_type.const_int(0, false);
         self.builder.build_store(count_ptr, zero).unwrap();
         self.builder.build_store(pos_ptr, str_ptr).unwrap();
@@ -16387,20 +16348,14 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
 
         // Use an alloca to store the working buffer pointer
-        let buf_ptr_alloca = self
-            .builder
-            .build_alloca(i8_ptr_type, "buf_ptr_alloca")
-            .unwrap();
+        let buf_ptr_alloca = self.create_entry_block_alloca_typed(i8_ptr_type, "buf_ptr_alloca");
         self.builder
             .build_store(buf_ptr_alloca, current_ptr)
             .unwrap();
         // Set when the old string is copied into a new object: the variable then holds
         // the copy, so its reference to the old string is released after the store.
         let copied_alloca = self.rc_enabled.then(|| {
-            let a = self
-                .builder
-                .build_alloca(self.types.bool_type, "old_copied")
-                .unwrap();
+            let a = self.create_entry_block_alloca_typed(self.types.bool_type, "old_copied");
             self.builder
                 .build_store(a, self.types.bool_type.const_int(0, false))
                 .unwrap();
@@ -24457,11 +24412,9 @@ impl<'ctx> CodeGen<'ctx> {
 
                     let zero = self.types.i64_type.const_int(0, false);
                     let one = self.types.i64_type.const_int(1, false);
-                    let n_ptr = self.builder.build_alloca(self.types.i64_type, "n").unwrap();
-                    let count_ptr = self
-                        .builder
-                        .build_alloca(self.types.i64_type, "count")
-                        .unwrap();
+                    let n_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "n");
+                    let count_ptr =
+                        self.create_entry_block_alloca_typed(self.types.i64_type, "count");
                     self.builder.build_store(n_ptr, n).unwrap();
                     self.builder.build_store(count_ptr, zero).unwrap();
                     self.builder.build_unconditional_branch(loop_block).unwrap();
@@ -24637,7 +24590,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .builder
                         .build_int_to_ptr(data, i8_ptr_type, "num_str_ptr")
                         .unwrap();
-                    let endptr_ptr = self.builder.build_alloca(i8_ptr_type, "endptr").unwrap();
+                    let endptr_ptr = self.create_entry_block_alloca_typed(i8_ptr_type, "endptr");
 
                     // Declare strtod if needed
                     let strtod_fn = if let Some(strtod_fn) = self.module.get_function("strtod") {
@@ -25038,7 +24991,7 @@ impl<'ctx> CodeGen<'ctx> {
                     // Set up loop: check odd divisors from 3 to sqrt(n)
                     self.builder.position_at_end(start_loop);
                     let three = self.types.i64_type.const_int(3, false);
-                    let i_ptr = self.builder.build_alloca(self.types.i64_type, "i").unwrap();
+                    let i_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "i");
                     self.builder.build_store(i_ptr, three).unwrap();
                     self.builder.build_unconditional_branch(loop_block).unwrap();
 
@@ -25308,8 +25261,8 @@ impl<'ctx> CodeGen<'ctx> {
                     let loop_block = self.context.append_basic_block(function, "gcd_loop");
                     let done_block = self.context.append_basic_block(function, "gcd_done");
 
-                    let a_ptr = self.builder.build_alloca(self.types.i64_type, "a").unwrap();
-                    let b_ptr = self.builder.build_alloca(self.types.i64_type, "b").unwrap();
+                    let a_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "a");
+                    let b_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "b");
                     self.builder.build_store(a_ptr, a).unwrap();
                     self.builder.build_store(b_ptr, b).unwrap();
                     self.builder.build_unconditional_branch(loop_block).unwrap();
@@ -25382,14 +25335,8 @@ impl<'ctx> CodeGen<'ctx> {
                     let loop_block = self.context.append_basic_block(function, "lcm_gcd_loop");
                     let done_block = self.context.append_basic_block(function, "lcm_gcd_done");
 
-                    let ga_ptr = self
-                        .builder
-                        .build_alloca(self.types.i64_type, "ga")
-                        .unwrap();
-                    let gb_ptr = self
-                        .builder
-                        .build_alloca(self.types.i64_type, "gb")
-                        .unwrap();
+                    let ga_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "ga");
+                    let gb_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "gb");
                     self.builder.build_store(ga_ptr, a).unwrap();
                     self.builder.build_store(gb_ptr, b).unwrap();
                     self.builder.build_unconditional_branch(loop_block).unwrap();
@@ -26506,10 +26453,7 @@ impl<'ctx> CodeGen<'ctx> {
                     let result_data = self.extract_data(result_val).unwrap();
 
                     // Loop to create pairs
-                    let idx = self
-                        .builder
-                        .build_alloca(self.types.i64_type, "zip_idx")
-                        .unwrap();
+                    let idx = self.create_entry_block_alloca_typed(self.types.i64_type, "zip_idx");
                     let zero = self.types.i64_type.const_int(0, false);
                     let one = self.types.i64_type.const_int(1, false);
                     self.builder.build_store(idx, zero).unwrap();
@@ -26683,7 +26627,7 @@ impl<'ctx> CodeGen<'ctx> {
                     let loop_block = self.context.append_basic_block(function, "mony_loop");
                     let done_block = self.context.append_basic_block(function, "mony_done");
 
-                    let i_ptr = self.builder.build_alloca(self.types.i64_type, "i").unwrap();
+                    let i_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "i");
                     let zero = self.types.i64_type.const_int(0, false);
                     let one = self.types.i64_type.const_int(1, false);
                     self.builder.build_store(i_ptr, zero).unwrap();
@@ -27738,11 +27682,8 @@ impl<'ctx> CodeGen<'ctx> {
 
                     let zero = self.types.i64_type.const_int(0, false);
                     let one = self.types.i64_type.const_int(1, false);
-                    let i_ptr = self.builder.build_alloca(self.types.i64_type, "i").unwrap();
-                    let sum_ptr = self
-                        .builder
-                        .build_alloca(self.types.i64_type, "sum")
-                        .unwrap();
+                    let i_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "i");
+                    let sum_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "sum");
                     self.builder.build_store(i_ptr, zero).unwrap();
                     self.builder.build_store(sum_ptr, zero).unwrap();
                     self.builder.build_unconditional_branch(loop_block).unwrap();
@@ -27855,11 +27796,9 @@ impl<'ctx> CodeGen<'ctx> {
                     let done_block = self.context.append_basic_block(function, "fact_done");
 
                     let one = self.types.i64_type.const_int(1, false);
-                    let i_ptr = self.builder.build_alloca(self.types.i64_type, "i").unwrap();
-                    let result_ptr = self
-                        .builder
-                        .build_alloca(self.types.i64_type, "result")
-                        .unwrap();
+                    let i_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "i");
+                    let result_ptr =
+                        self.create_entry_block_alloca_typed(self.types.i64_type, "result");
                     self.builder.build_store(i_ptr, one).unwrap();
                     self.builder.build_store(result_ptr, one).unwrap();
                     self.builder.build_unconditional_branch(loop_block).unwrap();
@@ -28669,10 +28608,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.variables.insert(variable.to_string(), var_alloca);
 
         // Create index counter
-        let idx_alloca = self
-            .builder
-            .build_alloca(self.types.i64_type, "for_str_idx")
-            .unwrap();
+        let idx_alloca = self.create_entry_block_alloca_typed(self.types.i64_type, "for_str_idx");
         let zero = self.types.i64_type.const_int(0, false);
         self.builder.build_store(idx_alloca, zero).unwrap();
 
@@ -28835,10 +28771,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.variables.insert(variable.to_string(), var_alloca);
 
         // Create index counter
-        let idx_alloca = self
-            .builder
-            .build_alloca(self.types.i64_type, "for_lst_idx")
-            .unwrap();
+        let idx_alloca = self.create_entry_block_alloca_typed(self.types.i64_type, "for_lst_idx");
         let zero = self.types.i64_type.const_int(0, false);
         self.builder.build_store(idx_alloca, zero).unwrap();
 
@@ -28939,10 +28872,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.variables.insert(variable.to_string(), var_alloca);
 
         // Create counter
-        let counter_alloca = self
-            .builder
-            .build_alloca(self.types.i64_type, "counter")
-            .unwrap();
+        let counter_alloca = self.create_entry_block_alloca_typed(self.types.i64_type, "counter");
         self.builder
             .build_store(counter_alloca, start_data)
             .unwrap();
@@ -29710,44 +29640,42 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     /// A parameter slot of a lambda or method: an owned entry slot with reference counting
-    /// on, else an alloca where the prologue is being built (as before counting existed).
+    /// on, otherwise raw entry storage with no reference of its own.
     fn rc_param_slot(&mut self, name: &str) -> PointerValue<'ctx> {
         if self.rc_enabled {
             self.create_entry_block_alloca(name)
         } else {
-            self.builder
-                .build_alloca(self.types.value_type, name)
-                .unwrap()
+            self.create_entry_block_alloca_typed(self.types.value_type, name)
         }
+    }
+
+    /// Fixed-size scratch storage belongs to the function frame, even when the emitter
+    /// runs inside a loop. Keep initialization at the use site so each iteration resets
+    /// the scratch value. This raw slot neither owns nor registers an RC reference.
+    fn create_entry_block_alloca_typed<T: BasicType<'ctx>>(
+        &self,
+        ty: T,
+        name: &str,
+    ) -> PointerValue<'ctx> {
+        let function = self.current_function.unwrap();
+        let entry = function.get_first_basic_block().unwrap();
+        let builder = self.context.create_builder();
+        match entry.get_first_instruction() {
+            Some(instr) => builder.position_before(&instr),
+            None => builder.position_at_end(entry),
+        }
+        builder.build_alloca(ty, name).unwrap()
     }
 
     /// An uninitialised value-sized entry alloca that holds no reference of its own
     /// (scratch, or a slot whose lifetime `codegen/rc.rs` manages).
     fn create_entry_block_alloca_raw(&self, name: &str) -> PointerValue<'ctx> {
-        let function = self.current_function.unwrap();
-        let entry = function.get_first_basic_block().unwrap();
-
-        let builder = self.context.create_builder();
-        match entry.get_first_instruction() {
-            Some(instr) => builder.position_before(&instr),
-            None => builder.position_at_end(entry),
-        }
-
-        builder.build_alloca(self.types.value_type, name).unwrap()
+        self.create_entry_block_alloca_typed(self.types.value_type, name)
     }
 
-    /// Create alloca for i64 shadow variable in entry block (hoisted from loop)
+    /// Create alloca for i64 shadow variable in entry block (hoisted from loop).
     fn create_entry_block_alloca_i64(&self, name: &str) -> PointerValue<'ctx> {
-        let function = self.current_function.unwrap();
-        let entry = function.get_first_basic_block().unwrap();
-
-        let builder = self.context.create_builder();
-        match entry.get_first_instruction() {
-            Some(instr) => builder.position_before(&instr),
-            None => builder.position_at_end(entry),
-        }
-
-        builder.build_alloca(self.types.i64_type, name).unwrap()
+        self.create_entry_block_alloca_typed(self.types.i64_type, name)
     }
 
     /// Compile a list expression: allocate MdhList struct and store elements
@@ -29953,10 +29881,7 @@ impl<'ctx> CodeGen<'ctx> {
         let elements_ptr = items_ptr;
 
         // Create index counter alloca
-        let idx_alloca = self
-            .builder
-            .build_alloca(self.types.i64_type, "spread_idx")
-            .unwrap();
+        let idx_alloca = self.create_entry_block_alloca_typed(self.types.i64_type, "spread_idx");
         self.builder
             .build_store(idx_alloca, self.types.i64_type.const_int(0, false))
             .unwrap();
@@ -30028,10 +29953,8 @@ impl<'ctx> CodeGen<'ctx> {
                     let loop_end = self.context.append_basic_block(function, "spread_end");
 
                     // Initialize loop counter
-                    let loop_i_alloca = self
-                        .builder
-                        .build_alloca(self.types.i64_type, "loop_i")
-                        .unwrap();
+                    let loop_i_alloca =
+                        self.create_entry_block_alloca_typed(self.types.i64_type, "loop_i");
                     self.builder
                         .build_store(loop_i_alloca, self.types.i64_type.const_int(0, false))
                         .unwrap();
@@ -30113,10 +30036,8 @@ impl<'ctx> CodeGen<'ctx> {
                         self.context.append_basic_block(function, "char_loop_body");
                     let char_loop_end = self.context.append_basic_block(function, "char_loop_end");
 
-                    let char_i_alloca = self
-                        .builder
-                        .build_alloca(self.types.i64_type, "char_i")
-                        .unwrap();
+                    let char_i_alloca =
+                        self.create_entry_block_alloca_typed(self.types.i64_type, "char_i");
                     self.builder
                         .build_store(char_i_alloca, self.types.i64_type.const_int(0, false))
                         .unwrap();
@@ -31339,10 +31260,7 @@ impl<'ctx> CodeGen<'ctx> {
             false,
         );
 
-        let timespec_ptr = self
-            .builder
-            .build_alloca(timespec_type, "timespec")
-            .unwrap();
+        let timespec_ptr = self.create_entry_block_alloca_typed(timespec_type, "timespec");
 
         // CLOCK_REALTIME = 0
         let clock_id = self.context.i32_type().const_int(0, false);
@@ -31408,10 +31326,7 @@ impl<'ctx> CodeGen<'ctx> {
             false,
         );
 
-        let timespec_ptr = self
-            .builder
-            .build_alloca(timespec_type, "timespec")
-            .unwrap();
+        let timespec_ptr = self.create_entry_block_alloca_typed(timespec_type, "timespec");
 
         // CLOCK_REALTIME = 0 (match interpreter's SystemTime)
         let clock_id = self.context.i32_type().const_int(0, false);
@@ -31482,7 +31397,7 @@ impl<'ctx> CodeGen<'ctx> {
             false,
         );
 
-        let req_ptr = self.builder.build_alloca(timespec_type, "req").unwrap();
+        let req_ptr = self.create_entry_block_alloca_typed(timespec_type, "req");
 
         // Convert ms to seconds and nanoseconds
         // tv_sec = ms / 1000
@@ -31641,14 +31556,8 @@ impl<'ctx> CodeGen<'ctx> {
         // === SINGLE-CHAR FAST PATH ===
         // Phase 1: Count delimiters to know exact list size
         self.builder.position_at_end(sc_count_block);
-        let sc_i_ptr = self
-            .builder
-            .build_alloca(self.types.i64_type, "sc_i")
-            .unwrap();
-        let sc_count_ptr = self
-            .builder
-            .build_alloca(self.types.i64_type, "sc_count")
-            .unwrap();
+        let sc_i_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "sc_i");
+        let sc_count_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "sc_count");
         let sc_one = self.types.i64_type.const_int(1, false);
         self.builder.build_store(sc_i_ptr, zero).unwrap();
         self.builder.build_store(sc_count_ptr, zero).unwrap();
@@ -31749,18 +31658,11 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
 
         // Phase 2: Split and fill list
-        let sc_pos_ptr = self
-            .builder
-            .build_alloca(self.types.i64_type, "sc_pos")
-            .unwrap();
-        let sc_elem_idx_ptr = self
-            .builder
-            .build_alloca(self.types.i64_type, "sc_elem_idx")
-            .unwrap();
-        let sc_token_start_ptr = self
-            .builder
-            .build_alloca(self.types.i64_type, "sc_token_start")
-            .unwrap();
+        let sc_pos_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "sc_pos");
+        let sc_elem_idx_ptr =
+            self.create_entry_block_alloca_typed(self.types.i64_type, "sc_elem_idx");
+        let sc_token_start_ptr =
+            self.create_entry_block_alloca_typed(self.types.i64_type, "sc_token_start");
         self.builder.build_store(sc_pos_ptr, zero).unwrap();
         self.builder.build_store(sc_elem_idx_ptr, zero).unwrap();
         self.builder.build_store(sc_token_start_ptr, zero).unwrap();
@@ -32064,10 +31966,7 @@ impl<'ctx> CodeGen<'ctx> {
             .compile_ok_or("make_list returned void")
             .unwrap();
 
-        let pos_ptr = self
-            .builder
-            .build_alloca(self.types.i64_type, "pos")
-            .unwrap();
+        let pos_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "pos");
         self.builder.build_store(pos_ptr, zero).unwrap();
 
         // Loop to find delimiters and split
@@ -32346,16 +32245,10 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(calc_block);
 
         // First pass: calculate total length
-        let total_len_ptr = self
-            .builder
-            .build_alloca(self.types.i64_type, "total_len")
-            .unwrap();
+        let total_len_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "total_len");
         self.builder.build_store(total_len_ptr, zero).unwrap();
 
-        let idx_ptr = self
-            .builder
-            .build_alloca(self.types.i64_type, "idx")
-            .unwrap();
+        let idx_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "idx");
         self.builder.build_store(idx_ptr, zero).unwrap();
 
         let calc_loop = self.context.append_basic_block(function, "calc_loop");
@@ -32479,10 +32372,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_store(idx_ptr, zero).unwrap();
 
         // Track write position
-        let write_pos_ptr = self
-            .builder
-            .build_alloca(self.types.i64_type, "write_pos")
-            .unwrap();
+        let write_pos_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "write_pos");
         self.builder.build_store(write_pos_ptr, zero).unwrap();
 
         let concat_loop = self.context.append_basic_block(function, "concat_loop");
@@ -34428,19 +34318,14 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_store(new_cap_ptr, list_len).unwrap();
 
         // Store func_val in an alloca so we can use it in the loop
-        let func_alloca = self
-            .builder
-            .build_alloca(self.types.value_type, "func_alloca")
-            .unwrap();
+        let func_alloca =
+            self.create_entry_block_alloca_typed(self.types.value_type, "func_alloca");
         self.builder.build_store(func_alloca, func_val).unwrap();
 
         // Loop and apply function
         let zero = self.types.i64_type.const_int(0, false);
         let one = self.types.i64_type.const_int(1, false);
-        let idx_ptr = self
-            .builder
-            .build_alloca(self.types.i64_type, "idx")
-            .unwrap();
+        let idx_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "idx");
         self.builder.build_store(idx_ptr, zero).unwrap();
 
         let loop_block = self.context.append_basic_block(function, "gaun_loop");
@@ -34519,16 +34404,10 @@ impl<'ctx> CodeGen<'ctx> {
         let list_data = self.extract_data(list_val).unwrap();
         let list_len = self.get_list_length(list_data).unwrap();
 
-        let func_alloca = self
-            .builder
-            .build_alloca(self.types.value_type, "each_func")
-            .unwrap();
+        let func_alloca = self.create_entry_block_alloca_typed(self.types.value_type, "each_func");
         self.builder.build_store(func_alloca, func_val).unwrap();
 
-        let idx_ptr = self
-            .builder
-            .build_alloca(self.types.i64_type, "each_i")
-            .unwrap();
+        let idx_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "each_i");
         let zero = self.types.i64_type.const_int(0, false);
         let one = self.types.i64_type.const_int(1, false);
         self.builder.build_store(idx_ptr, zero).unwrap();
@@ -34645,26 +34524,19 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
 
         // Store function and new list for use in loop
-        let func_alloca = self
-            .builder
-            .build_alloca(self.types.value_type, "func_alloca")
-            .unwrap();
+        let func_alloca =
+            self.create_entry_block_alloca_typed(self.types.value_type, "func_alloca");
         self.builder.build_store(func_alloca, func_val).unwrap();
 
-        let result_alloca = self
-            .builder
-            .build_alloca(self.types.value_type, "result_alloca")
-            .unwrap();
+        let result_alloca =
+            self.create_entry_block_alloca_typed(self.types.value_type, "result_alloca");
         self.builder
             .build_store(result_alloca, new_list_val)
             .unwrap();
 
         let zero = self.types.i64_type.const_int(0, false);
         let one = self.types.i64_type.const_int(1, false);
-        let idx_ptr = self
-            .builder
-            .build_alloca(self.types.i64_type, "idx")
-            .unwrap();
+        let idx_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "idx");
         self.builder.build_store(idx_ptr, zero).unwrap();
 
         let loop_block = self.context.append_basic_block(function, "sieve_loop");
@@ -34703,10 +34575,8 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
 
         // Store elem_val in alloca for use in keep_block
-        let elem_alloca = self
-            .builder
-            .build_alloca(self.types.value_type, "elem_alloca")
-            .unwrap();
+        let elem_alloca =
+            self.create_entry_block_alloca_typed(self.types.value_type, "elem_alloca");
         self.builder.build_store(elem_alloca, elem_val).unwrap();
 
         // Call predicate
@@ -34837,31 +34707,22 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
 
         // Store function and lists for use in loop
-        let func_alloca = self
-            .builder
-            .build_alloca(self.types.value_type, "pairt_func_alloca")
-            .unwrap();
+        let func_alloca =
+            self.create_entry_block_alloca_typed(self.types.value_type, "pairt_func_alloca");
         self.builder.build_store(func_alloca, func_val).unwrap();
 
-        let truthy_alloca = self
-            .builder
-            .build_alloca(self.types.value_type, "pairt_truthy_alloca")
-            .unwrap();
+        let truthy_alloca =
+            self.create_entry_block_alloca_typed(self.types.value_type, "pairt_truthy_alloca");
         self.builder
             .build_store(truthy_alloca, truthy_list)
             .unwrap();
-        let falsy_alloca = self
-            .builder
-            .build_alloca(self.types.value_type, "pairt_falsy_alloca")
-            .unwrap();
+        let falsy_alloca =
+            self.create_entry_block_alloca_typed(self.types.value_type, "pairt_falsy_alloca");
         self.builder.build_store(falsy_alloca, falsy_list).unwrap();
 
         let zero = self.types.i64_type.const_int(0, false);
         let one = self.types.i64_type.const_int(1, false);
-        let idx_ptr = self
-            .builder
-            .build_alloca(self.types.i64_type, "pairt_idx")
-            .unwrap();
+        let idx_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "pairt_idx");
         self.builder.build_store(idx_ptr, zero).unwrap();
 
         let loop_block = self.context.append_basic_block(function, "pairt_loop");
@@ -35049,25 +34910,18 @@ impl<'ctx> CodeGen<'ctx> {
             .basic()
             .compile_ok_or("empty_dict returned void")
             .unwrap();
-        let dict_alloca = self
-            .builder
-            .build_alloca(self.types.value_type, "grup_up_dict_alloca")
-            .unwrap();
+        let dict_alloca =
+            self.create_entry_block_alloca_typed(self.types.value_type, "grup_up_dict_alloca");
         self.builder.build_store(dict_alloca, dict_val).unwrap();
 
         // Store function for use in loop
-        let func_alloca = self
-            .builder
-            .build_alloca(self.types.value_type, "grup_up_func_alloca")
-            .unwrap();
+        let func_alloca =
+            self.create_entry_block_alloca_typed(self.types.value_type, "grup_up_func_alloca");
         self.builder.build_store(func_alloca, func_val).unwrap();
 
         let zero = self.types.i64_type.const_int(0, false);
         let one = self.types.i64_type.const_int(1, false);
-        let idx_ptr = self
-            .builder
-            .build_alloca(self.types.i64_type, "grup_up_idx")
-            .unwrap();
+        let idx_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "grup_up_idx");
         self.builder.build_store(idx_ptr, zero).unwrap();
 
         let loop_block = self.context.append_basic_block(function, "grup_up_loop");
@@ -35257,25 +35111,17 @@ impl<'ctx> CodeGen<'ctx> {
             .into_pointer_value();
 
         // Store func_val and accumulator
-        let func_alloca = self
-            .builder
-            .build_alloca(self.types.value_type, "func_alloca")
-            .unwrap();
+        let func_alloca =
+            self.create_entry_block_alloca_typed(self.types.value_type, "func_alloca");
         self.builder.build_store(func_alloca, func_val).unwrap();
-        let acc_alloca = self
-            .builder
-            .build_alloca(self.types.value_type, "acc_alloca")
-            .unwrap();
+        let acc_alloca = self.create_entry_block_alloca_typed(self.types.value_type, "acc_alloca");
         // The accumulator slot holds one reference: each step's result replaces the last.
         self.rc_take(init_val);
         self.builder.build_store(acc_alloca, init_val).unwrap();
 
         let zero = self.types.i64_type.const_int(0, false);
         let one = self.types.i64_type.const_int(1, false);
-        let idx_ptr = self
-            .builder
-            .build_alloca(self.types.i64_type, "idx")
-            .unwrap();
+        let idx_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "idx");
         self.builder.build_store(idx_ptr, zero).unwrap();
 
         let loop_block = self.context.append_basic_block(function, "tumble_loop");
@@ -35396,10 +35242,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         let zero = self.types.i64_type.const_int(0, false);
         let one = self.types.i64_type.const_int(1, false);
-        let idx_ptr = self
-            .builder
-            .build_alloca(self.types.i64_type, "idx")
-            .unwrap();
+        let idx_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "idx");
         self.builder.build_store(idx_ptr, zero).unwrap();
 
         let loop_block = self.context.append_basic_block(function, "awt_loop");
@@ -35520,10 +35363,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         let zero = self.types.i64_type.const_int(0, false);
         let one = self.types.i64_type.const_int(1, false);
-        let idx_ptr = self
-            .builder
-            .build_alloca(self.types.i64_type, "idx")
-            .unwrap();
+        let idx_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "idx");
         self.builder.build_store(idx_ptr, zero).unwrap();
 
         let loop_block = self.context.append_basic_block(function, "onyt_loop");
@@ -35644,18 +35484,13 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap()
             .into_pointer_value();
 
-        let func_alloca = self
-            .builder
-            .build_alloca(self.types.value_type, "func_alloca")
-            .unwrap();
+        let func_alloca =
+            self.create_entry_block_alloca_typed(self.types.value_type, "func_alloca");
         self.builder.build_store(func_alloca, func_val).unwrap();
 
         let zero = self.types.i64_type.const_int(0, false);
         let one = self.types.i64_type.const_int(1, false);
-        let idx_ptr = self
-            .builder
-            .build_alloca(self.types.i64_type, "idx")
-            .unwrap();
+        let idx_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "idx");
         self.builder.build_store(idx_ptr, zero).unwrap();
 
         let loop_block = self.context.append_basic_block(function, "aw_loop");
@@ -35787,18 +35622,13 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap()
             .into_pointer_value();
 
-        let func_alloca = self
-            .builder
-            .build_alloca(self.types.value_type, "func_alloca")
-            .unwrap();
+        let func_alloca =
+            self.create_entry_block_alloca_typed(self.types.value_type, "func_alloca");
         self.builder.build_store(func_alloca, func_val).unwrap();
 
         let zero = self.types.i64_type.const_int(0, false);
         let one = self.types.i64_type.const_int(1, false);
-        let idx_ptr = self
-            .builder
-            .build_alloca(self.types.i64_type, "idx")
-            .unwrap();
+        let idx_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "idx");
         self.builder.build_store(idx_ptr, zero).unwrap();
 
         let loop_block = self.context.append_basic_block(function, "ony_loop");
@@ -35930,18 +35760,13 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap()
             .into_pointer_value();
 
-        let func_alloca = self
-            .builder
-            .build_alloca(self.types.value_type, "func_alloca")
-            .unwrap();
+        let func_alloca =
+            self.create_entry_block_alloca_typed(self.types.value_type, "func_alloca");
         self.builder.build_store(func_alloca, func_val).unwrap();
 
         let zero = self.types.i64_type.const_int(0, false);
         let one = self.types.i64_type.const_int(1, false);
-        let idx_ptr = self
-            .builder
-            .build_alloca(self.types.i64_type, "idx")
-            .unwrap();
+        let idx_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "idx");
         self.builder.build_store(idx_ptr, zero).unwrap();
 
         let loop_block = self.context.append_basic_block(function, "hunt_loop");
@@ -35980,10 +35805,8 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
 
         // Store elem in alloca for use in found block
-        let found_alloca = self
-            .builder
-            .build_alloca(self.types.value_type, "found_alloca")
-            .unwrap();
+        let found_alloca =
+            self.create_entry_block_alloca_typed(self.types.value_type, "found_alloca");
         self.builder.build_store(found_alloca, elem_val).unwrap();
 
         let func = self
@@ -36083,18 +35906,13 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap()
             .into_pointer_value();
 
-        let func_alloca = self
-            .builder
-            .build_alloca(self.types.value_type, "func_alloca")
-            .unwrap();
+        let func_alloca =
+            self.create_entry_block_alloca_typed(self.types.value_type, "func_alloca");
         self.builder.build_store(func_alloca, func_val).unwrap();
 
         let zero = self.types.i64_type.const_int(0, false);
         let one = self.types.i64_type.const_int(1, false);
-        let idx_ptr = self
-            .builder
-            .build_alloca(self.types.i64_type, "idx")
-            .unwrap();
+        let idx_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "idx");
         self.builder.build_store(idx_ptr, zero).unwrap();
 
         let loop_block = self.context.append_basic_block(function, "findidx_loop");
@@ -36135,10 +35953,8 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
 
         // Store current index for use in found block
-        let found_idx_alloca = self
-            .builder
-            .build_alloca(self.types.i64_type, "found_idx_alloca")
-            .unwrap();
+        let found_idx_alloca =
+            self.create_entry_block_alloca_typed(self.types.i64_type, "found_idx_alloca");
         self.builder.build_store(found_idx_alloca, idx).unwrap();
 
         let func = self
@@ -36245,18 +36061,13 @@ impl<'ctx> CodeGen<'ctx> {
             .into_pointer_value();
 
         // Store the function for use in loop
-        let func_alloca = self
-            .builder
-            .build_alloca(self.types.value_type, "func_alloca")
-            .unwrap();
+        let func_alloca =
+            self.create_entry_block_alloca_typed(self.types.value_type, "func_alloca");
         self.builder.build_store(func_alloca, func_val).unwrap();
 
         let zero = self.types.i64_type.const_int(0, false);
         let one = self.types.i64_type.const_int(1, false);
-        let idx_ptr = self
-            .builder
-            .build_alloca(self.types.i64_type, "idx")
-            .unwrap();
+        let idx_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "idx");
         self.builder.build_store(idx_ptr, zero).unwrap();
 
         let loop_block = self.context.append_basic_block(function, "ilk_loop");
@@ -36362,18 +36173,13 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap()
             .into_pointer_value();
 
-        let func_alloca = self
-            .builder
-            .build_alloca(self.types.value_type, "func_alloca")
-            .unwrap();
+        let func_alloca =
+            self.create_entry_block_alloca_typed(self.types.value_type, "func_alloca");
         self.builder.build_store(func_alloca, func_val).unwrap();
 
         let zero = self.types.i64_type.const_int(0, false);
         let one = self.types.i64_type.const_int(1, false);
-        let idx_ptr = self
-            .builder
-            .build_alloca(self.types.i64_type, "idx")
-            .unwrap();
+        let idx_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "idx");
         self.builder.build_store(idx_ptr, zero).unwrap();
 
         let loop_block = self.context.append_basic_block(function, "ilkane_loop");
@@ -36440,16 +36246,11 @@ impl<'ctx> CodeGen<'ctx> {
         let function = self.current_function.unwrap();
         let zero = self.types.i64_type.const_int(0, false);
         let one = self.types.i64_type.const_int(1, false);
-        let idx_ptr = self
-            .builder
-            .build_alloca(self.types.i64_type, "idx")
-            .unwrap();
+        let idx_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "idx");
         self.builder.build_store(idx_ptr, zero).unwrap();
 
-        let func_alloca = self
-            .builder
-            .build_alloca(self.types.value_type, "func_alloca")
-            .unwrap();
+        let func_alloca =
+            self.create_entry_block_alloca_typed(self.types.value_type, "func_alloca");
         self.builder.build_store(func_alloca, func_val).unwrap();
 
         let loop_block = self.context.append_basic_block(function, "ilkane_d_loop");
@@ -39639,25 +39440,16 @@ impl<'ctx> CodeGen<'ctx> {
         let entry_size = self.types.i64_type.const_int(32, false); // 16 bytes key + 16 bytes value
         let value_offset_in_entry = self.types.i64_type.const_int(16, false);
 
-        let result_ptr = self
-            .builder
-            .build_alloca(self.types.value_type, "result_ptr")
-            .unwrap();
+        let result_ptr = self.create_entry_block_alloca_typed(self.types.value_type, "result_ptr");
         self.builder
             .build_store(result_ptr, self.make_nil())
             .unwrap();
-        let found_ptr = self
-            .builder
-            .build_alloca(self.types.bool_type, "found_ptr")
-            .unwrap();
+        let found_ptr = self.create_entry_block_alloca_typed(self.types.bool_type, "found_ptr");
         self.builder
             .build_store(found_ptr, self.types.bool_type.const_int(0, false))
             .unwrap();
 
-        let idx_ptr = self
-            .builder
-            .build_alloca(self.types.i64_type, "idx")
-            .unwrap();
+        let idx_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "idx");
         self.builder.build_store(idx_ptr, zero).unwrap();
 
         let loop_block = self.context.append_basic_block(function, "get_field_loop");
@@ -39929,16 +39721,10 @@ impl<'ctx> CodeGen<'ctx> {
         let entry_size = self.types.i64_type.const_int(32, false);
         let value_offset_in_entry = self.types.i64_type.const_int(16, false);
 
-        let idx_ptr = self
-            .builder
-            .build_alloca(self.types.i64_type, "idx")
-            .unwrap();
+        let idx_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "idx");
         self.builder.build_store(idx_ptr, zero).unwrap();
 
-        let found_flag = self
-            .builder
-            .build_alloca(self.types.bool_type, "found_flag")
-            .unwrap();
+        let found_flag = self.create_entry_block_alloca_typed(self.types.bool_type, "found_flag");
         self.builder
             .build_store(found_flag, self.types.bool_type.const_int(0, false))
             .unwrap();
@@ -41730,24 +41516,15 @@ impl<'ctx> CodeGen<'ctx> {
         let list_data = self.extract_data(container_val).unwrap();
         let list_len = self.get_list_length(list_data).unwrap();
 
-        let result_ptr = self
-            .builder
-            .build_alloca(self.types.value_type, "find_result")
-            .unwrap();
+        let result_ptr = self.create_entry_block_alloca_typed(self.types.value_type, "find_result");
         self.builder
             .build_store(result_ptr, self.make_nil())
             .unwrap();
 
-        let func_alloca = self
-            .builder
-            .build_alloca(self.types.value_type, "find_func")
-            .unwrap();
+        let func_alloca = self.create_entry_block_alloca_typed(self.types.value_type, "find_func");
         self.builder.build_store(func_alloca, func_val).unwrap();
 
-        let idx_ptr = self
-            .builder
-            .build_alloca(self.types.i64_type, "find_i")
-            .unwrap();
+        let idx_ptr = self.create_entry_block_alloca_typed(self.types.i64_type, "find_i");
         let zero = self.types.i64_type.const_int(0, false);
         let one = self.types.i64_type.const_int(1, false);
         self.builder.build_store(idx_ptr, zero).unwrap();
@@ -42916,10 +42693,7 @@ impl<'ctx> CodeGen<'ctx> {
             &[self.types.i64_type.into(), self.types.i64_type.into()],
             false,
         );
-        let timespec_ptr = self
-            .builder
-            .build_alloca(timespec_type, "timespec")
-            .unwrap();
+        let timespec_ptr = self.create_entry_block_alloca_typed(timespec_type, "timespec");
 
         // Store values
         let sec_ptr = self
