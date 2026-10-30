@@ -1,0 +1,3 @@
+ok unfocused music fades to silence
+ok refocused music fades back
+ok muted music stays muted when focused

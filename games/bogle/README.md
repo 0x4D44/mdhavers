@@ -41,11 +41,12 @@ choose with Enter/Space. Escape during play opens **Resume**, **Restart Level**,
 freeze the simulation and release the mouse. Resume captures it again. Held
 menu keys must be released before they can fire or choose another item.
 
-WASD moves, the mouse and Left/Right arrows turn, E uses doors and the exit and kicks curling stones,
+WASD moves, holding either Shift runs at double speed (the juice bottle's
+boost does not stack with it), the mouse and Left/Right arrows turn, E uses doors and the exit and kicks curling stones,
 Space or left mouse fires, and 1–4 select owned weapons. Hold fire for at
 least 21 tics with the bagpipes, then release to blast; holding 35 tics fires
 automatically. Controls are also available from the title and pause menus.
-Each new level or restart shows its map-authored briefing; press any fresh key or mouse button to begin. The HUD objective advances from finding the airn key to finding the siller key, then reaching the gate. **M** toggles music on every screen.
+Each new level or restart shows its map-authored briefing; press any fresh key or mouse button to begin. The HUD objective advances from finding the airn key to finding the siller key, then reaching the gate. **M** toggles music on every screen. The music fades out while the window is not focused and back in when it is; sound effects keep playing.
 Death offers **Restart** and **Back to Title**. Completing the Gatehouse offers
 the same choices: there is no next level yet. Both screens show elapsed level
 time from the existing 35 Hz tic count; kills are not tracked, and secrets are counted in game state only.
@@ -73,7 +74,7 @@ interpreter CLI accepts only a script filename, so both backends also accept
 the test map, `replays/stage2.txt`, 80, 50, and 35. Each replay row contains a key
 bitmask and mouse delta. Bits are forward 1, back 2, left strafe 4, right strafe
 8, turn left 16, turn right 32, fire 64, use 128, and weapon selections
-256/512/1024/2048. Positive mouse delta turns right. Each hash row
+256/512/1024/2048, and run (Shift) 4096. Positive mouse delta turns right. Each hash row
 is a one-based tic followed by unsigned decimal FNV-1a of the indexed bytes.
 The final tic is hashed even when it falls between sampling intervals.
 `BOGLE_LIMIT` caps a replay prefix; `BOGLE_REQUIRE_EXIT=1` asserts completion

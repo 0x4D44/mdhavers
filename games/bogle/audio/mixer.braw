@@ -312,7 +312,8 @@ dae bogle_music_load(path, oneshot = nae) {
     gie track
 }
 
-dae bogle_music_select(mixer, track, enabled) {
+# An unfocused window fades the music out like the M toggle; effects play on.
+dae bogle_music_select(mixer, track, enabled, focused = aye) {
     ken music = mixer["music"]
     ken changed = (music["track"] == naething) != (track == naething)
     gin music["track"] != naething an track != naething {
@@ -331,7 +332,7 @@ dae bogle_music_select(mixer, track, enabled) {
         music["gain"] = 0
     }
     music["target"] = 0
-    gin enabled {
+    gin enabled an focused {
         music["target"] = 512
     }
 }

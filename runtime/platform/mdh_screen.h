@@ -13,6 +13,7 @@ enum {
 typedef struct {
     bool down[MDH_KEY_COUNT], pressed[MDH_KEY_COUNT];
     bool buttons[3], should_close;
+    bool focused; /* The window has keyboard focus; set by every pump. */
     int64_t x, y;
     double dx, dy; /* Subpixel motion carries over the frame boundary. */
 } MdhScreenInput;

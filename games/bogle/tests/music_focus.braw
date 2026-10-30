@@ -1,0 +1,39 @@
+fetch "games/bogle/audio/mixer"
+
+# An unfocused window fades the music to silence; focus fades it back.
+ken data = bytes(20)
+fer i in 0..4 {
+    bytes_set(data, i, bytes_get(bytes_from_string("BMU1"), i))
+}
+bytes_write_u32be(data, 4, 22050)
+bytes_write_u32be(data, 8, 4)
+bytes_write_u32be(data, 12, 1)
+fer i in 0..4 {
+    bytes_set(data, 16 + i, [255, 127, 0, 128][i])
+}
+write_bytes(".scratch/bogle-music-focus.bmu", data)
+ken track = bogle_music_load(".scratch/bogle-music-focus.bmu")
+mak_siccar track != naething
+ken m = bogle_audio_new()
+bogle_music_select(m, track, aye)
+bogle_audio_mix(m, 600)
+mak_siccar m["music"]["gain"] == 512
+bogle_music_select(m, track, aye, nae)
+mak_siccar m["music"]["target"] == 0
+bogle_audio_mix(m, 512)
+mak_siccar m["music"]["gain"] == 0
+ken quiet = bogle_audio_mix(m, 8)
+fer i in 0..bytes_len(quiet) {
+    mak_siccar bytes_get(quiet, i) == 0
+}
+blether "ok unfocused music fades to silence"
+bogle_music_select(m, track, aye, aye)
+mak_siccar m["music"]["target"] == 512
+bogle_audio_mix(m, 512)
+mak_siccar m["music"]["gain"] == 512
+blether "ok refocused music fades back"
+# Focus never overrides the M toggle.
+bogle_music_select(m, track, nae, aye)
+bogle_audio_mix(m, 512)
+mak_siccar m["music"]["gain"] == 0
+blether "ok muted music stays muted when focused"

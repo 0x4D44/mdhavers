@@ -25,7 +25,7 @@ dae replay_inputs(path) {
             }
             ken keys = map_integer(fields[0])
             ken dx = map_integer(fields[1])
-            gin keys < 0 or keys > 4095 {
+            gin keys < 0 or keys > 8191 {
                 hurl "Replay input oot o range"
             }
             shove(inputs, {"keys": keys, "dx": dx})

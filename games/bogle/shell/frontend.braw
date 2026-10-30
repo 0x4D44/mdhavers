@@ -223,7 +223,7 @@ dae bogle_front_step(ui, dt_ms, input) {
         bogle_front_screen(ui, "pause")
         gie aye
     }
-    keys = bit_an(keys, bit_xor(ui["blocked_keys"], 4095))
+    keys = bit_an(keys, bit_xor(ui["blocked_keys"], 8191))
     # Keep queued rotation bounded even across frames with no due tic.
     ui["pending_dx"] = bogle_angle(ui["pending_dx"] + bogle_angle(input["dx"]))
     ken elapsed = max(0, dt_ms)
@@ -356,7 +356,7 @@ dae bogle_front_render(ui, fb, w, h) {
         bogle_kit_render(canvas, ui["kit_page"])
     } ither gin screen == "controls" {
         bogle_front_text(canvas, 24, "CONTROLS", 15, 2)
-        ken lines = ["WASD - MOVE", "MOUSE OR LEFT RIGHT - TURN", "E - OPEN DOORS AND USE EXIT", "SPACE OR LEFT MOUSE - FIRE", "1-4 - SELECT OWNED WEAPON", "BAGPIPES - HOLD FIRE THEN RELEASE", "ESCAPE - PAUSE OR RESUME", "M - MUSIC ON/OFF", "MENUS - ARROWS OR W S", "ENTER OR SPACE - CHOOSE"]
+        ken lines = ["WASD - MOVE, SHIFT - RUN", "MOUSE OR LEFT RIGHT - TURN", "E - OPEN DOORS AND USE EXIT", "SPACE OR LEFT MOUSE - FIRE", "1-4 - SELECT OWNED WEAPON", "BAGPIPES - HOLD FIRE THEN RELEASE", "ESCAPE - PAUSE OR RESUME", "M - MUSIC ON/OFF", "MENUS - ARROWS OR W S", "ENTER OR SPACE - CHOOSE"]
         ken y = 48
         fer line in lines {
             bogle_front_text(canvas, y, line)

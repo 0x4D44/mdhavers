@@ -208,7 +208,8 @@ void mdh_scr_pump(MdhScreenInput *in) {
         }
     }
     ((void (*)(id, SEL))objc_msgSend)(app, sel_registerName("updateWindows"));
-    if (!((BOOL (*)(id, SEL))objc_msgSend)(window, sel_registerName("isKeyWindow"))) {
+    in->focused = ((BOOL (*)(id, SEL))objc_msgSend)(window, sel_registerName("isKeyWindow"));
+    if (!in->focused) {
         memset(in->down, 0, sizeof(in->down));
         memset(in->buttons, 0, sizeof(in->buttons));
         resync_modifiers = true;

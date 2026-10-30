@@ -243,6 +243,7 @@ blether mouse_down(1)
 blether mouse_down(2)
 blether screen_grab_mouse(aye)
 blether screen_grab_mouse(nae)
+blether screen_focused()
 ken palette = bytes(768)
 ken pixels = bytes(512)
 ken i = 0
@@ -271,7 +272,7 @@ blether screen_close()
         );
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            "naething\nnaething\n256\n2\nnae\nnae\nnae\n0\n0\n0\n0\nnae\nnae\nnae\nnaething\nnaething\nnaething\nnaething\nnaething\nnaething\nnaething\nnaething\nnaething\n"
+            "naething\nnaething\n256\n2\nnae\nnae\nnae\n0\n0\n0\n0\nnae\nnae\nnae\nnaething\nnaething\naye\nnaething\nnaething\nnaething\nnaething\nnaething\nnaething\nnaething\n"
         );
         // Compute expected BGRA independently of the bridge, including all 256 colours.
         let mut bgra = Vec::new();
@@ -329,6 +330,7 @@ blether screen_close()
             ),
             ("mouse_down(1.0)", "mouse_down wants a button frae 0 tae 2"),
             ("screen_grab_mouse(1)", "screen_grab_mouse wants aye or nae"),
+            ("screen_focused()", "Nae windae! Open the screen first"),
             (
                 "screen_open(2, 2, \"again\")",
                 "screen_open: a windae is already open",
@@ -360,7 +362,7 @@ blether screen_close()
         ];
         let mut source = String::new();
         for (index, (call, _)) in cases.iter().enumerate() {
-            if index == 13 {
+            if index == 14 {
                 source.push_str("screen_open(2, 2, \"Arguments\")\n");
             }
             source.push_str(&format!(
@@ -409,6 +411,7 @@ blether screen_close()
             "mouse_dy()",
             "mouse_down(0)",
             "screen_grab_mouse(aye)",
+            "screen_focused()",
         ];
         for call in calls {
             source.push_str(&format!("worker_check(|| {call})\n"));
@@ -467,6 +470,7 @@ fn interpreter_without_graphics_reports_nae_windae_for_every_bridge_name() {
         "mouse_dy()",
         "mouse_down(0)",
         "screen_grab_mouse(aye)",
+        "screen_focused()",
     ] {
         let program = parse(call).expect("parse interpreter bridge call");
         let error = Interpreter::new()

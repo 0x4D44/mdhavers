@@ -94,6 +94,10 @@ dae bogle_frame(dt_ms) {
             keys = keys + 128 * bogle_pow2(weapon)
         }
     }
+    # Either Shift key: native reports both as one "shift".
+    gin key_down("shift") {
+        keys = keys + 4096
+    }
     ken menu = 0
     gin key_down("up") or key_down("w") {
         menu = menu + 1
@@ -178,7 +182,8 @@ dae bogle_sound_frame(events, held = nae) {
     gin bogle_ui["screen"] == "play" {
         track = bogle_music_gatehouse
     }
-    bogle_music_select(bogle_sound, track, bogle_ui["music_enabled"])
+    # The only focus query: this shell alone opens a window.
+    bogle_music_select(bogle_sound, track, bogle_ui["music_enabled"], screen_focused())
     ken needed = max(0, 1323 - sound_queued())
     gin needed > 0 {
         sound_queue(bogle_audio_mix(bogle_sound, needed))

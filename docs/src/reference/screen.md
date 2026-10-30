@@ -83,6 +83,7 @@ functions behave the same, except:
   `nae`, `mouse_x`, `mouse_y`, `mouse_dx` and `mouse_dy` are `0`, and
   `screen_should_close` stays `nae` (it never becomes `aye` by itself).
 - `screen_grab_mouse` checks its argument but changes nothing.
+- `screen_focused` is always `aye`.
 
 `MDH_SCREEN=none` also turns the [sound built-ins](./sound.md) into a null
 device (see there).
@@ -193,6 +194,18 @@ Errors: native `screen_grab_mouse wants aye or nae`, then
 `Nae windae! Open the screen first`; interpreter `screen_grab_mouse() expects
 aye or nae` and `Window not open`.
 
+### `screen_focused()`
+
+`aye` while the window has keyboard focus, `nae` when another window or
+application has it. Natively on macOS this is the window's `isKeyWindow`,
+read on the main thread as the event queue is pumped; the call pumps first, so
+it is current even before the first `screen_shaw`. With `MDH_SCREEN=none` it is
+always `aye`. The interpreter (raylib) uses `IsWindowFocused`. Bogle fades its
+music out while the window is unfocused.
+
+Errors: native `Nae windae! Open the screen first`; interpreter `Window not
+open`.
+
 ## Keyboard
 
 Key state is sampled when the screen polls: after each `screen_shaw` and on
@@ -291,6 +304,7 @@ bogle_close()
 `bogle_init` in `games/bogle/shell/frame.braw` calls
 `screen_open(320, 200, ...)` then `screen_grab_mouse(nae)`. Each frame,
 `bogle_frame` polls `key_down` for W, A, S, D, the arrows, space, E, 1 to 4,
-Enter and Escape (plus `mouse_down(0)` and `mouse_dx()`), steps the game,
+Shift, Enter and Escape (plus `mouse_down(0)` and `mouse_dx()`), asks
+`screen_focused()` whether the music should play, steps the game,
 renders into a `bytes(320 * 200)` indexed framebuffer and calls
 `screen_shaw(bogle_fb, bogle_palette)`. `bogle_close` calls `screen_close()`.

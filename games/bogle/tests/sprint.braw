@@ -1,0 +1,32 @@
+fetch "games/bogle/engine/game"
+fetch "games/bogle/engine/map"
+
+# Shift (input bit 4096) runs at twice walking speed; the juice bottle shares
+# the same doubling rather than stacking with it.
+ken room = map_parse("BOGMAP 1\nv 0 0\nv 1024 0\nv 1024 1024\nv 0 1024\ns 0 128 1 2 192 0 0 0 1 2 3\nt 1 64 512 0 0\n")
+
+dae sprint_distance(keys, speed_tics) {
+    ken g = new_game(room, aye)
+    g["speed_tics"] = speed_tics
+    ken start = g["x"]
+    fer i in 0..20 {
+        tic(g, {"keys": keys, "dx": 0})
+    }
+    gie (g["x"] - start) / 65536
+}
+
+ken walk = sprint_distance(1, 0)
+ken run = sprint_distance(1 + 4096, 0)
+mak_siccar walk == 80
+mak_siccar run == 2 * walk
+blether "ok shift doubles forward speed"
+ken g = new_game(room, aye)
+ken y = g["y"]
+fer i in 0..20 {
+    tic(g, {"keys": 4 + 4096, "dx": 0})
+}
+mak_siccar (g["y"] - y) / 65536 == 160
+blether "ok shift doubles strafing"
+mak_siccar sprint_distance(1, 105) == run
+mak_siccar sprint_distance(1 + 4096, 105) == run
+blether "ok juice and shift share one doubling"

@@ -132,10 +132,16 @@ dae tic(g, input) {
         sideways = sideways - 4
     }
     gin g["gameplay"] {
+        # Sprint (bit 4096, Shift) and the juice bottle share one doubling;
+        # they do not stack.
+        ken fast = bit_an(keys, 4096) != 0
         gin g["speed_tics"] > 0 {
+            fast = aye
+            g["speed_tics"] = g["speed_tics"] - 1
+        }
+        gin fast {
             forward = forward * 2
             sideways = sideways * 2
-            g["speed_tics"] = g["speed_tics"] - 1
         }
         ken terrain = g["map"]["kind"][g["sector"]]
         gin terrain == 3 or terrain == 4 {

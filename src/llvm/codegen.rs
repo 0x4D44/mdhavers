@@ -188,6 +188,7 @@ struct LibcFunctions<'ctx> {
     mouse_dy: FunctionValue<'ctx>,
     mouse_down: FunctionValue<'ctx>,
     screen_grab_mouse: FunctionValue<'ctx>,
+    screen_focused: FunctionValue<'ctx>,
 
     // Audio runtime functions
     soond_stairt: FunctionValue<'ctx>,
@@ -2592,6 +2593,12 @@ impl<'ctx> CodeGen<'ctx> {
             screen_grab_mouse_type,
             Some(Linkage::External),
         );
+        let screen_focused_type = types.value_type.fn_type(&[], false);
+        let screen_focused = module.add_function(
+            "__mdh_screen_focused",
+            screen_focused_type,
+            Some(Linkage::External),
+        );
 
         // Audio runtime functions (MdhValue ABI)
         let audio_0_type = types.value_type.fn_type(&[], false);
@@ -4162,6 +4169,7 @@ impl<'ctx> CodeGen<'ctx> {
             mouse_dy,
             mouse_down,
             screen_grab_mouse,
+            screen_focused,
 
             soond_stairt,
             soond_steek,
@@ -24390,6 +24398,16 @@ impl<'ctx> CodeGen<'ctx> {
                         1,
                         "screen_grab_mouse",
                         "screen_grab_mouse returned void",
+                    );
+                }
+                "screen_focused" => {
+                    self.uses_screen = true;
+                    return self.compile_runtime_call_value_with_arity(
+                        self.libc.screen_focused,
+                        args,
+                        0,
+                        "screen_focused",
+                        "screen_focused returned void",
                     );
                 }
                 "screen_clear" | "draw_pixel" | "draw_rect" | "draw_circle" | "draw_line"

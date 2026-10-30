@@ -18,7 +18,7 @@ dae bogle_front_replay(map_path, replay_path, w, h) {
             gin len(fields) != 4 {
                 hurl "Shell replay wants dt menu keys dx"
             }
-            gin fields[1] < 0 or fields[1] > 63 or fields[2] < 0 or fields[2] > 4095 {
+            gin fields[1] < 0 or fields[1] > 63 or fields[2] < 0 or fields[2] > 8191 {
                 hurl "Shell replay input oot o range"
             }
             ken keep = bogle_front_step(ui, fields[0], {"menu": fields[1], "keys": fields[2], "dx": fields[3]})

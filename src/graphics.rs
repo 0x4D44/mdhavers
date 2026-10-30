@@ -652,6 +652,21 @@ fn register_input_functions(globals: &Rc<RefCell<crate::value::Environment>>) {
             },
         ))),
     );
+
+    // screen_focused - Whether the window has keyboard focus.
+    globals.borrow_mut().define(
+        "screen_focused".to_string(),
+        Value::NativeFunction(Rc::new(NativeFunction::new("screen_focused", 0, |_args| {
+            RAYLIB_HANDLE.with(|h| {
+                let borrowed = h.borrow();
+                if let Some(rl) = borrowed.as_ref() {
+                    Ok(Value::Bool(rl.is_window_focused()))
+                } else {
+                    Err("Window not open".to_string())
+                }
+            })
+        }))),
+    );
 }
 
 #[cfg(feature = "graphics")]
@@ -819,6 +834,7 @@ pub fn register_graphics_functions(
         ("mouse_dy", 0),
         ("mouse_down", 1),
         ("screen_grab_mouse", 1),
+        ("screen_focused", 0),
     ];
     for &(name, arity) in BRIDGE_FUNCTIONS {
         globals.borrow_mut().define(

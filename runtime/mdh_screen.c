@@ -158,3 +158,8 @@ MdhValue __mdh_screen_grab_mouse(MdhValue on) {
     require_open(); if (!offscreen) mdh_scr_grab(on.data != 0);
     return __mdh_make_nil();
 }
+/* MDH_SCREEN=none has no window to lose focus, so it always reports aye. */
+MdhValue __mdh_screen_focused(void) {
+    main_thread(); require_open(); pump();
+    return __mdh_make_bool(offscreen || input.focused);
+}

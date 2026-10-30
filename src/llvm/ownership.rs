@@ -336,6 +336,7 @@ pub const RUNTIME_OWNERSHIP: &[(&str, &str, Ret)] = &[
     ("__mdh_sclaff", "b-", Ret::Fresh),    // a new list; list_push retains the items
     ("__mdh_scottify", "b", Ret::Fresh),   // R1: +1 on every path
     ("__mdh_screen_close", "", Ret::None),
+    ("__mdh_screen_focused", "", Ret::None),
     ("__mdh_screen_grab_mouse", "b", Ret::None),
     ("__mdh_screen_height", "", Ret::None),
     ("__mdh_screen_open", "bbb", Ret::None),
