@@ -96,8 +96,9 @@ map_thing(gatehouse, 18, 1952, 192)
 map_thing(gatehouse, 16, 2000, 192)
 map_thing(gatehouse, 5, 2080, 192)
 map_thing(gatehouse, 2, 2240, 192, 2048)
-# Invisible use trigger in front of the painted exit gate.
-map_thing(gatehouse, 21, 2504, 192, 0, 2)
+# Invisible use trigger on the face of the painted exit gate (wall x 2560),
+# so walking right up to the sign never leaves it behind the player.
+map_thing(gatehouse, 21, 2552, 192, 0, 2)
 # Dressing: stag heads, armour, brazier, thistle, cow portrait, banner, curling stone.
 map_thing(gatehouse, 36, 64, 64)
 map_thing(gatehouse, 31, 624, 328)

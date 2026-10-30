@@ -279,6 +279,15 @@ Only the relevant solid walls are split into 64-unit panels; portals and the
 671-tic gameplay replay stay unchanged. Armour, brazier, thistle and curling
 stone remain blocking sprites.
 
+Playtest scaling: during play the horizon is centred in the 3D view above the
+status bar, not the whole screen. Enemies are drawn at their own world heights
+(gamekeeper and ghost 60 units, midges 48, haggis 36) against the 41-unit eye,
+so a close gamekeeper shows his head. The held weapon takes 4/15 of the width
+and 8/25 of the height. The exit's use trigger sits on the painted gate face,
+so E works when hugging it; the E1M1 replay walks eight more tics to reach it
+(679 tics) and its frame hashes, with the front-end hashes, were re-blessed
+after three-backend agreement.
+
 The old midge buzz overlapped on the E1M1 replay: 29 overlaps and a longest
 continuous 3.69 seconds. It is now a quiet 1800-sample noise flutter, shorter
 than the seven-tic retrigger interval; the same replay has zero overlaps and

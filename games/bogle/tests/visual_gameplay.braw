@@ -8,6 +8,8 @@ map_thing(visual_map, 1, 64, 128)
 ken visual_g = new_game(validate(visual_map))
 fixture_identity(visual_g)
 visual_g["gameplay"] = aye
+# In play the horizon sits mid-way down the 3D view (rows 0-30 above the
+# 19-row status bar at 80x50), so probes sit around row 15.
 visual_g["actors"] = []
 ken visual_art = bogle_gameplay_assets()
 visual_art["pick_oatcake"] = fixture_fill(6144, 177)
@@ -17,16 +19,18 @@ ken visual_actor = {"kind": 10, "x": 192 * 65536, "y": 128 * 65536, "z": 0, "sec
 shove(visual_g["actors"], visual_actor)
 ken visual_fb = bytes(4000)
 bogle_render(visual_g, visual_fb, 80, 50)
-mak_siccar bytes_get(visual_fb, 32 * 80 + 40) == 177
+mak_siccar bytes_get(visual_fb, 22 * 80 + 40) == 177
 visual_actor["active"] = nae
 bogle_render(visual_g, visual_fb, 80, 50)
-mak_siccar bytes_get(visual_fb, 32 * 80 + 40) == 7
+mak_siccar bytes_get(visual_fb, 22 * 80 + 40) == 7
 blether "ok dynamic pickup visibility follows actor activity"
 visual_actor["active"] = aye
 visual_actor["kind"] = 4
 bogle_render(visual_g, visual_fb, 80, 50)
-mak_siccar bytes_get(visual_fb, 20 * 80 + 40) == 188
-mak_siccar bytes_get(visual_fb, 20 * 80 + 41) == 7
+mak_siccar bytes_get(visual_fb, 18 * 80 + 40) == 188
+mak_siccar bytes_get(visual_fb, 18 * 80 + 41) == 7
+# A 60-unit ghost stops below the top of the view (head room above it).
+mak_siccar bytes_get(visual_fb, 9 * 80 + 40) == 7
 blether "ok dynamic ghosts draw alternate columns"
 visual_g["health"] = 100
 visual_g["spirit"] = 25
@@ -44,6 +48,8 @@ ken visual_screen = bytes(64000)
 bogle_overlay(visual_g, visual_screen, 320, 200)
 mak_siccar bytes_get(visual_screen, 120 * 320 + 160) == 199
 mak_siccar bytes_get(visual_screen, 199 * 320) == 2
+# The held weapon is 64 rows tall, sitting on the status bar (top at row 92).
+mak_siccar bytes_get(visual_screen, 80 * 320 + 160) == 0
 visual_g["cooldown"] = 1
 bogle_overlay(visual_g, visual_screen, 320, 200)
 mak_siccar bytes_get(visual_screen, 120 * 320 + 160) == 211
@@ -71,7 +77,7 @@ visual_g["projectiles"] = [{"kind": "sizzle", "x": 192 * 65536, "y": 128 * 65536
 visual_art["prj_mars_bar"] = fixture_fill(6144, 195)
 visual_art["prj_mars_splat"] = fixture_fill(6144, 183)
 bogle_render(visual_g, visual_fb, 80, 50)
-mak_siccar bytes_get(visual_fb, 36 * 80 + 40) == 183
-mak_siccar bytes_get(visual_fb, 36 * 80 + 36) == 183
-mak_siccar bytes_get(visual_fb, 35 * 80 + 40) == 7
+mak_siccar bytes_get(visual_fb, 26 * 80 + 40) == 183
+mak_siccar bytes_get(visual_fb, 26 * 80 + 36) == 183
+mak_siccar bytes_get(visual_fb, 25 * 80 + 40) == 7
 blether "ok Mars sizzle draws a low wide floor splat"

@@ -188,13 +188,17 @@ dae bogle_sprites(g, fb, w, h, visible, drawsegs, cosine, sine) {
         sprites[at] = [actor, z, view_x]
     }
     ken focal = w / 2
-    ken horizon = h / 2
+    ken horizon = bogle_horizon(g, w, h)
     fer sprite in sprites {
         ken actor = sprite[0]
         ken z = sprite[1]
         ken centre = focal + sprite[2] * focal / z
         ken world_height = 6291456
         ken world_half = 2097152
+        gin dynamic an actor["kind"] >= 2 an actor["kind"] <= 5 {
+            world_height = bogle_actor_height(actor["kind"]) * 65536
+            world_half = world_height / 3
+        }
         gin dynamic an actor["kind"] >= 10 an actor["kind"] <= 20 {
             world_height = 2097152
             world_half = 1048576
@@ -286,7 +290,7 @@ dae bogle_render(g, fb, w, h) {
     ken py = g["y"]
     ken eye = g["view_z"]
     ken focal = w / 2
-    ken horizon = h / 2
+    ken horizon = bogle_horizon(g, w, h)
     ken ytop = []
     ken ybot = []
     ken scales = []
@@ -684,8 +688,8 @@ dae bogle_overlay(g, fb, w, h) {
     }
     ken scale = max(1, min(w / 320, h / 200))
     ken hud = bogle_hud_height(w, h)
-    ken weapon_width = max(1, w * 2 / 5)
-    ken weapon_height = max(1, h * 12 / 25)
+    ken weapon_width = max(1, w * 4 / 15)
+    ken weapon_height = max(1, h * 8 / 25)
     ken left = (w - weapon_width) / 2
     ken top = h - hud - weapon_height
     gin g["health"] > 0 {
@@ -745,6 +749,30 @@ dae bogle_hud_weapon_ink(g, weapon) {
         gie 15
     }
     gie 13
+}
+
+# The 3D view ends above the status bar in play, so centre the horizon in
+# what is visible; renderer-only maps have no bar and use the full height.
+dae bogle_horizon(g, w, h) {
+    gin contains(g, "gameplay") an g["gameplay"] {
+        gie (h - bogle_hud_height(w, h)) / 2
+    }
+    gie h / 2
+}
+
+# Enemy heights in map units against a 41-unit eye. Sprites are 2:3, so each
+# is a third of its height either side of centre.
+dae bogle_actor_height(kind) {
+    gin kind == 2 {
+        gie 60
+    }
+    gin kind == 3 {
+        gie 36
+    }
+    gin kind == 4 {
+        gie 60
+    }
+    gie 48
 }
 
 dae bogle_hud_height(w, h) {

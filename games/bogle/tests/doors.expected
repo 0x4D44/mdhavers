@@ -3,3 +3,4 @@ ok door hold and safe close
 ok silver key differs from iron
 ok exit lever use
 ok door use includes exact 64 unit endpoint
+ok exit gate usable when hugging the wall

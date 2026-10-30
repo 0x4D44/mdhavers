@@ -47,3 +47,16 @@ g["keys"] = 1
 doors_tick(g, aye)
 mak_siccar g["doors"][0]["state"] == "opening"
 blether "ok door use includes exact 64 unit endpoint"
+
+# Pressing the painted Win Oot gate while hugging it must still count: the
+# trigger sits on the wall face, so the player is never past it.
+g = new_game(load_map("games/bogle/data/e1m1.map"), aye)
+g["sector"] = 42
+g["x"] = 2544 * 65536
+g["y"] = 192 * 65536
+g["z"] = g["map"]["floor_h"][42] * 65536
+g["view_z"] = g["z"] + 2686976
+g["angle"] = bogle_angle(0)
+doors_tick(g, aye)
+mak_siccar g["won"]
+blether "ok exit gate usable when hugging the wall"
