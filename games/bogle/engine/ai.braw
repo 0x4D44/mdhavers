@@ -1,6 +1,7 @@
 fetch "games/bogle/engine/weapons"
 fetch "games/bogle/engine/things"
 fetch "games/bogle/engine/map"
+fetch "games/bogle/engine/trig"
 
 # Return an integer fixed velocity, preserving sub-unit differences near targets.
 dae actor_towards(a, x, y, speed) {
@@ -11,6 +12,13 @@ dae actor_towards(a, x, y, speed) {
         gie [0, 0]
     }
     gie [dx * speed / distance / 65536, dy * speed / distance / 65536]
+}
+
+# Facing is render-only state: it never feeds back into simulation.
+dae actor_face(g, a, dx, dy) {
+    gin dx != 0 or dy != 0 {
+        a["facing"] = bogle_atan2(g["sin"], dx, dy)
+    }
 }
 
 dae ghost_move(g, a, dx, dy) {
@@ -36,6 +44,7 @@ dae ai_tick(g) {
     fer a in g["actors"] {
         gin a["active"] an a["kind"] >= 2 an a["kind"] <= 5 {
             gin a["state"] == "stunned" {
+                actor_face(g, a, g["x"] - a["x"], g["y"] - a["y"])
                 a["timer"] = a["timer"] - 1
                 gin a["timer"] <= 0 {
                     a["state"] = "chase"
@@ -48,6 +57,7 @@ dae ai_tick(g) {
                 ken kind = a["kind"]
                 gin kind == 2 {
                     gin a["state"] == "windup" or a["state"] == "fists" {
+                        actor_face(g, a, g["x"] - a["x"], g["y"] - a["y"])
                         a["timer"] = a["timer"] - 1
                         gin a["timer"] <= 0 {
                             a["state"] = "charge"
@@ -72,6 +82,7 @@ dae ai_tick(g) {
                                 a["dx"] = (a["dx"] * 3 + aim[0]) / 4
                                 a["dy"] = (a["dy"] * 3 + aim[1]) / 4
                             }
+                            actor_face(g, a, a["dx"], a["dy"])
                             gin nae actor_move(g, a, a["dx"], a["dy"]) {
                                 a["state"] = "stunned"
                                 a["timer"] = 35
@@ -83,6 +94,7 @@ dae ai_tick(g) {
                             a["dx"] = velocity[0]
                             a["dy"] = velocity[1]
                             bogle_emit_sound(g, "gamekeeper")
+                            actor_face(g, a, g["x"] - a["x"], g["y"] - a["y"])
                             a["state"] = "windup"
                             a["timer"] = 18
                             gin nae a["seen_player"] {
@@ -98,6 +110,7 @@ dae ai_tick(g) {
                                 a["timer"] = 35
                             }
                             a["timer"] = a["timer"] - 1
+                            a["facing"] = bogle_angle(a["angle"])
                             gin nae actor_move(g, a, bogle_cos(g["sin"], a["angle"]), bogle_sin(g["sin"], a["angle"])) {
                                 a["timer"] = 0
                             }

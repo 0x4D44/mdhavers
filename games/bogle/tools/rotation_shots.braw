@@ -1,0 +1,27 @@
+# Review captures of the gamekeeper's eight-way views. Create .scratch/rotshots first.
+# The player looks east; screen right is angle 3072, so a keeper facing 3072
+# walks to the viewer's right and must show his profile facing right.
+fetch "games/bogle/engine/game"
+fetch "games/bogle/engine/map"
+
+ken rot_room = "BOGMAP 1\nv 0 0\nv 512 0\nv 512 256\nv 0 256\ns 0 128 1 2 192 0 0 0 1 2 3\nt 1 64 128 0 0\nt 2 176 128 0 0\n"
+ken rot_g = new_game(map_parse(rot_room), aye)
+ken rot_keeper = rot_g["actors"][0]
+ken palette = make_palette()
+fer shot in [["front", 2048, "idle"], ["front_3q_right", 2560, "idle"], ["profile_right", 3072, "patrol"], ["back_3q_right", 3584, "patrol"], ["back", 0, "patrol"], ["back_3q_left", 512, "patrol"], ["profile_left", 1024, "patrol"], ["front_3q_left", 1536, "charge"]] {
+    rot_keeper["facing"] = shot[1]
+    rot_keeper["state"] = shot[2]
+    ken fb = bytes(320 * 200)
+    bogle_render(rot_g, fb, 320, 200)
+    ken ppm = bytes_from_string("P6\n320 200\n255\n")
+    ken rgb = bytes(320 * 200 * 3)
+    fer pixel in 0..320 * 200 {
+        ken ink = bytes_get(fb, pixel)
+        fer channel in 0..3 {
+            bytes_set(rgb, pixel * 3 + channel, bytes_get(palette, ink * 3 + channel))
+        }
+    }
+    bytes_append(ppm, rgb)
+    write_bytes(".scratch/rotshots/" + shot[0] + ".ppm", ppm)
+    blether shot[0] + " facing " + tae_string(shot[1]) + " octant " + tae_string(bogle_sprite_octant(rot_g["sin"], shot[1], rot_keeper["x"], rot_keeper["y"], rot_g["x"], rot_g["y"]))
+}

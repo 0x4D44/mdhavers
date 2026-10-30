@@ -1,0 +1,14 @@
+octants for viewers at 0..7 eighths: [0, 7, 6, 5, 4, 3, 2, 1]
+atan2 axes and diagonals: [0, 1024, 2048, 3072, 512, 2560, 0]
+walking screen-right octant 2, screen-left octant 6
+rendered left/right colours by octant: [[100, 101], [120, 121], [130, 131], [140, 141], [150, 151], [141, 140], [131, 130], [121, 120]]
+walk1 views: [[spr_gamekeeper_walk1, nae], [spr_gamekeeper_walk1_a2, nae], [spr_gamekeeper_walk1_a3, nae], [spr_gamekeeper_walk1_a4, nae], [spr_gamekeeper_walk1_a5, nae], [spr_gamekeeper_walk1_a4, aye], [spr_gamekeeper_walk1_a3, aye], [spr_gamekeeper_walk1_a2, aye]]
+screen-right walker is right of centre showing A3 unmirrored: aye
+fists face player 2048, turns as player moves 3072
+charge faces its steered dx/dy: aye
+patrol faces its angle: aye
+pain from behind [160, 161], haggis from behind [170, 171], side [170, 171]
+selection ok: aye
+mirror ok: aye
+facing ok: aye
+fixed views ok: aye

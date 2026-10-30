@@ -1,0 +1,135 @@
+# Doom-style eight-way sprite rotations, piloted on the gamekeeper.
+fetch "games/bogle/engine/game"
+fetch "games/bogle/engine/map"
+fetch "games/bogle/tools/render_fixtures"
+
+ken rot_room = "BOGMAP 1\nv 0 0\nv 512 0\nv 512 256\nv 0 256\ns 0 128 1 2 192 0 0 0 1 2 3\nt 1 64 128 0 0\n"
+ken table = load_trig()
+
+# 1. Octant selection: viewers at eight compass points round a keeper facing east
+# (angle 0). Octant 0 is the front; the facing swings to the viewer's right as it rises.
+ken octants = []
+fer k in 0..8 {
+    ken a = k * 512
+    ken vx = 1000 * 65536 + bogle_cos(table, a) * 200
+    ken vy = 1000 * 65536 + bogle_sin(table, a) * 200
+    shove(octants, bogle_sprite_octant(table, 0, 1000 * 65536, 1000 * 65536, vx, vy))
+}
+blether "octants for viewers at 0..7 eighths: " + tae_string(octants)
+ken atans = [bogle_atan2(table, 5, 0), bogle_atan2(table, 0, 5), bogle_atan2(table, -5, 0), bogle_atan2(table, 0, -5), bogle_atan2(table, 7, 7), bogle_atan2(table, -7, -7), bogle_atan2(table, 0, 0)]
+blether "atan2 axes and diagonals: " + tae_string(atans)
+# Handedness: from a player looking east, screen right is angle 3072 (view_x > 0
+# when dy < 0). A keeper walking that way shows A3, the profile facing right.
+ken right_octant = bogle_sprite_octant(table, 3072, 192 * 65536, 128 * 65536, 64 * 65536, 128 * 65536)
+ken left_octant = bogle_sprite_octant(table, 1024, 192 * 65536, 128 * 65536, 64 * 65536, 128 * 65536)
+blether "walking screen-right octant " + tae_string(right_octant) + ", screen-left octant " + tae_string(left_octant)
+ken select_ok = octants == [0, 7, 6, 5, 4, 3, 2, 1] an atans == [0, 1024, 2048, 3072, 512, 2560, 0] an right_octant == 2 an left_octant == 6
+
+# Render probes: each view gets a two-tone test texture (left half, right half).
+ken rg = new_game(map_parse(rot_room), aye)
+fixture_identity(rg)
+rg["actors"] = []
+ken art = bogle_gameplay_assets()
+dae two_tone(left, right) {
+    ken data = bytes(6144)
+    fer i in 0..6144 {
+        gin i < 3072 {
+            bytes_set(data, i, left)
+        } ither {
+            bytes_set(data, i, right)
+        }
+    }
+    gie data
+}
+art["spr_gamekeeper_idle"] = two_tone(100, 101)
+art["spr_gamekeeper_idle_a2"] = two_tone(120, 121)
+art["spr_gamekeeper_idle_a3"] = two_tone(130, 131)
+art["spr_gamekeeper_idle_a4"] = two_tone(140, 141)
+art["spr_gamekeeper_idle_a5"] = two_tone(150, 151)
+art["spr_gamekeeper_pain"] = two_tone(160, 161)
+art["spr_haggis_idle"] = two_tone(170, 171)
+ken keeper = {"kind": 2, "x": 192 * 65536, "y": 128 * 65536, "z": 0, "sector": 0, "state": "idle", "active": aye, "facing": 0}
+shove(rg["actors"], keeper)
+ken fb = bytes(4000)
+dae probe(g, fb, facing, row = 15, left = 37, right = 43) {
+    g["actors"][0]["facing"] = facing
+    bogle_render(g, fb, 80, 50)
+    gie [bytes_get(fb, row * 80 + left), bytes_get(fb, row * 80 + right)]
+}
+
+# 2. Mirrored octants draw the mirrored image: the viewer is at angle 2048 from
+# the keeper, so facing 2048 + 512k is octant k.
+ken seen = []
+fer k in 0..8 {
+    shove(seen, probe(rg, fb, 2048 + k * 512))
+}
+blether "rendered left/right colours by octant: " + tae_string(seen)
+ken mirror_ok = seen == [[100, 101], [120, 121], [130, 131], [140, 141], [150, 151], [141, 140], [131, 130], [121, 120]]
+ken views = []
+fer k in 0..8 {
+    shove(views, bogle_sprite_view(art, "spr_gamekeeper_walk1", k))
+}
+blether "walk1 views: " + tae_string(views)
+mirror_ok = mirror_ok an views[5] == ["spr_gamekeeper_walk1_a4", aye] an views[6] == ["spr_gamekeeper_walk1_a3", aye] an views[7] == ["spr_gamekeeper_walk1_a2", aye] an views[2] == ["spr_gamekeeper_walk1_a3", nae]
+# A keeper stepping towards screen right lands right of centre and shows A3 as drawn.
+keeper["y"] = 100 * 65536
+ken stepped = probe(rg, fb, 3072)
+ken right_side = bytes_get(fb, 15 * 80 + 37) != 130 an bytes_get(fb, 15 * 80 + 47) == 130
+blether "screen-right walker is right of centre showing A3 unmirrored: " + tae_string(right_side)
+mirror_ok = mirror_ok an right_side
+keeper["y"] = 128 * 65536
+
+# 3. Facing follows movement and turns to the player during windup.
+ken pg = new_game(map_parse(rot_room + "t 2 224 128 0 0\n"), aye)
+ken k2 = pg["actors"][0]
+ken face_ok = k2["facing"] == 0
+ai_tick(pg)
+ken fists_face = k2["facing"]
+pg["x"] = 224 * 65536
+pg["y"] = 32 * 65536
+ai_tick(pg)
+ken turned = k2["facing"]
+blether "fists face player " + tae_string(fists_face) + ", turns as player moves " + tae_string(turned)
+face_ok = face_ok an k2["state"] == "fists" an fists_face == 2048 an turned == 3072
+fer i in 0..40 {
+    gin k2["state"] != "charge" {
+        ai_tick(pg)
+    }
+}
+pg["x"] = 64 * 65536
+pg["y"] = 200 * 65536
+ai_tick(pg)
+ken charge_ok = k2["state"] == "charge" an k2["facing"] == bogle_atan2(pg["sin"], k2["dx"], k2["dy"]) an k2["dx"] != 0
+blether "charge faces its steered dx/dy: " + tae_string(charge_ok)
+face_ok = face_ok an charge_ok
+# A keeper in a sealed second room cannot see the player and patrols along its angle.
+ken sealed = "BOGMAP 1\nv 0 0\nv 256 0\nv 256 256\nv 0 256\nv 512 0\nv 512 256\ns 0 128 1 2 192 0 0 0 1 2 3\ns 0 128 1 2 192 0 0 1 4 5 2\nt 1 400 64 0 0\nt 2 128 64 0 0\n"
+ken sg = new_game(map_parse(sealed), aye)
+sg["map"]["portal"][1] = -1
+sg["map"]["portal"][7] = -1
+ken k3 = sg["actors"][0]
+ken x0 = k3["x"]
+ai_tick(sg)
+ken patrol_ok = k3["state"] == "patrol" an k3["facing"] == k3["angle"] an k3["angle"] != 0 an k3["x"] != x0
+blether "patrol faces its angle: " + tae_string(patrol_ok)
+face_ok = face_ok an patrol_ok
+
+# 4. Non-rotating kinds and poses are unchanged whatever the facing.
+keeper["state"] = "pain"
+ken pain_back = probe(rg, fb, 0)
+keeper["state"] = "idle"
+keeper["kind"] = 3
+ken haggis_back = probe(rg, fb, 0, 22, 38, 41)
+ken haggis_side = probe(rg, fb, 1024, 22, 38, 41)
+blether "pain from behind " + tae_string(pain_back) + ", haggis from behind " + tae_string(haggis_back) + ", side " + tae_string(haggis_side)
+ken fixed_ok = pain_back == [160, 161] an haggis_back == [170, 171] an haggis_side == haggis_back
+fixed_ok = fixed_ok an bogle_sprite_view(art, "spr_gamekeeper_pain", 3) == ["spr_gamekeeper_pain", nae] an bogle_sprite_view(art, "spr_haggis_walk1", 5) == ["spr_haggis_walk1", nae] an bogle_sprite_view(art, "spr_gamekeeper_death2", 4) == ["spr_gamekeeper_death2", nae]
+
+blether "selection ok: " + tae_string(select_ok)
+blether "mirror ok: " + tae_string(mirror_ok)
+blether "facing ok: " + tae_string(face_ok)
+blether "fixed views ok: " + tae_string(fixed_ok)
+mak_siccar select_ok
+mak_siccar mirror_ok
+mak_siccar face_ok
+mak_siccar fixed_ok

@@ -2607,3 +2607,237 @@ All five backgrounds are visually flat near-magenta. Every measured clear-matte 
 All 72 pre-existing PNGs are unchanged against their starting SHA-256 hashes. No cargo or git write commands were run; no code was written outside `.scratch`. Full prompts, baseline hashes and per-file numerical reviews are also saved under `.scratch/art3-session2/`.
 
 All ten manifest assets now exist. **Zero manifest lines remain.** Batch 3 (stage 5b) source-art generation is complete.
+## Rotation pilot (walk2)
+
+### spr_gamekeeper_walk2_a3.png
+
+Attempt 1 — rejected; its soles floated above the bottom edge.
+
+Reference images: walk2 front sprite as edit target; walk1_a3 profile, idle_a5 back view and idle_a2 three-quarter view as style/rotation references.
+
+256×256 review: Profile orientation, walk2 stride, outfit and painted character passed. Rejected because the soles remained above the lower edge; the outer four-pixel border had no figure pixels.
+
+Background check: corners TL,TR,BL,BR: (241, 8, 244), (248, 10, 245), (242, 19, 241), (246, 18, 246); non-key pixels in outer 4px border: 0; all clear background pixels key.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game: chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even, flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border. Affectionate and silly, never gory.
+
+Edit target: reference image 1, spr_gamekeeper_walk2.png, is the exact front frame for this walk pose. Make a single rotation-view sprite of the same stocky red-bearded gamekeeper. Preserve his huge orange-red beard and eyebrows, broad nose, brown deerstalker, moss-green tartan tweed waistcoat over a cream rolled-sleeve shirt, red tartan kilt and tan sporran, green socks with red flashes, chunky brown boots, hooked shepherd's crook, bold charcoal outlines, broad painted facets, colours, proportions and scale. Keep the crook and both complete boots inside the square; the boot soles meet the bottom edge.
+
+A3 rotation: full side profile facing the viewer's RIGHT, with his nose and gaze clearly pointing toward the image's right edge. Preserve walk2's alternate stride: the same leg-forward/leg-trailing arrangement as walk2, swapped from walk1. Turn the whole torso and head into profile; do not make this a front or three-quarter view. Keep the same walking posture and crook carry from walk2 as natural for the rotated angle.
+
+Use reference image 2, spr_gamekeeper_walk1_a3.png, as the accepted profile style and rotation-view reference. Use reference images 3 and 4, spr_gamekeeper_idle_a5.png and spr_gamekeeper_idle_a2.png, only as additional identity, outfit and painted-style references.
+
+Square 1:1 production animation sprite for Bogle Castle. Show the whole figure and crook fully inside the canvas, with clear magenta room above and beside the hat and crook. The lowest complete boot soles are at the bottom edge without clipped outlines. The backdrop is a visually flat opaque magenta #FF00FF chroma-key matte, with every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps between limbs and crook. Keep painted shading and texture inside the outlined figure and crook. No ground, floor, scenery, cast shadow, gradient, vignette, glow, transparency or checkerboard. No lettering, text, numbers, symbols, logos, border, signature, watermark or gore.
+~~~
+
+### spr_gamekeeper_walk2_a4.png
+
+Attempt 1 — rejected; its soles floated above the bottom edge.
+
+Reference images: walk2 front sprite as edit target; walk1_a3 profile, idle_a5 back view and idle_a2 three-quarter view as style/rotation references.
+
+256×256 review: Back-three-quarter view, head direction, stride, crook, outfit and painted character passed. Rejected because the soles remained above the lower edge; the outer four-pixel border had no figure pixels.
+
+Background check: corners TL,TR,BL,BR: (247, 9, 246), (249, 12, 245), (246, 19, 241), (247, 16, 245); non-key pixels in outer 4px border: 0; all clear background pixels key.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game: chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even, flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border. Affectionate and silly, never gory.
+
+Edit target: reference image 1, spr_gamekeeper_walk2.png, is the exact front frame for this walk pose. Make a single rotation-view sprite of the same stocky red-bearded gamekeeper. Preserve his huge orange-red beard and eyebrows, broad nose, brown deerstalker, moss-green tartan tweed waistcoat over a cream rolled-sleeve shirt, red tartan kilt and tan sporran, green socks with red flashes, chunky brown boots, hooked shepherd's crook, bold charcoal outlines, broad painted facets, colours, proportions and scale. Keep the crook and both complete boots inside the square; the boot soles meet the bottom edge.
+
+A4 rotation: back-three-quarter view, between side profile and straight back. Turn his body away so the back and one side of his waistcoat and kilt are clearly visible. His face is turned away toward the viewer's RIGHT; show the rear of the deerstalker and only at most a narrow beard/cheek edge, with no forward-looking eyes. Preserve walk2's alternate stride: the same leg-forward/leg-trailing arrangement as walk2, swapped from walk1. Keep the same walking posture and crook carry from walk2, in the same anatomical hand.
+
+Use reference image 2, spr_gamekeeper_walk1_a3.png, as an accepted rotation-view style reference. Use reference image 3, spr_gamekeeper_idle_a5.png, for the rear outfit, crook and hat details. Use reference image 4, spr_gamekeeper_idle_a2.png, only as an additional identity and painted-style reference.
+
+Square 1:1 production animation sprite for Bogle Castle. Show the whole figure and crook fully inside the canvas, with clear magenta room above and beside the hat and crook. The lowest complete boot soles are at the bottom edge without clipped outlines. The backdrop is a visually flat opaque magenta #FF00FF chroma-key matte, with every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps between limbs and crook. Keep painted shading and texture inside the outlined figure and crook. No ground, floor, scenery, cast shadow, gradient, vignette, glow, transparency or checkerboard. No lettering, text, numbers, symbols, logos, border, signature, watermark or gore.
+~~~
+
+### spr_gamekeeper_walk2_a5.png
+
+Attempt 1 — rejected; its soles stopped three rows above the bottom edge.
+
+Reference images: walk2 front sprite as edit target; walk1_a3 profile, idle_a5 back view and idle_a2 three-quarter view as style/rotation references.
+
+256×256 review: Straight back view, rear outfit, alternate stride, crook and painted character passed. Rejected because the three non-key pixels at y=252 left rows 253–255 below the boot soles.
+
+Background check: corners TL,TR,BL,BR: (247, 7, 247), (249, 10, 246), (245, 17, 241), (247, 16, 245); non-key pixels in outer 4px border: 3, at (102,252), (103,252), (104,252) along the lower silhouette; all clear background pixels key.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game: chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even, flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border. Affectionate and silly, never gory.
+
+Edit target: reference image 1, spr_gamekeeper_walk2.png, is the exact front frame for this walk pose. Make a single rotation-view sprite of the same stocky red-bearded gamekeeper. Preserve his huge orange-red beard and eyebrows, broad nose, brown deerstalker, moss-green tartan tweed waistcoat over a cream rolled-sleeve shirt, red tartan kilt and tan sporran, green socks with red flashes, chunky brown boots, hooked shepherd's crook, bold charcoal outlines, broad painted facets, colours, proportions and scale. Keep the crook and both complete boots inside the square; the boot soles meet the bottom edge.
+
+A5 rotation: straight back view, centred and symmetrical, with his whole body facing directly away from the viewer. Show the rear of the deerstalker, orange-red hair and beard only around the sides, the full back of the moss-green tartan tweed waistcoat, the red tartan kilt, both green socks and both brown boots. No face or eyes are visible. Preserve walk2's alternate walking stride and the same leg-forward/leg-trailing arrangement; do not turn this into a stationary idle stance or use walk1's swapped stride. Carry the hooked crook upright beside him on the viewer's RIGHT, matching the existing back-view reference; it may cross to the other hand for this straight-back view.
+
+Use reference image 2, spr_gamekeeper_walk1_a3.png, only as an accepted rotation-view style reference. Use reference image 3, spr_gamekeeper_idle_a5.png, for the straight-back outfit, hat, crook and rotation details. Use reference image 4, spr_gamekeeper_idle_a2.png, only as an additional identity and painted-style reference.
+
+Square 1:1 production animation sprite for Bogle Castle. Show the whole figure and crook fully inside the canvas, with clear magenta room above and beside the hat and crook. The lowest complete boot soles are at the bottom edge without clipped outlines. The backdrop is a visually flat opaque magenta #FF00FF chroma-key matte, with every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps between limbs and crook. Keep painted shading and texture inside the outlined figure and crook. No ground, floor, scenery, cast shadow, gradient, vignette, glow, transparency or checkerboard. No lettering, text, numbers, symbols, logos, border, signature, watermark or gore.
+~~~
+ 
+### Additional attempts
+
+#### spr_gamekeeper_walk2_a3.png — attempt 2
+
+Attempt 2 — rejected.
+
+The full profile and character remained clear, but the soles still floated above the bottom edge; not used for the final sprite. Background passed: corners TL,TR,BL,BR (244, 8, 246), (248, 11, 245), (242, 19, 241), (246, 17, 244); outer 4px non-key count 0.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game: chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even, flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border. Affectionate and silly, never gory.
+
+Edit target: reference image 1, spr_gamekeeper_walk2.png, is the exact front frame for this walk pose. Make a single rotation-view sprite of the same stocky red-bearded gamekeeper. Preserve his huge orange-red beard and eyebrows, broad nose, brown deerstalker, moss-green tartan tweed waistcoat over a cream rolled-sleeve shirt, red tartan kilt and tan sporran, green socks with red flashes, chunky brown boots, hooked shepherd's crook, bold charcoal outlines, broad painted facets, colours, proportions and scale. Keep the crook and both complete boots inside the square.
+
+A3 rotation: full side profile facing the viewer's RIGHT, with his nose and gaze clearly pointing toward the image's right edge. Preserve walk2's alternate stride: the same leg-forward/leg-trailing arrangement as walk2, swapped from walk1. Turn the whole torso and head into profile; do not make this a front or three-quarter view. Keep the same walking posture and crook carry from walk2 as natural for the rotated angle.
+
+Use reference image 2, spr_gamekeeper_walk1_a3.png, as the accepted profile style and rotation-view reference. Use reference images 3 and 4, spr_gamekeeper_idle_a5.png and spr_gamekeeper_idle_a2.png, only as additional identity, outfit and painted-style references.
+
+Square 1:1 production animation sprite for Bogle Castle. Keep the established sprite scale and show the whole figure and crook fully inside the canvas. Framing is critical: both complete boot soles must touch the bottom border of the square, with no magenta row or gap underneath, while the sole outlines remain uncut. Do not shrink or float the figure to leave bottom margin. The backdrop is a visually flat opaque magenta #FF00FF chroma-key matte, with every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps between limbs and crook. Keep painted shading and texture inside the outlined figure and crook. No ground, floor, scenery, cast shadow, gradient, vignette, glow, transparency or checkerboard. No lettering, text, numbers, symbols, logos, border, signature, watermark or gore.
+~~~
+
+#### spr_gamekeeper_walk2_a3.png — attempt 3
+
+Attempt 3 — accepted (final).
+
+Framing now reaches the bottom row while preserving the right-facing profile and stride. Background passed: corners TL,TR,BL,BR (244, 9, 244), (249, 11, 245), (243, 19, 242), (247, 15, 245); outer 4px non-key count 188, including 2 boot-outline pixels at row 255.
+
+Full prompt (verbatim):
+
+~~~text
+Edit reference image 2, the first A3 rotation attempt, with the smallest possible change. Reference image 1, spr_gamekeeper_walk2.png, is the authoritative identity, outfit, colour and original walk-pose reference. Keep the exact same gamekeeper, full side-profile orientation facing the viewer's RIGHT, walk2 alternate stride, crook, clothing, silhouette, scale, painted facets, outlines and flat magenta background seen in reference image 2. Do not change the pose, face, outfit, crook hand, camera angle or art style.
+
+Make only a vertical framing correction: move the complete figure and crook down slightly within the square so both full boot sole outlines touch the bottom border exactly, with no magenta row below them. Preserve every sole outline without cropping it. Keep the hat, crook hook, hands and entire figure inside the canvas. Do not add a floor, shadow or any object.
+
+The backdrop is a visually flat opaque magenta #FF00FF chroma-key matte, with every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps between limbs and crook. No ground, floor, scenery, cast shadow, gradient, vignette, glow, transparency, checkerboard, lettering, text, numbers, symbols, logos, border, signature, watermark or gore.
+~~~
+
+#### spr_gamekeeper_walk2_a4.png — attempt 2
+
+Attempt 2 — accepted (final).
+
+Back-three-quarter view and away-turned head are retained; the full boot soles now meet the bottom border. Background passed: corners TL,TR,BL,BR (247, 9, 246), (249, 9, 245), (244, 16, 240), (247, 17, 245); outer 4px non-key count 320, including 67 figure pixels at row 255.
+
+Full prompt (verbatim):
+
+~~~text
+Edit reference image 2, the current A4 rotation view. Reference image 1, spr_gamekeeper_walk2.png, is the authoritative identity, outfit, colour and original walk-pose reference. Keep the exact same gamekeeper, back-three-quarter rotation, head turned away toward the viewer's RIGHT, walk2 alternate stride, crook, clothing, silhouette, scale, painted facets, outlines and flat magenta background seen in reference image 2. Do not change his pose, orientation, face visibility, outfit, crook hand or art style.
+
+Make only a vertical framing correction: move the complete figure and crook down within the square so the lowest complete boot sole outline touches the bottom border, with no magenta row below it. Preserve the full sole outline without cropping it. Keep the hat, crook hook, hands and entire figure inside the canvas. Do not add a floor, shadow or any object.
+
+The backdrop is a visually flat opaque magenta #FF00FF chroma-key matte, with every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps between limbs and crook. No ground, floor, scenery, cast shadow, gradient, vignette, glow, transparency, checkerboard, lettering, text, numbers, symbols, logos, border, signature, watermark or gore.
+~~~
+
+#### spr_gamekeeper_walk2_a5.png — attempt 2
+
+Attempt 2 — accepted (final).
+
+Straight back view, walk2 stride and viewer-right crook are retained; the full boot soles now meet the bottom border. Background passed: corners TL,TR,BL,BR (244, 9, 245), (249, 11, 246), (245, 18, 242), (247, 16, 246); outer 4px non-key count 290, including 51 figure pixels at row 255.
+
+Full prompt (verbatim):
+
+~~~text
+Edit reference image 2, the current A5 rotation view. Reference image 1, spr_gamekeeper_walk2.png, is the authoritative identity, outfit, colour and original walk-pose reference. Keep the exact same gamekeeper, straight back-facing rotation, walk2 alternate stride, crook carried on the viewer's RIGHT as in reference image 2, clothing, silhouette, scale, painted facets, outlines and flat magenta background seen in reference image 2. Do not change the pose, orientation, outfit, crook placement or art style.
+
+Make only a vertical framing correction: move the complete figure and crook down within the square so both complete boot sole outlines touch the bottom border, with no magenta row below them. Preserve the full sole outlines without cropping them. Keep the hat, crook hook, hands and entire figure inside the canvas. Do not add a floor, shadow or any object.
+
+The backdrop is a visually flat opaque magenta #FF00FF chroma-key matte, with every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps between limbs and crook. No ground, floor, scenery, cast shadow, gradient, vignette, glow, transparency, checkerboard, lettering, text, numbers, symbols, logos, border, signature, watermark or gore.
+~~~
+
+Seven images generated in total, within the eight-image limit. Attempts 1 for A3, A4 and A5 were replaced after their boot soles floated above the lower edge; A3 attempt 2 was also rejected for the same framing issue. No background repair or image-code edits were applied.
+
+
+## Rotation pilot (charge)
+
+Four views generated in built-in edit mode from the front charge sprite and reduced with `sips -Z 256`. Each final image is 256×256. Background key checks use the documented two-branch chroma rule and an outer 4px border margin.
+
+### spr_gamekeeper_charge_a2.png
+
+Attempt 1 — accepted.
+
+256×256 review: Front-three-quarter view, body and face turned toward the viewer's RIGHT. The charging lunge, raised crook, tartan outfit, beard, hat and painted character style match the references. Corners TL,TR,BL,BR: (247,7,248), (250,10,246), (245,19,243), (247,16,246); all key. Outer 4px non-key count: 0. One connected non-key figure component; no non-key pixels outside it; opaque.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game: chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even, flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border. Affectionate and silly, never gory.
+
+Edit reference image 1, spr_gamekeeper_charge.png, as the exact front frame and authoritative identity and pose. Create one rotation-view sprite of this same stocky gamekeeper, preserving his orange-red beard and eyebrows, broad nose, brown deerstalker with its top tie, moss-green checked tweed waistcoat, cream rolled-sleeve shirt, red tartan kilt with tan sporran, green socks with red flashes, chunky brown boots and hooked shepherd's crook. Keep his charge animation: leaning forward in a forceful running lunge, raised crook and bent arms, charging rather than walking or standing idle. Preserve the same face, proportions, outfit colours and tartan, bold charcoal outlines and broad painted facets. Keep the crook in the same hand as the front view, with its full curved hook and shaft visible.
+
+A2 rotation: front three-quarter view. Turn his whole body and head toward the viewer's RIGHT (image right), while keeping part of his face and chest visible. His nose and gaze point diagonally right. Preserve the forward-leaning charge and running legs, adapting their perspective naturally to this angle.
+
+Use reference image 2, spr_gamekeeper_walk1_a3.png, only for accepted profile-view construction and painted style. Use reference image 3, spr_gamekeeper_idle_a5.png, for the rear outfit and crook details. Use reference image 4, spr_gamekeeper_idle_a2.png, only for the accepted front-three-quarter rotation, character identity and painted style.
+
+Square 1:1 production animation sprite for Bogle Castle. Keep the full figure and crook centred and entirely inside the canvas, with clear magenta space above and beside the hat, hands and crook. The complete boot soles meet the bottom edge without clipping. Preserve the established chunky painted scale and silhouettes. The backdrop is a visually flat opaque magenta #FF00FF chroma-key matte, with every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps between limbs and crook. Confine painted shading and texture to the character and crook. No ground, floor, scenery, cast shadow, gradient, glow, transparency or checkerboard. No lettering, text, numbers, symbols, logos, border, signature, watermark or gore.
+~~~
+
+### spr_gamekeeper_charge_a3.png
+
+Attempt 1 — accepted.
+
+256×256 review: Full side profile facing the viewer's RIGHT, with the charge stride and crook visible. Character identity and painted style match the references. Corners TL,TR,BL,BR: (246,8,247), (249,9,246), (245,17,241), (247,15,245); all key. Outer 4px non-key count: 0. One connected non-key figure component; no non-key pixels outside it; opaque.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game: chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even, flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border. Affectionate and silly, never gory.
+
+Edit reference image 1, spr_gamekeeper_charge.png, as the exact front frame and authoritative identity and pose. Create one rotation-view sprite of this same stocky gamekeeper, preserving his orange-red beard and eyebrows, broad nose, brown deerstalker with its top tie, moss-green checked tweed waistcoat, cream rolled-sleeve shirt, red tartan kilt with tan sporran, green socks with red flashes, chunky brown boots and hooked shepherd's crook. Keep his charge animation: leaning forward in a forceful running lunge, raised crook and bent arms, charging rather than walking or standing idle. Preserve the same face, proportions, outfit colours and tartan, bold charcoal outlines and broad painted facets. Keep the crook in the same hand as the front view, with its full curved hook and shaft visible.
+
+A3 rotation: full side profile facing the viewer's RIGHT (image right), with his nose and gaze pointing clearly toward the right edge. Turn the whole head and torso into a true profile, not a front or three-quarter view. Preserve the forward-leaning charge, bent legs and arm/crook pose, naturally shown from the side. Draw a correctly rotated right-facing view; do not horizontally mirror the source sprite or change the character's hand details.
+
+Use reference image 2, spr_gamekeeper_walk1_a3.png, for accepted profile-view construction, body proportions and painted style; its opposite facing direction is only a style reference. Use reference image 3, spr_gamekeeper_idle_a5.png, for the rear outfit and crook details. Use reference image 4, spr_gamekeeper_idle_a2.png, only for character identity and painted style.
+
+Square 1:1 production animation sprite for Bogle Castle. Keep the full figure and crook centred and entirely inside the canvas, with clear magenta space above and beside the hat, hands and crook. The complete boot soles meet the bottom edge without clipping. Preserve the established chunky painted scale and silhouettes. The backdrop is a visually flat opaque magenta #FF00FF chroma-key matte, with every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps between limbs and crook. Confine painted shading and texture to the character and crook. No ground, floor, scenery, cast shadow, gradient, glow, transparency or checkerboard. No lettering, text, numbers, symbols, logos, border, signature, watermark or gore.
+~~~
+
+### spr_gamekeeper_charge_a4.png
+
+Attempt 1 — accepted.
+
+256×256 review: Back-three-quarter view with back and side visible, head turned away toward the viewer's RIGHT. Rear outfit, charging stride and viewer-right crook match the convention. Corners TL,TR,BL,BR: (245,8,247), (249,11,246), (245,19,242), (247,15,245); all key. Outer 4px non-key count: 5 at (74–78,252), along the boot silhouette; one connected non-key figure component, no non-key pixels outside it; opaque.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game: chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even, flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border. Affectionate and silly, never gory.
+
+Edit reference image 1, spr_gamekeeper_charge.png, as the exact front frame and authoritative identity and pose. Create one rotation-view sprite of this same stocky gamekeeper, preserving his orange-red beard and eyebrows, broad nose, brown deerstalker with its top tie, moss-green checked tweed waistcoat, cream rolled-sleeve shirt, red tartan kilt with tan sporran, green socks with red flashes, chunky brown boots and hooked shepherd's crook. Keep his charge animation: leaning forward in a forceful running lunge, raised crook and bent arms, charging rather than walking or standing idle. Preserve the same proportions, outfit colours and tartan, bold charcoal outlines and broad painted facets. Keep the crook fully visible and carried naturally in the same hand as the front view.
+
+A4 rotation: back three-quarter view, rotated away from the viewer so the back and one side of his outfit are both visible. His head and face turn away toward the viewer's RIGHT; show the rear and side of the deerstalker, with no eyes or front-facing face. Clearly show the back of his moss-green checked waistcoat, red tartan kilt, socks and boots. Preserve the forward-leaning running lunge and bent-leg charge posture, adapting it naturally to the rear angle; do not make him stand still.
+
+Use reference image 2, spr_gamekeeper_walk1_a3.png, only for accepted rotation-view construction and painted style. Use reference image 3, spr_gamekeeper_idle_a5.png, for the rear outfit, hat and crook details. Use reference image 4, spr_gamekeeper_idle_a2.png, only for character identity and painted style.
+
+Square 1:1 production animation sprite for Bogle Castle. Keep the full figure and crook centred and entirely inside the canvas, with clear magenta space above and beside the hat, hands and crook. The complete boot soles meet the bottom edge without clipping. Preserve the established chunky painted scale and silhouettes. The backdrop is a visually flat opaque magenta #FF00FF chroma-key matte, with every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps between limbs and crook. Confine painted shading and texture to the character and crook. No ground, floor, scenery, cast shadow, gradient, glow, transparency or checkerboard. No lettering, text, numbers, symbols, logos, border, signature, watermark or gore.
+~~~
+
+### spr_gamekeeper_charge_a5.png
+
+Attempt 1 — accepted.
+
+256×256 review: Straight back view with the charge posture and crook on the viewer's RIGHT. The rear outfit and painted style match the references. Corners TL,TR,BL,BR: (246,8,246), (250,10,246), (245,17,242), (246,15,244); all key. Outer 4px non-key count: 0. One connected non-key figure component; no non-key pixels outside it; opaque.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game: chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even, flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border. Affectionate and silly, never gory.
+
+Edit reference image 1, spr_gamekeeper_charge.png, as the exact front frame and authoritative identity and pose. Create one rotation-view sprite of this same stocky gamekeeper, preserving his orange-red beard and eyebrows, broad nose, brown deerstalker with its top tie, moss-green checked tweed waistcoat, cream rolled-sleeve shirt, red tartan kilt with tan sporran, green socks with red flashes, chunky brown boots and hooked shepherd's crook. Keep his charge animation: leaning forward in a forceful running lunge, raised crook and bent arms, charging rather than walking or standing idle. Preserve the same proportions, outfit colours and tartan, bold charcoal outlines and broad painted facets. Keep the crook fully visible and carried naturally; it may cross to the other hand for this view.
+
+A5 rotation: straight back view, centred and directly facing away from the viewer. Show the rear of his deerstalker, red hair around the sides, the full back of the moss-green checked waistcoat, the back of the red tartan kilt, both socks and both boots. No face or eyes are visible. Preserve the forward-leaning charge and running stride, with legs in the same active charge pose as the front frame. Carry the crook upright on the viewer's RIGHT, matching the accepted back-view reference; it may cross to the other hand.
+
+Use reference image 2, spr_gamekeeper_walk1_a3.png, only for accepted rotation-view construction and painted style. Use reference image 3, spr_gamekeeper_idle_a5.png, for the straight-back outfit, hat and crook details. Use reference image 4, spr_gamekeeper_idle_a2.png, only for character identity and painted style.
+
+Square 1:1 production animation sprite for Bogle Castle. Keep the full figure and crook centred and entirely inside the canvas, with clear magenta space above and beside the hat, hands and crook. The complete boot soles meet the bottom edge without clipping. Preserve the established chunky painted scale and silhouettes. The backdrop is a visually flat opaque magenta #FF00FF chroma-key matte, with every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps between limbs and crook. Confine painted shading and texture to the character and crook. No ground, floor, scenery, cast shadow, gradient, glow, transparency or checkerboard. No lettering, text, numbers, symbols, logos, border, signature, watermark or gore.
+~~~
+
+
+
+

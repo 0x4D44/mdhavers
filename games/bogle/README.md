@@ -10,6 +10,22 @@ light maps with sector and distance shading. Sprites face the player, sort far
 to near, and clip against the screen and portal drawsegs; index 255 is transparent.
 The tartan ghost and the cylindrical sky are full bright. Wall pictures use baked wall composites and follow wall perspective; only actors and free-standing dressing face the player.
 
+Gamekeepers have Doom-style eight-way views. Each actor carries a render-only
+`facing` angle (it never feeds back into play): a patrolling keeper faces his patrol
+angle, a charging one his steered `dx`/`dy`, and one shaking his fists, winding up or
+stunned faces the player. `bogle_atan2` in `engine/trig.braw` is an integer atan2: a
+10-step search of the sine table's first octant, then octant folding. The renderer
+takes the angle from the actor to the viewer, `towards`, and picks octant
+`((facing - towards + 256) mod 4096) / 512`: 0 is the front (`<pose>`), 1 to 3 are
+`<pose>_a2` to `_a4` as drawn (the body turning to the viewer's right, so a keeper
+walking to screen right shows `_a3`, his profile facing right), 4 is the back
+(`_a5`), and 5 to 7 are `_a4` to `_a2` mirrored by flipping the texture column. The
+keeper's idle, walk1, walk2 and charge poses rotate; fists, pain and death stay
+front-only, as in Doom. Another pose opts in by baking `<pose>_a2.._a5` (listed in
+`tools/bake.braw`) and adding the pose to `BOGLE_ROTATING_SPRITES` in
+`engine/assets.braw`. `tests/rotations.braw` pins the selection, mirroring and
+facing; `tools/rotation_shots.braw` writes review captures to `.scratch/rotshots/`.
+
 Run from the repository root with `MDHAVERS_HOME` pointing there:
 
 ```sh

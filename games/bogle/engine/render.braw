@@ -131,6 +131,24 @@ dae bogle_pickup_glint(tics) {
     gie tics % 70 < 5
 }
 
+# Which of eight views the viewer sees: 0 when the actor faces the viewer, rising
+# as the actor turns clockwise on screen (its facing swings to the viewer's right).
+dae bogle_sprite_octant(table, facing, x, y, viewer_x, viewer_y) {
+    ken towards = bogle_atan2(table, viewer_x - x, viewer_y - y)
+    gie bogle_angle(facing - towards + 256) / 512
+}
+
+# Actor facing for rendering; spawn records without one face angle 0.
+dae bogle_actor_facing(actor) {
+    gin contains(actor, "facing") {
+        gie actor["facing"]
+    }
+    gin contains(actor, "angle") {
+        gie actor["angle"]
+    }
+    gie 0
+}
+
 # Things are sorted explicitly so transparent pixels reveal more distant sprites.
 dae bogle_sprites(g, fb, w, h, visible, drawsegs, cosine, sine) {
     ken m = g["map"]
@@ -230,8 +248,16 @@ dae bogle_sprites(g, fb, w, h, visible, drawsegs, cosine, sine) {
         ken kind = actor["kind"]
         ken texture = g["sprite_tex"][0]
         ken fullbright = nae
+        ken mirror = nae
         gin dynamic {
-            texture = bogle_gameplay_assets()[bogle_actor_art(g, actor)]
+            ken art = bogle_gameplay_assets()
+            ken name = bogle_actor_art(g, actor)
+            gin contains(art, name + "_a2") {
+                ken view = bogle_sprite_view(art, name, bogle_sprite_octant(g["sin"], bogle_actor_facing(actor), actor["x"], actor["y"], g["x"], g["y"]))
+                name = view[0]
+                mirror = view[1]
+            }
+            texture = art[name]
             fullbright = kind == 4 or kind == 32 or (kind >= 10 an kind <= 20 an bogle_pickup_glint(g["tics"]))
         } ither {
             texture = g["sprite_tex"][kind - 2]
@@ -256,6 +282,9 @@ dae bogle_sprites(g, fb, w, h, visible, drawsegs, cosine, sine) {
                 }
             }
             ken u = (x - left) * 64 / (right - left)
+            gin mirror {
+                u = 63 - u
+            }
             ken v = (clip_top - top) * 6291456 / (bottom - top)
             fer y in clip_top..clip_bottom + 1 {
                 ken colour = bytes_get(texture, u * 96 + min(95, v / 65536))
