@@ -299,17 +299,20 @@ fn frontend_frames_match_interpreter_and_native_rc_modes() {
     check_replay("e1m1", "frontend", 30, false);
 }
 
-// The full route runs natively twice. The debug interpreter replays the first
-// 140 tics, including the first door and courtyard combat, to bound its cost.
-#[test]
-fn e1m1_playthrough_matches_native_rc_modes_and_interpreter_prefix() {
+// A full level route runs natively twice. The debug interpreter replays the
+// first 140 tics to bound its cost; every native output must extend it.
+fn check_playthrough(level: &str, rows: usize) {
     let repo = root();
     let script = repo.join("games/bogle/shell/headless.braw");
-    let map = repo.join("games/bogle/data/e1m1.map");
-    let replay = repo.join("games/bogle/replays/e1m1.txt");
-    let expected = std::fs::read(repo.join("games/bogle/replays/e1m1.hashes"))
-        .expect("read full E1M1 frame hashes");
-    assert_eq!(expected.iter().filter(|byte| **byte == b'\n').count(), 5);
+    let map = repo.join(format!("games/bogle/data/{level}.map"));
+    let replay = repo.join(format!("games/bogle/replays/{level}.txt"));
+    let expected = std::fs::read(repo.join(format!("games/bogle/replays/{level}.hashes")))
+        .unwrap_or_else(|error| panic!("read full {level} frame hashes: {error}"));
+    assert_eq!(
+        expected.iter().filter(|byte| **byte == b'\n').count(),
+        rows,
+        "{level}.hashes must contain one row for each sampled frame"
+    );
     let mut interpreter = Command::new(env!("CARGO_BIN_EXE_mdhavers"));
     configure_headless(&mut interpreter, false, &repo, &map, &replay);
     interpreter
@@ -317,9 +320,9 @@ fn e1m1_playthrough_matches_native_rc_modes_and_interpreter_prefix() {
         .env("BOGLE_LIMIT", "140")
         .arg("run")
         .arg(&script);
-    let prefix = run_command(interpreter, RUN_TIMEOUT, "E1M1 interpreter prefix");
-    assert_success(&prefix, "E1M1 interpreter prefix");
-    assert_clean_stderr(&prefix, "E1M1 interpreter prefix");
+    let prefix = run_command(interpreter, RUN_TIMEOUT, "level interpreter prefix");
+    assert_success(&prefix, &format!("{level} interpreter prefix"));
+    assert_clean_stderr(&prefix, &format!("{level} interpreter prefix"));
     assert_eq!(
         prefix
             .stdout
@@ -339,19 +342,30 @@ fn e1m1_playthrough_matches_native_rc_modes_and_interpreter_prefix() {
         command
             .env("BOGLE_EVERY", "140")
             .env("BOGLE_REQUIRE_EXIT", "1");
-        let output = run_command(command, RUN_TIMEOUT, "E1M1 complete native playthrough");
-        assert_success(&output, "E1M1 complete native playthrough");
-        assert_clean_stderr(&output, "E1M1 complete native playthrough");
+        let output = run_command(command, RUN_TIMEOUT, "complete native playthrough");
+        assert_success(&output, &format!("{level} complete native playthrough"));
+        assert_clean_stderr(&output, &format!("{level} complete native playthrough"));
         assert!(
             output.stdout.bytes.starts_with(&prefix.stdout.bytes),
-            "E1M1 MDH_RC={} diverged from interpreter prefix",
+            "{level} MDH_RC={} diverged from interpreter prefix",
             u8::from(rc)
         );
         outputs.push(output.stdout.bytes);
     }
-    assert_eq!(outputs[0], outputs[1], "E1M1 RC modes diverged");
+    assert_eq!(outputs[0], outputs[1], "{level} RC modes diverged");
     assert_eq!(
         outputs[0], expected,
-        "E1M1 differs from committed frame hashes"
+        "{level} differs from committed frame hashes"
     );
+}
+
+#[test]
+fn e1m1_playthrough_matches_native_rc_modes_and_interpreter_prefix() {
+    check_playthrough("e1m1", 5);
+}
+
+// E1M2 exercises lifts, a switch, secret doors and a monster closet.
+#[test]
+fn e1m2_playthrough_matches_native_rc_modes_and_interpreter_prefix() {
+    check_playthrough("e1m2", 38);
 }
