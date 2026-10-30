@@ -385,6 +385,9 @@ map_thing(distillery, 2, 1760, 64, 1024)
 map_thing(distillery, 2, 1760, 320, 3072)
 map_thing(distillery, 16, 1600, 320)
 map_thing(distillery, 12, 1600, 64)
+# A curling stone at the head of the south cask aisle: the aisle runs straight
+# east into the dark bay, so a kick from the aisle sends it at that keeper.
+map_thing(distillery, 36, 1424, 64)
 # Wash back and still house.
 map_thing(distillery, 2, -224, 576, 0)
 map_thing(distillery, 10, -96, 544)

@@ -77,6 +77,13 @@ dae bogle_audio_event(mixer, event) {
     gin event == "midge" {
         profile = [4, 1800, 180, 110, 900, 7, 240]
     }
+    gin event == "stone_rumble" {
+        # Shorter than the seven-tic retrigger (4410 samples), so never overlapping.
+        profile = [4, 3600, 70, 50, 5200, 14, 210]
+    }
+    gin event == "stone_clack" {
+        profile = [3, 1400, 1250, 520, 9000, 2, 140]
+    }
     gin event == "oof" {
         profile = [3, 4500, 180, 55, 8000, 45, 50]
     }

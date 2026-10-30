@@ -1,0 +1,200 @@
+fetch "games/bogle/shell/onboarding"
+fetch "games/bogle/engine/game"
+fetch "games/bogle/engine/map"
+
+# Kickable curling stones (thing 36): kicks, glide, bounces, ledges and hits.
+ken idle = {"keys": 0, "dx": 0}
+ken walk = {"keys": 1, "dx": 0}
+ken press = {"keys": 128, "dx": 0}
+# One 1024x512 room, floor 0, bright. Things are appended per case.
+ken hall = "BOGMAP 1\nv 0 0\nv 1024 0\nv 1024 512\nv 0 512\ns 0 128 1 2 192 0 0 0 1 2 3\n"
+# Two rooms meeting at x=512: the west floor at 0, the east floor at EAST.
+ken pair = "BOGMAP 1\nv 0 0\nv 512 0\nv 512 512\nv 0 512\nv 1024 0\nv 1024 512\ns 0 192 1 2 192 0 0 0 1 2 3\ns EAST 192 1 2 192 0 0 1 4 5 2\n"
+
+dae stone_of(g) {
+    fer a in g["actors"] {
+        gin a["kind"] == 36 {
+            gie a
+        }
+    }
+    gie naething
+}
+
+dae kind_of(g, kind) {
+    fer a in g["actors"] {
+        gin a["kind"] == kind {
+            gie a
+        }
+    }
+    gie naething
+}
+
+# Walking into a stone kicks it along the facing at ten units a tic.
+ken g = new_game(map_parse(hall + "t 1 64 256 0 0\nt 36 128 256 0 0\n"), aye)
+ken s = stone_of(g)
+mak_siccar s["svx"] == 0 an s["svy"] == 0
+ken kicked_at = -1
+ken clack = nae
+fer i in 0..12 {
+    ken events = tic(g, walk)
+    gin kicked_at < 0 an s["svx"] != 0 {
+        kicked_at = i
+        clack = contains(events, "stone_clack")
+    }
+}
+mak_siccar kicked_at >= 0 an kicked_at <= 9
+mak_siccar clack
+mak_siccar s["x"] > 160 * 65536 an s["y"] == 256 * 65536
+blether "ok walking into a stone kicks it"
+
+# It glides on, slowing evenly, rumbles while fast and stops within two seconds.
+ken last = s["svx"]
+ken slowing = aye
+ken rumbles = 0
+ken stopped_after = -1
+fer i in 0..100 {
+    ken events = tic(g, idle)
+    gin contains(events, "stone_rumble") {
+        rumbles = rumbles + 1
+    }
+    gin s["svx"] > last {
+        slowing = nae
+    }
+    last = s["svx"]
+    gin stopped_after < 0 an s["svx"] == 0 {
+        stopped_after = i
+    }
+}
+mak_siccar slowing an rumbles >= 3
+mak_siccar stopped_after > 35 an stopped_after < 70
+mak_siccar s["x"] > 400 * 65536 an s["x"] < 520 * 65536
+blether "ok a kicked stone glides and stops"
+
+# A still stone still blocks: backing into one neither passes nor kicks it.
+g["x"] = s["x"] + 64 * 65536
+g["y"] = s["y"]
+fer i in 0..12 {
+    tic(g, {"keys": 2, "dx": 0})
+}
+mak_siccar s["svx"] == 0 an g["x"] == s["x"] + 32 * 65536
+blether "ok a still stone blocks like furniture"
+
+# E kicks a stone ahead within reach, and the prompt says so; not one too far.
+g = new_game(map_parse(hall + "t 1 64 256 0 0\nt 36 200 256 0 0\n"), aye)
+s = stone_of(g)
+mak_siccar bogle_door_prompt(g) == ""
+tic(g, press)
+mak_siccar s["svx"] == 0
+g = new_game(map_parse(hall + "t 1 64 256 0 0\nt 36 128 256 0 0\n"), aye)
+s = stone_of(g)
+mak_siccar bogle_door_prompt(g) == "E: kick"
+tic(g, press)
+mak_siccar s["svx"] > 9 * 65536 an s["x"] > 128 * 65536
+blether "ok E kicks a stone within reach"
+
+# Off a wall the stone comes back, slower.
+g = new_game(map_parse(hall + "t 1 836 256 0 0\nt 36 900 256 0 0\n"), aye)
+s = stone_of(g)
+tic(g, press)
+ken peak = 0
+ken bounced = nae
+fer i in 0..20 {
+    ken before = s["svx"]
+    tic(g, idle)
+    gin s["x"] > peak {
+        peak = s["x"]
+    }
+    gin before > 0 an s["svx"] < 0 {
+        bounced = aye
+        mak_siccar 0 - s["svx"] < before
+    }
+}
+mak_siccar bounced an peak <= 1008 * 65536 an s["x"] < peak
+blether "ok a stone bounces off a wall"
+
+# It refuses a drop of more than 24 units, bouncing back from the edge.
+g = new_game(map_parse(replace(pair, "EAST", "-48") + "t 1 384 256 0 0\nt 36 448 256 0 0\n"), aye)
+s = stone_of(g)
+tic(g, press)
+# Step aside so the returning stone has a clear run.
+g["y"] = 400 * 65536
+peak = 0
+fer i in 0..20 {
+    tic(g, idle)
+    gin s["x"] > peak {
+        peak = s["x"]
+    }
+}
+mak_siccar s["sector"] == 0 an peak <= 496 * 65536 an s["svx"] < 0
+# ...but drops a short step, landing on the lower floor.
+g = new_game(map_parse(replace(pair, "EAST", "-16") + "t 1 384 256 0 0\nt 36 448 256 0 0\n"), aye)
+s = stone_of(g)
+tic(g, press)
+fer i in 0..10 {
+    tic(g, idle)
+}
+mak_siccar s["sector"] == 1 an s["z"] == -16 * 65536
+blether "ok a stone refuses a ledge"
+
+# A stone stuns and hurts a gamekeeper and loses most of its speed.
+g = new_game(map_parse(hall + "t 1 64 256 0 0\nt 36 128 256 0 0\nt 2 320 256 2048 0\n"), aye)
+s = stone_of(g)
+ken keeper = kind_of(g, 2)
+tic(g, press)
+ken hit_speed = -1
+fer i in 0..30 {
+    ken before = s["svx"]
+    tic(g, idle)
+    gin hit_speed < 0 an keeper["state"] == "stunned" {
+        hit_speed = before
+        mak_siccar keeper["health"] == 60 an keeper["timer"] >= 69
+        mak_siccar abs(s["svx"]) * 3 < before
+    }
+}
+mak_siccar hit_speed > 0
+blether "ok a stone stuns a gamekeeper"
+
+# A stone sets a haggis off.
+g = new_game(map_parse(hall + "t 1 64 256 0 0\nt 36 128 256 0 0\nt 3 360 256 0 0\n"), aye)
+s = stone_of(g)
+ken haggis = kind_of(g, 3)
+tic(g, press)
+fer i in 0..30 {
+    tic(g, idle)
+}
+mak_siccar haggis["state"] == "exploded" an nae haggis["active"]
+mak_siccar g["health"] == 100
+blether "ok a stone sets off a haggis"
+
+# The ghost phases: the stone glides straight through it, unharmed.
+g = new_game(map_parse(hall + "t 1 64 256 0 0\nt 36 128 256 0 0\nt 4 300 256 0 0\n"), aye)
+s = stone_of(g)
+ken ghost = kind_of(g, 4)
+tic(g, press)
+fer i in 0..40 {
+    tic(g, idle)
+}
+mak_siccar ghost["active"] an ghost["health"] == 60
+mak_siccar s["x"] > ghost["x"] + 32 * 65536 an s["svy"] == 0
+blether "ok the ghost is unaffected"
+
+# A fast stone hurts the player lightly and stops dead.
+g = new_game(map_parse(hall + "t 1 64 256 0 0\nt 36 200 256 0 0\n"), aye)
+s = stone_of(g)
+s["svx"] = -8 * 65536
+fer i in 0..20 {
+    tic(g, idle)
+}
+mak_siccar g["health"] == 96 an s["svx"] == 0 an s["x"] >= 96 * 65536
+blether "ok a stone hurts the player lightly and stops"
+
+# One stone striking another square on passes its speed along.
+g = new_game(map_parse(hall + "t 1 64 256 0 0\nt 36 128 256 0 0\nt 36 240 256 0 0\n"), aye)
+s = stone_of(g)
+ken other = g["stones"][2]
+tic(g, press)
+fer i in 0..14 {
+    tic(g, idle)
+}
+mak_siccar s["svx"] == 0 an other["svx"] > 0 an other["x"] > 240 * 65536
+blether "ok a stone passes its speed to another"

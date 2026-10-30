@@ -1,9 +1,13 @@
 fetch "games/bogle/engine/doors"
+fetch "games/bogle/engine/curling"
 
 # Read-only shell cue: use the exact trace and reach that E will use.
 dae bogle_door_prompt(g) {
     gin nae g["gameplay"] or g["health"] <= 0 or g["won"] {
         gie ""
+    }
+    gin curling_use_target(g) != naething {
+        gie "E: kick"
     }
     ken selected = bogle_use_sector(g)
     ken sw = bogle_use_switch(g)

@@ -137,19 +137,37 @@ dae body_blocker(g, x, y) {
     }
     # Freestanding dressing has a sixteen-unit radius, just like the body.
     # Read spawn geometry so players and walking actors share the same blockers.
+    # Curling stones move: a body carrying "stones" (by thing index) reads their
+    # live positions instead, skipping its own "stone_self". A thing hit adds
+    # its index as a fourth element.
+    ken stones = naething
+    ken own = -1
+    gin contains(g, "stones") {
+        stones = g["stones"]
+    }
+    gin contains(g, "stone_self") {
+        own = g["stone_self"]
+    }
     gin contains(m, "thing_type") {
         fer i in 0..len(m["thing_type"]) {
             ken kind = m["thing_type"][i]
-            gin kind == 31 or kind == 32 or kind == 33 or kind == 36 {
+            gin (kind == 31 or kind == 32 or kind == 33 or kind == 36) an i != own {
+                ken tx = m["thing_x"][i] * 65536
+                ken ty = m["thing_y"][i] * 65536
                 ken feet = m["thing_z"][i] * 65536
+                gin kind == 36 an stones != naething {
+                    tx = stones[i]["x"]
+                    ty = stones[i]["y"]
+                    feet = stones[i]["z"]
+                }
                 gin g["z"] < feet + 56 * 65536 an g["z"] + 56 * 65536 > feet {
-                    ken nx = (x - m["thing_x"][i] * 65536) / 256
-                    ken ny = (y - m["thing_y"][i] * 65536) / 256
+                    ken nx = (x - tx) / 256
+                    ken ny = (y - ty) / 256
                     gin abs(nx) < 8192 an abs(ny) < 8192 an nx * nx + ny * ny < 67108864 {
                         gin nx == 0 an ny == 0 {
                             nx = 1
                         }
-                        gie [aye, nx, ny]
+                        gie [aye, nx, ny, i]
                     }
                 }
             }

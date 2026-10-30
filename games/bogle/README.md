@@ -41,7 +41,7 @@ choose with Enter/Space. Escape during play opens **Resume**, **Restart Level**,
 freeze the simulation and release the mouse. Resume captures it again. Held
 menu keys must be released before they can fire or choose another item.
 
-WASD moves, the mouse and Left/Right arrows turn, E uses doors and the exit,
+WASD moves, the mouse and Left/Right arrows turn, E uses doors and the exit and kicks curling stones,
 Space or left mouse fires, and 1–4 select owned weapons. Hold fire for at
 least 21 tics with the bagpipes, then release to blast; holding 35 tics fires
 automatically. Controls are also available from the title and pause menus.
@@ -210,7 +210,7 @@ little-endian PCM at 22050 Hz, with twelve bounded voices, integer envelopes,
 seeded noise and clipping. Slot zero sustains the bagpipe drone while filling;
 release gives a blast or a sad deflate. The shell reconciles the drone with held fire, the selected pipes, active charge and live play state each frame; it fades away when that cause ends. Other procedural cues cover the sgian-dubh
 swish, Mars throw/splat, blunderbuss, door grind, pickup chime, gamekeeper shout,
-haggis fuse/explosion, ghost wail, midge buzz, player oof and menu blips. The
+haggis fuse/explosion, ghost wail, midge buzz, curling-stone rumble and clack, player oof and menu blips. The
 one baked effect is the gamekeeper's first-sight roar: `tools/bake_roar.braw`
 synthesises `data/sfx_keeper_roar.bmu` offline (an integer source-filter voice:
 jittered, growling glottal pulses falling from about 175 to 100 Hz through four
@@ -269,7 +269,8 @@ integer tic schedule. Their messages explain health, spirit, ammunition, weapon
 unlocks and the key's door. Girder Juice in a can restores **15** health; the
 bottle fills health and doubles speed for three seconds. The cow portrait,
 tartan banner and stag head are painted into specific solid wall panels, with centres at eye height. They have no billboard things in E1M1. The cow now hangs on the courtyard's south wall near the start. Armour,
-braziers, thistle pots and curling stones block movement like furniture. The
+braziers and thistle pots block movement like furniture; so does a still curling
+stone, which can be kicked (see Curling stones below). The
 banner is scenery; the separate bagpipe pickup unlocks weapon 4.
 
 The enlarged HUD has a status face: health above 75/50/25/0 selects fine/hurt/
@@ -304,8 +305,7 @@ message line so it never covers the gate. The escaped message remains.
 rebuilds four 64x64 palette-indexed wall variants from existing BOG sprites
 and wall art. Run it after rebaking source art, then rebuild `maps/e1m1.braw`.
 Only the relevant solid walls are split into 64-unit panels; portals and the
-671-tic gameplay replay stay unchanged. Armour, brazier, thistle and curling
-stone remain blocking sprites.
+671-tic gameplay replay stay unchanged. Armour, brazier and thistle remain blocking sprites.
 
 Playtest scaling: during play the horizon is centred in the 3D view above the
 status bar, not the whole screen. Enemies are drawn at their own world heights
@@ -349,7 +349,7 @@ recorded in the stage 5c journal.
 ## E1M2: The Distillery
 
 `maps/e1m2.braw` builds `data/e1m2.map` (`mdhavers run games/bogle/maps/e1m2.braw`):
-155 convex sectors (E1M1 has 43) and 55 things. The builder collects axis-aligned
+155 convex sectors (E1M1 has 43) and 56 things. The builder collects axis-aligned
 rectangles first and inserts every other rectangle corner that lies on an edge, so
 cells of different sizes share exact portal edges. It also rejects a sector with two
 portal walls on one line: the engine's crossing test uses each wall's whole line, so
@@ -367,7 +367,8 @@ solid oak tun with a raised balcony to the north. Three wings branch from the hu
   is an optional alcove behind a secret panel. Walking into the middle aisle
   opens a closet in the cask stack beside it and lets a keeper out. The siller
   key is on the lit plinth of the tasting room, with keepers waiting in the dark
-  bays (the ambush). A switch on the loading dock's south wall raises the shutter
+  bays (the ambush). A curling stone sits at the head of the south aisle, which
+  runs straight east into the south bay: kick it and it stuns that keeper. A switch on the loading dock's south wall raises the shutter
   onto the hall: the airn shortcut.
 - **North (siller door):** the wash back and the still house, with two copper stills,
   hot wash floors between them and the bagpipes on the worm-tub platform. A stair
@@ -417,6 +418,30 @@ same 64-unit use trace, and add nothing to old maps (`tests/mechanics.braw`).
   walk-over trigger). It does not count as a secret and shows no message.
   Keepers behind it act on sight, which the closed door blocks, so they
   stay in the closet until it opens.
+
+## Curling stones
+
+Thing 36 is a curling stone (`engine/curling.braw`). Still, it blocks like the
+other furniture. Walking into one (the stone ahead of both the step and the
+facing), or pressing E while facing one whose centre is within 80 units ahead and
+20 units of the line of sight (its near edge within the usual 64-unit reach; the
+prompt is **E: kick**), kicks it along the player's facing at 10 units a tic.
+Linear friction of 9830/65536 (about 0.15 units a tic, each tic) stops it after
+about 67 tics (1.9 seconds) and 333 units. It moves in substeps of at most eight
+units through the shared `move.braw` collision, as a walker with `no_drop`: it
+climbs and drops at most 24 units and refuses bigger ledges. On a wall or ledge
+edge it reflects the velocity component along the normal and keeps 3/4 of its
+speed. A stone striking another passes on its velocity along the line of centres
+(equal masses). A gamekeeper it hits takes 20 damage and is stunned for 70 tics
+(the existing stunned state); a haggis goes off through `damage_actor`; either
+way the stone rebounds with a quarter of its speed. The ghost phases through it
+and midges are a cloud. A stone sliding into the player at 4 units a tic or more
+hurts 4, and it always stops dead against the player. Live stone positions sit in
+the game state (`g["stones"]`, by thing index): the player, walkers and other
+stones collide with them there, and a door will not close on one. A sliding
+stone plays a low rumble at most every seven tics (shorter than the retrigger,
+like the midge buzz) and a clack on each kick and impact. `tests/curling.braw`
+covers kicks, glide, bounce, ledges and each enemy.
 
 ## Level progression
 

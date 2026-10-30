@@ -1,0 +1,225 @@
+fetch "games/bogle/engine/fixed"
+fetch "games/bogle/engine/trig"
+fetch "games/bogle/engine/move"
+fetch "games/bogle/engine/things"
+
+# Curling stones (thing 36). A still stone blocks like furniture; walking into
+# one, or E while facing one, sends it gliding along the player's facing. Its
+# velocity lives in svx/svy (16.16 units per tic), apart from the actor
+# knockback fields. All tuning is integer and in game tics.
+
+# Linear (Coulomb) friction per tic: a 10-unit kick glides 67 tics, ~333 units.
+dae curling_friction() {
+    gie 9830
+}
+
+# A kick sets the stone off at ten units a tic along the player's facing.
+dae curling_kick(g, s) {
+    s["svx"] = 10 * bogle_cos(g["sin"], g["angle"])
+    s["svy"] = 10 * bogle_sin(g["sin"], g["angle"])
+    s["kick_tic"] = g["tics"]
+    bogle_emit_sound(g, "stone_clack")
+}
+
+# Walking into a stone kicks it, when it lies ahead of both the step and the
+# facing, and was not kicked in the last eight tics.
+dae curling_walk_kick(g, mx, my) {
+    gin mx == 0 an my == 0 {
+        gie nae
+    }
+    ken cosine = bogle_cos(g["sin"], g["angle"])
+    ken sine = bogle_sin(g["sin"], g["angle"])
+    fer s in g["stones"] {
+        gin s != naething an s["kick_tic"] + 8 <= g["tics"] an abs(g["z"] - s["z"]) < 56 * 65536 {
+            ken dx = (s["x"] - g["x"]) / 256
+            ken dy = (s["y"] - g["y"]) / 256
+            gin abs(dx) < 8704 an abs(dy) < 8704 an dx * dx + dy * dy < 75759616 {
+                gin (mx / 256) * dx + (my / 256) * dy > 0 an (cosine / 256) * dx + (sine / 256) * dy > 0 {
+                    curling_kick(g, s)
+                    gie aye
+                }
+            }
+        }
+    }
+    gie nae
+}
+
+# The stone E would kick: the nearest whose centre lies ahead within 80 units
+# (its near edge within the usual 64-unit reach) and 20 units of the line of
+# sight, and in view.
+dae curling_use_target(g) {
+    ken cosine = bogle_cos(g["sin"], g["angle"])
+    ken sine = bogle_sin(g["sin"], g["angle"])
+    ken best = naething
+    ken best_along = 81
+    fer s in g["stones"] {
+        gin s != naething an abs(g["z"] - s["z"]) < 56 * 65536 {
+            ken dx = (s["x"] - g["x"]) / 65536
+            ken dy = (s["y"] - g["y"]) / 65536
+            gin abs(dx) <= 80 an abs(dy) <= 80 {
+                ken along = (dx * cosine + dy * sine) / 65536
+                ken across = abs(dy * cosine - dx * sine) / 65536
+                gin along > 0 an along < best_along an across < 20 an bogle_sight(g, g["x"], g["y"], g["view_z"], g["sector"], s["x"], s["y"], s["z"] + 16 * 65536, s["sector"]) {
+                    best = s
+                    best_along = along
+                }
+            }
+        }
+    }
+    gie best
+}
+
+dae curling_use_kick(g) {
+    ken s = curling_use_target(g)
+    gin s == naething {
+        gie nae
+    }
+    curling_kick(g, s)
+    gie aye
+}
+
+# Reflect a velocity off a normal pointing back towards the stone, keeping
+# keep/256 of the result. Returns nae when the stone is not closing.
+dae curling_bounce(s, nx, ny, keep) {
+    ken length2 = nx * nx + ny * ny
+    ken dot = s["svx"] * nx + s["svy"] * ny
+    gin length2 == 0 or dot >= 0 {
+        gie nae
+    }
+    s["svx"] = (s["svx"] - 2 * dot * nx / length2) * keep / 256
+    s["svy"] = (s["svy"] - 2 * dot * ny / length2) * keep / 256
+    gie aye
+}
+
+# The player or a keeper or haggis the stone would touch at (x, y), closing
+# on it. The ghost phases through; midges are a cloud.
+dae curling_contact(g, s, x, y) {
+    gin g["health"] > 0 an abs(g["z"] - s["z"]) < 56 * 65536 {
+        ken dx = (x - g["x"]) / 256
+        ken dy = (y - g["y"]) / 256
+        gin abs(dx) < 8192 an abs(dy) < 8192 an dx * dx + dy * dy < 67108864 an s["svx"] / 256 * dx + s["svy"] / 256 * dy < 0 {
+            gie [aye, dx, dy, naething]
+        }
+    }
+    fer a in g["actors"] {
+        gin a["active"] an (a["kind"] == 2 or a["kind"] == 3) an abs(a["z"] - s["z"]) < 56 * 65536 {
+            ken dx = (x - a["x"]) / 256
+            ken dy = (y - a["y"]) / 256
+            gin abs(dx) < 8192 an abs(dy) < 8192 an dx * dx + dy * dy < 67108864 an s["svx"] / 256 * dx + s["svy"] / 256 * dy < 0 {
+                gie [aye, dx, dy, a]
+            }
+        }
+    }
+    gie [nae, 0, 0, naething]
+}
+
+# A fast stone hurts the player lightly and stops dead. A keeper is stunned and
+# hurt, a haggis goes off; either way the stone rebounds with a quarter speed.
+dae curling_strike(g, s, hit, speed) {
+    bogle_emit_sound(g, "stone_clack")
+    ken a = hit[3]
+    gin a == naething {
+        gin speed >= 4 * 65536 {
+            hurt_player(g, 4)
+        }
+        s["svx"] = 0
+        s["svy"] = 0
+        gie naething
+    }
+    gin a["kind"] == 2 {
+        damage_actor(g, a, 20)
+        gin a["active"] {
+            a["state"] = "stunned"
+            a["timer"] = 70
+        }
+    } ither {
+        damage_actor(g, a, 1)
+    }
+    curling_bounce(s, hit[1], hit[2], 64)
+}
+
+# One stone's glide for a tic, in substeps of at most eight units.
+dae curling_glide(g, index, s) {
+    ken vx = s["svx"]
+    ken vy = s["svy"]
+    ken speed = isqrt(vx * vx + vy * vy)
+    ken body = {
+        "map": g["map"],
+        "x": s["x"],
+        "y": s["y"],
+        "z": s["z"],
+        "vz": 0,
+        "sector": s["sector"],
+        "no_drop": aye,
+        "stones": g["stones"],
+        "stone_self": index,
+    }
+    ken steps = max(abs(vx), abs(vy)) / 524288 + 1
+    fer i in 1..(steps + 1) {
+        ken sx = vx * i / steps - vx * (i - 1) / steps
+        ken sy = vy * i / steps - vy * (i - 1) / steps
+        ken hit = curling_contact(g, s, body["x"] + sx, body["y"] + sy)
+        gin hit[0] {
+            curling_strike(g, s, hit, speed)
+            brak
+        }
+        hit = body_blocker(body, body["x"] + sx, body["y"] + sy)
+        gin hit[0] {
+            ken other = naething
+            gin len(hit) > 3 an g["map"]["thing_type"][hit[3]] == 36 {
+                other = g["stones"][hit[3]]
+            }
+            ken length2 = hit[1] * hit[1] + hit[2] * hit[2]
+            ken dot = vx * hit[1] + vy * hit[2]
+            gin other != naething an length2 > 0 an dot < 0 {
+                # Equal stones: the struck one takes the normal component.
+                ken nvx = dot * hit[1] / length2
+                ken nvy = dot * hit[2] / length2
+                other["svx"] = other["svx"] + nvx
+                other["svy"] = other["svy"] + nvy
+                other["kick_tic"] = g["tics"]
+                s["svx"] = vx - nvx
+                s["svy"] = vy - nvy
+                bogle_emit_sound(g, "stone_clack")
+            } ither gin curling_bounce(s, hit[1], hit[2], 192) {
+                bogle_emit_sound(g, "stone_clack")
+            } ither {
+                body_substep(body, sx, sy)
+            }
+            brak
+        }
+        body_substep(body, sx, sy)
+    }
+    s["x"] = body["x"]
+    s["y"] = body["y"]
+    s["sector"] = body["sector"]
+    s["z"] = g["map"]["floor_h"][body["sector"]] * 65536
+    # Friction acts on whatever speed survived the tic's impacts.
+    vx = s["svx"]
+    vy = s["svy"]
+    speed = isqrt(vx * vx + vy * vy)
+    gin speed <= curling_friction() {
+        s["svx"] = 0
+        s["svy"] = 0
+    } ither {
+        s["svx"] = vx * (speed - curling_friction()) / speed
+        s["svy"] = vy * (speed - curling_friction()) / speed
+    }
+}
+
+dae curling_tick(g) {
+    ken rumble = nae
+    fer i in 0..len(g["stones"]) {
+        ken s = g["stones"][i]
+        gin s != naething an (s["svx"] != 0 or s["svy"] != 0) {
+            curling_glide(g, i, s)
+            gin abs(s["svx"]) + abs(s["svy"]) >= 4 * 65536 {
+                rumble = aye
+            }
+        }
+    }
+    # Like the midge buzz: one short cue every seven tics, never overlapping.
+    gin rumble an g["tics"] % 7 == 3 {
+        bogle_emit_sound(g, "stone_rumble")
+    }
+}

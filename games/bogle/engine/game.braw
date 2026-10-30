@@ -5,6 +5,7 @@ fetch "games/bogle/engine/things"
 fetch "games/bogle/engine/weapons"
 fetch "games/bogle/engine/doors"
 fetch "games/bogle/engine/ai"
+fetch "games/bogle/engine/curling"
 
 dae new_game(map, play = naething) {
     ken assets = bogle_assets()
@@ -104,7 +105,12 @@ dae tic(g, input) {
     g["angle"] = angle
     gin g["gameplay"] {
         ken use = bit_an(keys, 128) != 0
-        doors_tick(g, use an nae g["was_use"])
+        ken fresh = use an nae g["was_use"]
+        # E on a curling stone kicks it instead of reaching past it.
+        gin fresh an curling_use_kick(g) {
+            fresh = nae
+        }
+        doors_tick(g, fresh)
         g["was_use"] = use
         gin g["won"] {
             g["tics"] = g["tics"] + 1
@@ -139,7 +145,12 @@ dae tic(g, input) {
     }
     ken cosine = bogle_cos(g["sin"], angle)
     ken sine = bogle_sin(g["sin"], angle)
-    move_body(g, forward * cosine - sideways * sine, forward * sine + sideways * cosine)
+    ken step_x = forward * cosine - sideways * sine
+    ken step_y = forward * sine + sideways * cosine
+    move_body(g, step_x, step_y)
+    gin g["gameplay"] {
+        curling_walk_kick(g, step_x, step_y)
+    }
     ken floor = g["map"]["floor_h"][g["sector"]] * 65536
     gin g["z"] > floor {
         g["vz"] = g["vz"] - 65536
@@ -156,6 +167,7 @@ dae tic(g, input) {
         weapons_tick(g, bit_an(keys, 64) != 0)
         projectiles_tick(g)
         things_tick(g)
+        curling_tick(g)
         ai_tick(g)
     }
     gie g["sounds"]

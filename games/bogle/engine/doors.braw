@@ -77,7 +77,7 @@ dae door_occupied(g, sector) {
         gie aye
     }
     fer a in g["actors"] {
-        gin a["active"] an a["kind"] >= 2 an a["kind"] <= 5 an a["sector"] == sector {
+        gin a["active"] an ((a["kind"] >= 2 an a["kind"] <= 5) or a["kind"] == 36) an a["sector"] == sector {
             gie aye
         }
     }
@@ -89,7 +89,7 @@ dae door_occupied(g, sector) {
                 gie aye
             }
             fer a in g["actors"] {
-                gin a["active"] an a["kind"] >= 2 an a["kind"] <= 5 an body_wall(m, w, a["x"], a["y"])[0] {
+                gin a["active"] an ((a["kind"] >= 2 an a["kind"] <= 5) or a["kind"] == 36) an body_wall(m, w, a["x"], a["y"])[0] {
                     gie aye
                 }
             }

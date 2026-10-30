@@ -6,12 +6,16 @@ dae init_things(g) {
     g["sounds"] = []
     g["bog_spawn_timer"] = 350
     g["bog_slow"] = nae
+    # Curling stones by thing index (naething elsewhere): move.braw reads their
+    # live positions, and curling.braw their glide.
+    g["stones"] = []
     ken m = g["map"]
     gin nae contains(m, "thing_type") {
         gie naething
     }
     fer i in 0..len(m["thing_type"]) {
         ken kind = m["thing_type"][i]
+        shove(g["stones"], naething)
         gin kind != 1 {
             ken hp = 1
             ken state = "idle"
@@ -50,7 +54,13 @@ dae init_things(g) {
                 "dx": 0,
                 "dy": 0,
                 "active": aye,
+                "svx": 0,
+                "svy": 0,
+                "kick_tic": -1000,
             })
+            gin kind == 36 {
+                g["stones"][i] = g["actors"][len(g["actors"]) - 1]
+            }
         }
     }
 }
@@ -142,6 +152,9 @@ dae actor_move(g, a, dx, dy) {
         "sector": a["sector"],
         "ignore_steps": a["kind"] == 5,
         "no_drop": a["kind"] == 2 or a["kind"] == 3,
+    }
+    gin contains(g, "stones") {
+        body["stones"] = g["stones"]
     }
     move_body(body, dx, dy)
     # Walking actors remain grounded when a portal leads to a lower floor.
