@@ -1,0 +1,48 @@
+fetch "games/bogle/shell/frontend"
+
+dae prog_tick(ui) {
+    bogle_front_step(ui, 0, {"menu": 0, "keys": 0, "dx": 0})
+}
+
+ken ui = bogle_front_new("games/bogle/data/e1m1.map")
+mak_siccar bogle_levels()[0] == "games/bogle/data/e1m1.map"
+mak_siccar len(bogle_levels()) >= 2
+ui["levels"] = ["games/bogle/data/e1m1.map", "games/bogle/data/stage3.map"]
+bogle_front_new_game(ui)
+bogle_front_screen(ui, "play")
+ken g = ui["game"]
+g["health"] = 57
+g["spirit"] = 12
+g["mars"] = 9
+g["powder"] = 4
+g["puff"] = 30
+g["owned"][2] = aye
+g["weapon"] = 3
+g["keys"] = 3
+g["won"] = aye
+prog_tick(ui)
+mak_siccar ui["screen"] == "briefing"
+mak_siccar ui["map_path"] == "games/bogle/data/stage3.map"
+g = ui["game"]
+mak_siccar g["health"] == 57 an g["spirit"] == 12 an g["mars"] == 9 an g["powder"] == 4 an g["puff"] == 30
+mak_siccar g["owned"][2] an nae g["owned"][1] an g["weapon"] == 3
+mak_siccar g["keys"] == 0 an nae g["won"]
+blether "ok winning enters the next level carrying health, ammo and weapons"
+
+g["health"] = 5
+g["owned"][1] = aye
+bogle_front_start(ui)
+g = ui["game"]
+mak_siccar g["health"] == 57 an nae g["owned"][1]
+blether "ok restart replays the level with what was carried in"
+
+bogle_front_screen(ui, "play")
+g["won"] = aye
+prog_tick(ui)
+mak_siccar ui["screen"] == "complete"
+blether "ok winning the last level completes the episode"
+
+bogle_front_new_game(ui)
+mak_siccar ui["map_path"] == "games/bogle/data/e1m1.map"
+mak_siccar ui["game"]["health"] == 100 an nae ui["game"]["owned"][2]
+blether "ok new game starts the episode afresh"

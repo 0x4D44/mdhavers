@@ -83,6 +83,8 @@ mak_siccar front["screen"] == "briefing"
 front_press(front, 16)
 mak_siccar front["screen"] == "play"
 mak_siccar front["game"]["health"] == 100
+# Winning the last level of the episode completes it.
+front["levels"] = ["games/bogle/data/e1m1.map"]
 front["game"]["won"] = aye
 front_input(front, 0)
 mak_siccar front["screen"] == "complete"

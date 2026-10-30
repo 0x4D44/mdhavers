@@ -20,6 +20,9 @@ dae bogle_front_new(map_path) {
         "music_enabled": aye,
         "return": "title",
         "map_path": map_path,
+        "first_map": map_path,
+        "levels": bogle_levels(),
+        "carry": naething,
         "game": naething,
         "last_menu": 0,
         "blocked_keys": 0,
@@ -38,11 +41,64 @@ dae bogle_front_screen(ui, screen) {
     ui["pending_dx"] = 0
 }
 
+# Episode order. Winning a level in this list enters the next one; winning
+# the last (or a map from outside the list) shows the completion screen.
+dae bogle_levels() {
+    gie ["games/bogle/data/e1m1.map", "games/bogle/data/e1m2.map"]
+}
+
+dae bogle_front_next_level(ui) {
+    ken levels = ui["levels"]
+    fer i in 0..len(levels) - 1 {
+        gin levels[i] == ui["map_path"] {
+            gie levels[i + 1]
+        }
+    }
+    gie ""
+}
+
+# What the player takes into the next level, as in Doom: health, spirit,
+# ammo and weapons. Keys belong to their level.
+dae bogle_front_carry(g) {
+    ken owned = []
+    fer have in g["owned"] {
+        shove(owned, have)
+    }
+    gie {"health": g["health"], "spirit": g["spirit"], "mars": g["mars"], "powder": g["powder"], "puff": g["puff"], "owned": owned, "weapon": g["weapon"]}
+}
+
 dae bogle_front_start(ui) {
     # Reload pristine geometry: doors mutate their map's ceiling heights.
-    ui["game"] = new_game(load_map(ui["map_path"]))
+    ken g = new_game(load_map(ui["map_path"]))
+    ken carry = ui["carry"]
+    gin carry != naething {
+        fer field in ["health", "spirit", "mars", "powder", "puff", "weapon"] {
+            g[field] = carry[field]
+        }
+        g["owned"] = bogle_front_carry(carry)["owned"]
+    }
+    ui["game"] = g
     ui["run"] = ui["run"] + 1
     bogle_front_screen(ui, "briefing")
+}
+
+# New Game starts the episode afresh; Restart replays the current level
+# with what the player carried into it.
+dae bogle_front_new_game(ui) {
+    ui["map_path"] = ui["first_map"]
+    ui["carry"] = naething
+    bogle_front_start(ui)
+}
+
+dae bogle_front_won(ui) {
+    ken next = bogle_front_next_level(ui)
+    gin next == "" {
+        bogle_front_screen(ui, "complete")
+    } ither {
+        ui["carry"] = bogle_front_carry(ui["game"])
+        ui["map_path"] = next
+        bogle_front_start(ui)
+    }
 }
 
 dae bogle_front_items(screen) {
@@ -130,7 +186,9 @@ dae bogle_front_step(ui, dt_ms, input) {
         }
         gin bit_an(pressed, 4) != 0 {
             ken action = items[ui["selection"]]
-            gin action == "New Game" or action == "Restart" or action == "Restart Level" {
+            gin action == "New Game" {
+                bogle_front_new_game(ui)
+            } ither gin action == "Restart" or action == "Restart Level" {
                 bogle_front_start(ui)
             } ither gin action == "Music ON/OFF" {
                 ui["music_enabled"] = nae ui["music_enabled"]
@@ -157,7 +215,7 @@ dae bogle_front_step(ui, dt_ms, input) {
         gie aye
     }
     gin g["won"] {
-        bogle_front_screen(ui, "complete")
+        bogle_front_won(ui)
         gie aye
     }
     gin bit_an(pressed, 8) != 0 {
@@ -184,7 +242,7 @@ dae bogle_front_step(ui, dt_ms, input) {
             brak
         }
         gin g["won"] {
-            bogle_front_screen(ui, "complete")
+            bogle_front_won(ui)
             brak
         }
     }
