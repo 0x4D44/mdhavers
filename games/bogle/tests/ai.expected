@@ -6,3 +6,6 @@ ok ghost wall phase and corporeal collision
 ok keeper seeded patrol without sight
 ok midges ignore steps haggises respect them
 ok keeper contact attack respects walls
+ok keeper charge steers towards a sidestep
+ok keeper overshoot skids then winds up facing the player
+ok keeper charge runs out of puff

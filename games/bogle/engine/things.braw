@@ -43,6 +43,7 @@ dae init_things(g) {
                 "state": state,
                 "timer": 0,
                 "seen_player": nae,
+                "charge_tics": 0,
                 "vx": 0,
                 "vy": 0,
                 "dx": 0,

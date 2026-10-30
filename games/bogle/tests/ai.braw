@@ -40,9 +40,14 @@ mak_siccar a["state"] == "charge" an a["dx"] == -163840
 ken before = a["x"]
 ai_tick(g)
 mak_siccar a["x"] == before - 163840
+# Player level with the keeper (not behind him), so the wall ends the charge.
+g["x"] = 17 * 65536
+g["y"] = 300 * 65536
 a["x"] = 17 * 65536
 ai_tick(g)
 mak_siccar a["state"] == "stunned" an a["timer"] == 35
+g["x"] = 64 * 65536
+g["y"] = 64 * 65536
 fer i in 0..35 {
     ai_tick(g)
 }
@@ -110,3 +115,41 @@ g["actors"][0]["dx"] = 163840
 ai_tick(g)
 mak_siccar g["health"] == 100
 blether "ok keeper contact attack respects walls"
+
+# A charge bends towards a sidestepping player, and an overshoot or a long
+# run ends in a short skid instead of carrying on to the far wall.
+g = actor_test_game(map_parse(room + "t 2 400 64 0 0\n"))
+a = g["actors"][0]
+a["seen_player"] = aye
+a["state"] = "charge"
+a["dx"] = -163840
+a["dy"] = 0
+g["y"] = 200 * 65536
+ai_tick(g)
+mak_siccar a["state"] == "charge" an a["dy"] > 0 an a["dx"] > -163840
+blether "ok keeper charge steers towards a sidestep"
+a["x"] = 40 * 65536
+a["y"] = 200 * 65536
+g["x"] = 120 * 65536
+a["dx"] = -163840
+a["dy"] = 0
+ai_tick(g)
+mak_siccar a["state"] == "stunned" an a["timer"] == 12
+fer i in 0..12 {
+    ai_tick(g)
+}
+mak_siccar a["state"] == "patrol"
+ai_tick(g)
+mak_siccar a["state"] == "windup" an a["dx"] > 0
+blether "ok keeper overshoot skids then winds up facing the player"
+a["state"] = "charge"
+a["charge_tics"] = 70
+a["x"] = 300 * 65536
+a["y"] = 400 * 65536
+g["x"] = 64 * 65536
+g["y"] = 64 * 65536
+a["dx"] = -163840
+a["dy"] = -163840
+ai_tick(g)
+mak_siccar a["state"] == "stunned" an a["timer"] == 12
+blether "ok keeper charge runs out of puff"

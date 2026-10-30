@@ -51,15 +51,31 @@ dae ai_tick(g) {
                         a["timer"] = a["timer"] - 1
                         gin a["timer"] <= 0 {
                             a["state"] = "charge"
+                            a["charge_tics"] = 0
                         }
                     } ither gin a["state"] == "charge" {
+                        a["charge_tics"] = a["charge_tics"] + 1
+                        ken ahead = (g["x"] - a["x"]) / 65536 * a["dx"] + (g["y"] - a["y"]) / 65536 * a["dy"]
                         gin distance < 32 an bogle_sight(g, a["x"], a["y"], a["z"] + 24 * 65536, a["sector"], g["x"], g["y"], g["z"] + 24 * 65536, g["sector"]) {
                             hurt_player(g, 15)
                             a["state"] = "stunned"
                             a["timer"] = 35
-                        } ither gin nae actor_move(g, a, a["dx"], a["dy"]) {
+                        } ither gin ahead < 0 or a["charge_tics"] > 70 {
+                            # Overshot or ran out of puff: skid, then turn and wind up again.
                             a["state"] = "stunned"
-                            a["timer"] = 35
+                            a["timer"] = 12
+                        } ither {
+                            # Bend the charge towards the player a quarter at a time, so he
+                            # tracks a sidestep but a late dodge still makes him miss.
+                            gin bogle_sight(g, a["x"], a["y"], a["z"] + 32 * 65536, a["sector"], g["x"], g["y"], g["z"] + 32 * 65536, g["sector"]) {
+                                ken aim = actor_towards(a, g["x"], g["y"], 163840)
+                                a["dx"] = (a["dx"] * 3 + aim[0]) / 4
+                                a["dy"] = (a["dy"] * 3 + aim[1]) / 4
+                            }
+                            gin nae actor_move(g, a, a["dx"], a["dy"]) {
+                                a["state"] = "stunned"
+                                a["timer"] = 35
+                            }
                         }
                     } ither {
                         gin bogle_sight(g, a["x"], a["y"], a["z"] + 32 * 65536, a["sector"], g["x"], g["y"], g["z"] + 32 * 65536, g["sector"]) {

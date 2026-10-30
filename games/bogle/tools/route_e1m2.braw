@@ -1,0 +1,307 @@
+# E1M2 autopilot: walks a waypoint route, opens doors and fights whatever it
+# sees, driving the real engine tic(). The consumed inputs are written as a
+# replay, so the result replays exactly. Run from the repository root:
+#   BOGLE_ROUTE_OUT=games/bogle/replays/e1m2.txt mdhavers run games/bogle/tools/route_e1m2.braw
+# (or build it natively; it takes the same BOGLE_MAP and BOGLE_ROUTE_OUT).
+# Prints a status line per milestone and fails loudly on death or a stuck leg.
+fetch "games/bogle/shell/replay"
+
+ken ap_map = bogle_option("BOGLE_MAP", "games/bogle/data/e1m2.map")
+ken ap_out = bogle_option("BOGLE_ROUTE_OUT", "games/bogle/replays/e1m2.txt")
+ken ap_game = new_game(load_map(ap_map))
+ken ap_lines = []
+ken ap_engaged = {}
+ken ap_prev = [320, -352]
+ken ap_low = {"hp": 100, "tic": 0}
+
+# Angle (0..4095) facing map vector dx,dy: coarse search, then refine.
+dae ap_angle_to(g, dx, dy) {
+    ken best = 0
+    ken best_v = -999999999999
+    fer i in 0..64 {
+        ken v = dx * bogle_cos(g["sin"], i * 64) + dy * bogle_sin(g["sin"], i * 64)
+        gin v > best_v {
+            best_v = v
+            best = i * 64
+        }
+    }
+    ken centre = best
+    fer i in 0..129 {
+        ken a = bogle_angle(centre - 64 + i)
+        ken v = dx * bogle_cos(g["sin"], a) + dy * bogle_sin(g["sin"], a)
+        gin v > best_v {
+            best_v = v
+            best = a
+        }
+    }
+    gie best
+}
+
+# Mouse delta that turns exactly to the desired angle this tic.
+dae ap_turn(g, desired) {
+    ken d = bogle_angle(g["angle"] - desired)
+    gin d >= 2048 {
+        d = d - 4096
+    }
+    gie d
+}
+
+dae ap_step(g, keys, dx) {
+    tic(g, {"keys": keys, "dx": dx})
+    shove(ap_lines, tae_string(keys) + " " + tae_string(dx))
+    gin g["health"] < ap_low["hp"] {
+        ap_low["hp"] = g["health"]
+        ap_low["tic"] = g["tics"]
+    }
+    gin g["health"] <= 0 {
+        hurl "dead at tic " + tae_string(g["tics"])
+    }
+}
+
+# Nearest visible enemy worth fighting (not midges, not ghosts in the dark).
+dae ap_target(g) {
+    ken best = naething
+    ken best_d = 999999
+    fer i in 0..len(g["actors"]) {
+        ken a = g["actors"][i]
+        ken kind = a["kind"]
+        gin a["active"] an kind >= 2 an kind <= 4 {
+            ken skip = kind == 4 an g["map"]["light"][a["sector"]] <= 96
+            ken key = tae_string(i)
+            gin contains(ap_engaged, key) an ap_engaged[key] > 500 {
+                skip = aye
+            }
+            ken limit = 320
+            gin kind == 3 {
+                limit = 380
+            }
+            gin kind == 4 {
+                limit = 420
+            }
+            ken d = actor_distance(g["x"], g["y"], a["x"], a["y"])
+            gin nae skip an d < limit an d < best_d {
+                gin bogle_sight(g, g["x"], g["y"], g["view_z"], g["sector"], a["x"], a["y"], a["z"] + 24 * 65536, a["sector"]) {
+                    best = i
+                    best_d = d
+                }
+            }
+        }
+    }
+    gie best
+}
+
+# One fighting tic against actor i: face it, pick a weapon, fire or close in.
+dae ap_fight(g, i) {
+    ken a = g["actors"][i]
+    ken key = tae_string(i)
+    gin nae contains(ap_engaged, key) {
+        ap_engaged[key] = 0
+        blether "  engage kind " + tae_string(a["kind"]) + " tic " + tae_string(g["tics"]) + " hp " + tae_string(g["health"]) + " spirit " + tae_string(g["spirit"])
+    }
+    ap_engaged[key] = ap_engaged[key] + 1
+    ken d = actor_distance(g["x"], g["y"], a["x"], a["y"])
+    ken turn = ap_turn(g, ap_angle_to(g, (a["x"] - g["x"]) / 65536, (a["y"] - g["y"]) / 65536))
+    ken kind = a["kind"]
+    ken want = 1
+    ken keys = 0
+    ken fire = nae
+    ken has_powder = g["owned"][2] an g["powder"] > 0
+    ken has_mars = g["owned"][1] an g["mars"] > 0
+    ken has_pipes = g["owned"][3] an (g["puff"] >= 34 or g["bag_charge"] > 0)
+    ken pipes = nae
+    gin kind == 3 {
+        # Haggis: shoot from range; never let it reach you.
+        gin has_powder {
+            want = 3
+            fire = aye
+        } ither gin has_mars an d > 110 {
+            want = 2
+            fire = aye
+        } ither gin has_pipes an d > 110 an d < 300 {
+            pipes = aye
+        } ither {
+            keys = 2
+        }
+    } ither gin kind == 2 {
+        # Gamekeeper: pipes or a close blunderbuss, else stab or wait for the charge.
+        gin has_pipes an d < 150 {
+            pipes = aye
+        } ither gin has_powder an d < 130 {
+            want = 3
+            fire = aye
+        } ither gin d < 60 {
+            want = 1
+            fire = aye
+        } ither gin has_mars an d > 100 an d < 200 {
+            want = 2
+            fire = aye
+        } ither gin a["state"] == "charge" an d < 220 {
+            keys = 4
+        } ither gin a["state"] != "windup" an a["state"] != "fists" {
+            keys = 1
+        }
+    } ither {
+        # Ghost: Mars from range, else stab, pipes or close in.
+        gin has_mars an d > 100 an d < 260 {
+            want = 2
+            fire = aye
+        } ither gin d < 60 {
+            want = 1
+            fire = aye
+        } ither gin has_pipes an d < 150 {
+            pipes = aye
+        } ither gin has_powder an d < 160 {
+            want = 3
+            fire = aye
+        } ither {
+            keys = 1
+        }
+    }
+    gin pipes {
+        # Hold fire to fill the bag, release after 24 tics to blast.
+        want = 4
+        fire = g["bag_charge"] < 24
+    }
+    gin g["weapon"] != want {
+        keys = keys + 128 * bogle_pow2(want)
+    }
+    gin fire an g["weapon"] == want an (g["cooldown"] == 0 or want == 4) {
+        keys = keys + 64
+    }
+    ap_step(g, keys, turn)
+}
+
+dae ap_maybe_fight(g) {
+    ken target = ap_target(g)
+    gin target == naething {
+        gie nae
+    }
+    ap_fight(g, target)
+    gie aye
+}
+
+# Walk straight to x,y (fighting on the way). Presses use when blocked, which
+# opens doors. Returns nae if no progress for `limit` tics.
+dae ap_go_once(g, x, y, limit) {
+    ken best = 999999
+    ken stall = 0
+    whiles aye {
+        gin nae ap_maybe_fight(g) {
+            ken dx = x - g["x"] / 65536
+            ken dy = y - g["y"] / 65536
+            ken d = isqrt(dx * dx + dy * dy)
+            gin d <= 6 {
+                gie aye
+            }
+            gin d < best {
+                best = d
+                stall = 0
+            } ither {
+                stall = stall + 1
+                gin stall == 30 or stall == 90 {
+                    ap_step(g, 0, ap_turn(g, ap_angle_to(g, dx, dy)))
+                    ap_step(g, 128, 0)
+                }
+                gin stall > limit {
+                    gie nae
+                }
+            }
+            ap_step(g, 1, ap_turn(g, ap_angle_to(g, dx, dy)))
+        }
+    }
+}
+
+# A fight can push the player off the line; recover via the current sector's
+# centre, then via the previous waypoint.
+dae ap_go(g, x, y) {
+    gin nae ap_go_once(g, x, y, 120) {
+        ken m = g["map"]
+        ken s = g["sector"]
+        ken n = m["wall_count"][s]
+        ken cx = 0
+        ken cy = 0
+        fer w in m["wall_first"][s]..m["wall_first"][s] + n {
+            cx = cx + m["vx"][m["wall_v1"][w]]
+            cy = cy + m["vy"][m["wall_v1"][w]]
+        }
+        blether "  recentre " + tae_string(cx / n) + "," + tae_string(cy / n) + " tic " + tae_string(g["tics"])
+        gin nae (ap_go_once(g, cx / n, cy / n, 150) an ap_go_once(g, x, y, 200)) {
+            gin nae (ap_go_once(g, ap_prev[0], ap_prev[1], 200) an ap_go_once(g, x, y, 200)) {
+                hurl "stuck going to " + tae_string(x) + "," + tae_string(y) + " at tic " + tae_string(g["tics"])
+            }
+        }
+    }
+    ap_prev = [x, y]
+}
+
+# Face an angle, press use once, then wait (still fighting) for a door to rise.
+dae ap_use(g, angle, wait) {
+    whiles ap_maybe_fight(g) {
+    }
+    ap_step(g, 0, ap_turn(g, angle))
+    ap_step(g, 128, 0)
+    fer i in 0..wait {
+        gin nae ap_maybe_fight(g) {
+            ap_step(g, 0, ap_turn(g, angle))
+        }
+    }
+}
+
+dae ap_status(g, label) {
+    blether label + " tic " + tae_string(g["tics"]) + " hp " + tae_string(g["health"]) + " spirit " + tae_string(g["spirit"]) + " keys " + tae_string(g["keys"]) + " owned " + tae_string(g["owned"]) + " pos " + tae_string(g["x"] / 65536) + "," + tae_string(g["y"] / 65536)
+}
+
+ken route = [
+    ["status", "start"],
+    # Yard, boathouse alcove, gate into the hub.
+    ["go", 576, -224], ["go", 704, -224], ["go", 832, -224], ["go", 576, -224],
+    ["go", 576, -96], ["go", 320, -120], ["go", 320, -72], ["use", 1024, 40], ["go", 320, 64],
+    ["status", "hub"],
+    # West door, stair down to the malting floor and the Mars box.
+    ["go", 64, 64], ["go", 40, 192], ["use", 2048, 40], ["go", -160, 192], ["go", -352, 192], ["go", -352, 160],
+    ["status", "malting"],
+    # Peat store, kiln column, gallery stair, iron key.
+    ["go", -352, -64], ["go", -736, -64], ["go", -848, -40], ["go", -872, -90], ["go", -736, -64],
+    ["go", -736, 320], ["go", -864, 320], ["go", -864, 464], ["go", -480, 464], ["go", -352, 448],
+    ["status", "iron key"],
+    # Back to the hub, iron door, stair up to the warehouse.
+    ["go", -352, 320], ["go", -352, 192], ["go", -48, 192], ["use", 0, 40], ["go", 64, 192],
+    ["go", 192, 192], ["go", 192, 448], ["go", 600, 448], ["use", 0, 40], ["go", 800, 448], ["go", 992, 448],
+    ["status", "warehouse"],
+    # Blunderbuss, north aisles, cooperage, tasting room plinth (silver key).
+    ["go", 1120, 448], ["go", 1248, 448], ["go", 1248, 576], ["go", 1248, 704], ["go", 1376, 704], ["go", 1504, 704],
+    ["go", 1504, 832], ["go", 1472, 864], ["go", 1504, 704], ["go", 1504, 448], ["go", 1504, 192],
+    ["go", 1632, 192], ["go", 1600, 320], ["go", 1600, 64], ["go", 1632, 192], ["go", 1760, 192],
+    ["status", "silver key"],
+    # South aisle to the loading dock, drop into the hub.
+    ["go", 1632, 192], ["go", 1504, 192], ["go", 1120, 192], ["go", 1120, 64], ["go", 992, 64], ["go", 800, 64], ["go", 576, 64],
+    ["status", "dock drop"],
+    # Silver door, wash back, still house, worm tub (bagpipes).
+    ["go", 448, 192], ["go", 64, 192], ["go", 64, 576], ["use", 2048, 40], ["go", -96, 576], ["go", -224, 576],
+    ["go", -224, 720], ["go", -224, 864], ["go", -224, 1120], ["go", 160, 1120], ["go", 160, 1248], ["go", 288, 1248],
+    ["status", "bagpipes"],
+    # Stair to the spirit safe, walkway and balcony supplies, back to the gate.
+    ["go", 288, 1120], ["go", 416, 1120], ["go", 416, 864], ["go", 800, 864], ["go", 800, 704], ["go", 576, 704],
+    ["go", 448, 600], ["go", 192, 600], ["go", 192, 704], ["go", 800, 704], ["go", 800, 864], ["go", 800, 992], ["go", 832, 992],
+    ["status", "gate"],
+    ["use", 0, 4],
+]
+
+fer op in route {
+    gin op[0] == "go" {
+        ap_go(ap_game, op[1], op[2])
+    } ither gin op[0] == "use" {
+        ap_use(ap_game, op[1], op[2])
+    } ither {
+        ap_status(ap_game, op[1])
+    }
+}
+ap_status(ap_game, "end")
+mak_siccar ap_game["won"]
+ken ap_text = "# E1M2 generated by tools/route_e1m2.braw: movement, fire64, use128, select weapons256..2048.\n"
+fer line in ap_lines {
+    ap_text = ap_text + line + "\n"
+}
+scrieve(ap_out, ap_text)
+blether "lowest health " + tae_string(ap_low["hp"]) + " at tic " + tae_string(ap_low["tic"])
+blether "won in " + tae_string(len(ap_lines)) + " tics, wrote " + ap_out
