@@ -54,6 +54,18 @@ dae body_wall(m, wall, x, y) {
     gie [near, nx, ny]
 }
 
+# Does a 16.16 point on a wall's line lie on the wall segment? One unit of
+# slack absorbs crossing-point rounding at the wall's vertices.
+dae wall_holds(m, wall, px, py) {
+    ken a = m["wall_v1"][wall]
+    ken b = m["wall_v2"][wall]
+    ken wx = m["vx"][b] - m["vx"][a]
+    ken wy = m["vy"][b] - m["vy"][a]
+    ken along = (px / 256 - m["vx"][a] * 256) * wx + (py / 256 - m["vy"][a] * 256) * wy
+    ken slack = (abs(wx) + abs(wy)) * 256
+    gie along >= 0 - slack an along <= (wx * wx + wy * wy) * 256 + slack
+}
+
 dae body_portal_open(g, sector, wall) {
     ken m = g["map"]
     ken next = m["portal"][wall]
@@ -170,6 +182,10 @@ dae body_substep(g, dx, dy) {
         ken sector = g["sector"]
         ken first = m["wall_first"][sector]
         ken end = first + m["wall_count"][sector]
+        # Several portal lines can be crossed at once (collinear portals, or
+        # corners). The portal whose segment holds the crossing point wins;
+        # the first crossed line remains the fallback for rounding at vertices.
+        ken target = -1
         fer wall in first..end {
             gin m["portal"][wall] >= 0 {
                 ken a = m["wall_v1"][wall]
@@ -181,15 +197,25 @@ dae body_substep(g, dx, dy) {
                 ken before = wx * (g["y"] - ay) - wy * (g["x"] - ax)
                 ken after = wx * (y - ay) - wy * (x - ax)
                 gin before >= 0 an after < 0 an body_portal_open(g, sector, wall) {
-                    g["sector"] = m["portal"][wall]
-                    crossed = aye
-                    brak
+                    # A substep is at most eight units, so before*65536 fits i64.
+                    ken t = before * 65536 / (before - after)
+                    ken cx = g["x"] + (x - g["x"]) * t / 65536
+                    ken cy = g["y"] + (y - g["y"]) * t / 65536
+                    gin wall_holds(m, wall, cx, cy) {
+                        target = wall
+                        brak
+                    }
+                    gin target < 0 {
+                        target = wall
+                    }
                 }
             }
         }
-        gin nae crossed {
+        gin target < 0 {
             brak
         }
+        g["sector"] = m["portal"][target]
+        crossed = aye
     }
     g["x"] = x
     g["y"] = y
@@ -237,6 +263,9 @@ dae bogle_trace(g, x, y, z, sector, tx, ty, tz, include_end = nae) {
     fer step in 0..len(m["floor_h"]) + 1 {
         ken exit_wall = -1
         ken fraction = 65537
+        # Collinear walls share a crossing; prefer the one whose segment
+        # holds it, then the earliest. Unheld crossings are the fallback.
+        ken held = nae
         fer w in m["wall_first"][sector]..m["wall_first"][sector] + m["wall_count"][sector] {
             ken a = m["wall_v1"][w]
             ken b = m["wall_v2"][w]
@@ -246,9 +275,13 @@ dae bogle_trace(g, x, y, z, sector, tx, ty, tz, include_end = nae) {
             ken after = wx * (ty / 256 - m["vy"][a] * 256) - wy * (tx / 256 - m["vx"][a] * 256)
             gin before >= 0 an (after < 0 or (include_end an after == 0 an before > 0)) {
                 ken t = before * 65536 / (before - after)
-                gin t >= last an t < fraction {
-                    fraction = t
-                    exit_wall = w
+                gin t >= last {
+                    ken holds = wall_holds(m, w, x + (tx - x) * t / 65536, y + (ty - y) * t / 65536)
+                    gin (holds an nae held) or (holds == held an t < fraction) {
+                        fraction = t
+                        exit_wall = w
+                        held = holds
+                    }
                 }
             }
         }

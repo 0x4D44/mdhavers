@@ -109,6 +109,34 @@ mak_siccar g["x"] == 124 * 65536
 mak_siccar g["sector"] == 0
 blether "ok overlapping neighbour collision"
 
+# One straight east edge holds two portals: y 0..64 leads to sector 1 and
+# y 64..128 to sector 2. Crossing or tracing at y=96 must pick sector 2.
+ken split_map = {
+    "vx": [0, 128, 128, 128, 0, 256, 256, 256],
+    "vy": [0, 0, 64, 128, 128, 0, 64, 128],
+    "floor_h": [0, 0, 0],
+    "ceil_h": [128, 128, 128],
+    "wall_first": [0, 5, 9],
+    "wall_count": [5, 4, 4],
+    "wall_v1": [0, 1, 2, 3, 4, 1, 5, 6, 2, 2, 6, 7, 3],
+    "wall_v2": [1, 2, 3, 4, 0, 5, 6, 2, 1, 6, 7, 3, 2],
+    "portal": [-1, 1, 2, -1, -1, -1, -1, 2, 0, 1, -1, -1, 0],
+    "flags": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+}
+g = movement_body(split_map, 124, 96)
+move_body(g, 8 * 65536, 0)
+mak_siccar g["x"] == 132 * 65536
+mak_siccar g["sector"] == 2
+g = movement_body(split_map, 124, 32)
+move_body(g, 8 * 65536, 0)
+mak_siccar g["sector"] == 1
+mak_siccar bogle_sight(g, 64 * 65536, 96 * 65536, 32 * 65536, 0, 192 * 65536, 96 * 65536, 32 * 65536, 2)
+mak_siccar bogle_sight(g, 64 * 65536, 32 * 65536, 32 * 65536, 0, 192 * 65536, 32 * 65536, 32 * 65536, 1)
+ken split_hit = bogle_trace(g, 64 * 65536, 96 * 65536, 32 * 65536, 0, 300 * 65536, 96 * 65536, 32 * 65536)
+mak_siccar split_hit[0] == 2
+mak_siccar split_hit[1] == 10
+blether "ok collinear portals pick the crossed segment"
+
 m = movement_map(0, 128, 256)
 g = new_game(m)
 tic(g, {"keys": 1, "dx": 0})
