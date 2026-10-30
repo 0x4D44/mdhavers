@@ -17,11 +17,13 @@ pub mod ownership;
 pub mod runtime;
 #[allow(dead_code)]
 pub mod types;
+pub mod wasm;
 
 #[cfg(all(test, coverage))]
 mod coverage_tests;
 
 // Re-export main types
 pub use compiler::LLVMCompiler;
+pub use wasm::BuildTarget;
 #[allow(unused_imports)]
 pub use types::{InferredType, MdhTypes, ValueTag};

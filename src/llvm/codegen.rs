@@ -870,6 +870,8 @@ pub struct CodeGen<'ctx> {
     /// whether a fresh incoming was taken.
     rc_edge_markers: Option<Vec<inkwell::values::InstructionValue<'ctx>>>,
     rc_edge_fresh: bool,
+    /// Building for wasm32 (the browser, `retarget`): 32-bit pointers, `long` and `size_t`.
+    wasm32: bool,
 }
 
 #[derive(Debug)]
@@ -1025,6 +1027,7 @@ impl<'ctx> CodeGen<'ctx> {
             rc_borrows: Vec::new(),
             rc_edge_markers: None,
             rc_edge_fresh: false,
+            wasm32: false,
         }
     }
 
@@ -5480,6 +5483,39 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(())
     }
 
+    /// Build for `machine`'s target instead of the host: its triple and data layout. Call
+    /// before `compile`. Only the browser build (wasm32-unknown-emscripten) uses this.
+    pub fn retarget(&mut self, machine: &inkwell::targets::TargetMachine) {
+        let triple = machine.get_triple();
+        self.wasm32 = triple.as_str().to_bytes().starts_with(b"wasm32");
+        self.module.set_triple(&triple);
+        self.module
+            .set_data_layout(&machine.get_target_data().get_data_layout());
+    }
+
+    /// `tv_nsec` of a `struct timespec { i64 tv_sec; long tv_nsec; }` the C library has
+    /// filled in. wasm32's `long` is 32 bits, so there it is loaded as such and widened.
+    fn load_tv_nsec(
+        &self,
+        nsec_ptr: PointerValue<'ctx>,
+    ) -> inkwell::values::IntValue<'ctx> {
+        if self.wasm32 {
+            let nsec = self
+                .builder
+                .build_load(self.types.i32_type, nsec_ptr, "tv_nsec32")
+                .unwrap()
+                .into_int_value();
+            return self
+                .builder
+                .build_int_s_extend(nsec, self.types.i64_type, "tv_nsec")
+                .unwrap();
+        }
+        self.builder
+            .build_load(self.types.i64_type, nsec_ptr, "tv_nsec")
+            .unwrap()
+            .into_int_value()
+    }
+
     /// Unbounded recursion must raise "Stack's fair puggled!" rather than crash
     /// (MDH-BUG-FLU-00164). The runtime puts a PROT_NONE tripwire of
     /// `STACK_PROBE_DISTANCE` plus slack at the end of each thread's stack and turns a
@@ -5500,6 +5536,11 @@ impl<'ctx> CodeGen<'ctx> {
     /// Compiled code that calls nothing out (the int path of a recursive function) carries
     /// no probe at all; its frames reach the tripwire in compiled code.
     fn emit_stack_probes(&mut self) {
+        // wasm has no guard pages: an overflow there traps instead (see
+        // runtime/mdh_runtime.c), so probes would only cost time.
+        if self.wasm32 {
+            return;
+        }
         use inkwell::attributes::AttributeLoc;
         use inkwell::llvm_sys::core::{LLVMGetCalledValue, LLVMIsAFunction, LLVMIsAInlineAsm};
         use inkwell::values::{AsValueRef, InstructionOpcode};
@@ -31382,11 +31423,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_struct_gep(timespec_type, timespec_ptr, 1, "nsec_ptr")
             .unwrap();
-        let tv_nsec = self
-            .builder
-            .build_load(self.types.i64_type, nsec_ptr, "tv_nsec")
-            .unwrap()
-            .into_int_value();
+        let tv_nsec = self.load_tv_nsec(nsec_ptr);
 
         // Convert to milliseconds: (tv_sec * 1000) + (tv_nsec / 1_000_000)
         let thousand = self.types.i64_type.const_int(1000, false);
@@ -31448,11 +31485,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_struct_gep(timespec_type, timespec_ptr, 1, "nsec_ptr")
             .unwrap();
-        let tv_nsec = self
-            .builder
-            .build_load(self.types.i64_type, nsec_ptr, "tv_nsec")
-            .unwrap()
-            .into_int_value();
+        let tv_nsec = self.load_tv_nsec(nsec_ptr);
 
         // Convert to nanoseconds: (tv_sec * 1_000_000_000) + tv_nsec
         let billion = self.types.i64_type.const_int(1_000_000_000, false);

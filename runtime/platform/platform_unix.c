@@ -26,6 +26,10 @@
 #include <termios.h>
 #include <time.h>
 #include <unistd.h>
+#ifdef __EMSCRIPTEN__
+/* Native libcs declare socket() through the headers above; Emscripten's does not. */
+#include <sys/socket.h>
+#endif
 
 /* ========== Directory Operations ========== */
 

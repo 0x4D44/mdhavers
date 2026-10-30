@@ -48,6 +48,27 @@
 #include <pthread.h>
 #endif
 
+#ifdef __EMSCRIPTEN__
+/* The browser has no sockets (Emscripten would fake them over WebSockets, which no peer
+ * of ours speaks): socket() fails, so each socket builtin returns its usual error. */
+static int mdh_no_socket(int domain, int type, int protocol) {
+    (void)domain;
+    (void)type;
+    (void)protocol;
+    errno = ENOSYS;
+    return -1;
+}
+#define socket mdh_no_socket
+
+/* 64-bit multiplies that check for overflow, without the 128-bit multiply clang would
+ * emit, whose library routine speaks the other wasm32 ABI (see platform/wasm_abi.c). */
+typedef struct {
+    int64_t value;
+    bool overflow;
+} MdhMulOverflow;
+MdhMulOverflow __mdh_wasm_smul_overflow(int64_t a, int64_t b);
+#endif
+
 /* Cross-platform compatibility helpers */
 #ifdef _WIN32
 /* Windows doesn't have localtime_r, provide a wrapper using localtime_s */
@@ -596,7 +617,12 @@ static MdhValue __mdh_string_repeat_checked(const char *s, int64_t n) {
     size_t len = strlen(s);
     size_t total = 0;
     if (len == 0) return __mdh_make_string("");
+#ifdef __EMSCRIPTEN__
+    int overflowed = (uint64_t)n > SIZE_MAX / len;
+    if (!overflowed) total = len * (size_t)n;
+#else
     int overflowed = __builtin_mul_overflow(len, (uint64_t)n, &total);
+#endif
     char *result = __mdh_alloc_text(overflowed, total);
     for (int64_t i = 0; i < n; i++) {
         memcpy(result + (size_t)i * len, s, len);
@@ -649,9 +675,15 @@ MdhValue __mdh_sub(MdhValue a, MdhValue b) {
 
 MdhValue __mdh_mul(MdhValue a, MdhValue b) {
     if (a.tag == MDH_TAG_INT && b.tag == MDH_TAG_INT) {
+#ifdef __EMSCRIPTEN__
+        MdhMulOverflow m = __mdh_wasm_smul_overflow(a.data, b.data);
+        if (m.overflow) return __mdh_int_overflow();
+        return __mdh_make_int(m.value);
+#else
         int64_t r;
         if (__builtin_mul_overflow(a.data, b.data, &r)) return __mdh_int_overflow();
         return __mdh_make_int(r);
+#endif
     }
 
     if (a.tag == MDH_TAG_FLOAT || b.tag == MDH_TAG_FLOAT) {

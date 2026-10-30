@@ -31,6 +31,7 @@ use crate::ast::Program;
 use crate::error::HaversError;
 
 use super::codegen::CodeGen;
+use super::wasm::{self, BuildTarget};
 
 #[derive(Copy, Clone)]
 enum StatusColor {
@@ -545,6 +546,8 @@ pub struct LLVMCompiler {
     /// Native builds count references by default. `MDH_RC=0` or `off` (ignoring case)
     /// opts out; an invalid setting becomes a compile error at either output entry point.
     refcounting: Result<bool, String>,
+    /// Native by default; `with_target` picks the browser build.
+    target: BuildTarget,
 }
 
 impl LLVMCompiler {
@@ -561,6 +564,21 @@ impl LLVMCompiler {
                         .to_string(),
                 ),
             },
+            target: BuildTarget::Native,
+        }
+    }
+
+    /// Compile for `target` (the host by default).
+    pub fn with_target(mut self, target: BuildTarget) -> Self {
+        self.target = target;
+        self
+    }
+
+    /// The browser build's target machine, or none for a native build.
+    fn wasm_machine(&self) -> Result<Option<TargetMachine>, HaversError> {
+        match self.target {
+            BuildTarget::Native => Ok(None),
+            BuildTarget::Wasm32Emscripten => wasm::wasm_target_machine(self.opt_level).map(Some),
         }
     }
 
@@ -597,13 +615,20 @@ impl LLVMCompiler {
         source_path: Option<&Path>,
     ) -> Result<String, HaversError> {
         let context = Context::create();
+        let wasm_machine = self.wasm_machine()?;
         let mut codegen =
             CodeGen::new_with_refcounting(&context, "mdhavers_module", self.refcounting()?);
+        if let Some(machine) = &wasm_machine {
+            codegen.retarget(machine);
+        }
         if let Some(path) = source_path {
             codegen.set_source_path(path);
         }
 
         codegen.compile(program)?;
+        if wasm_machine.is_some() {
+            wasm::legalize(codegen.get_module())?;
+        }
 
         Ok(codegen.get_module().print_to_string().to_string())
     }
@@ -641,18 +666,66 @@ impl LLVMCompiler {
         }
 
         let context = Context::create();
+        let wasm_machine = self.wasm_machine()?;
         let mut codegen =
             CodeGen::new_with_refcounting(&context, "mdhavers_module", self.refcounting()?);
+        if let Some(machine) = &wasm_machine {
+            codegen.retarget(machine);
+        }
         if let Some(path) = source_path {
             codegen.set_source_path(path);
         }
 
         codegen.compile(program)?;
+        if wasm_machine.is_some() {
+            wasm::legalize(codegen.get_module())?;
+        }
 
         if let Some(status) = status.as_mut() {
             status.update("Initializing target", StatusColor::Yellow);
         }
 
+        let target_machine = match wasm_machine {
+            Some(machine) => machine,
+            None => self.native_target_machine()?,
+        };
+
+        if let Some(status) = status.as_mut() {
+            if matches!(self.opt_level, OptimizationLevel::None) {
+                status.update("Skipping optimizations", StatusColor::Dim);
+            } else {
+                status.update("Optimizing LLVM", StatusColor::Yellow);
+            }
+        }
+
+        // Run optimization passes
+        self.run_optimization_passes(codegen.get_module(), &target_machine)?;
+        if self.target == BuildTarget::Wasm32Emscripten {
+            wasm::redirect_mul_overflow(codegen.get_module());
+        }
+
+        if let Some(status) = status.as_mut() {
+            status.update("Writing object file", StatusColor::Yellow);
+        }
+
+        // Write object file
+        #[cfg(coverage)]
+        let write_object_file_fn: fn(&TargetMachine, &Module, &Path) -> Result<(), String> =
+            write_object_file;
+        #[cfg(coverage)]
+        let write_object_file_fn = unsafe { std::ptr::read_volatile(&write_object_file_fn) };
+        #[cfg(not(coverage))]
+        let write_object_file_fn = write_object_file;
+
+        if let Err(err) = write_object_file_fn(&target_machine, codegen.get_module(), output_path) {
+            return Err(HaversError::CompileError(err));
+        }
+
+        Ok((codegen.uses_screen, codegen.uses_sound))
+    }
+
+    /// The host's target machine.
+    fn native_target_machine(&self) -> Result<TargetMachine, HaversError> {
         // Initialize native target
         if let Err(err) = initialize_native_target() {
             return Err(HaversError::CompileError(err));
@@ -675,39 +748,59 @@ impl LLVMCompiler {
             }
         };
 
-        let target_machine = create_target_machine(&target, &target_triple, self.opt_level).ok_or(
+        create_target_machine(&target, &target_triple, self.opt_level).ok_or(
             HaversError::CompileError("Failed to create target machine".to_string()),
-        )?;
+        )
+    }
 
-        if let Some(status) = status.as_mut() {
-            if matches!(self.opt_level, OptimizationLevel::None) {
-                status.update("Skipping optimizations", StatusColor::Dim);
-            } else {
-                status.update("Optimizing LLVM", StatusColor::Yellow);
+    /// Compile for the browser: `output_path` (`.js`) and the `.wasm` beside it, linked
+    /// by Emscripten's `emcc`. `emcc_args` go to the link as they stand.
+    pub fn compile_to_wasm_with_source(
+        &self,
+        program: &Program,
+        output_path: &Path,
+        opt_level: u8,
+        source_path: Option<&Path>,
+        emcc_args: &[String],
+    ) -> Result<(), HaversError> {
+        let mut status = BuildStatus::new("Wasm build");
+        let _status_guard = status.guard();
+        let obj_path = output_path.with_extension("o");
+        let _cleanup = TempFileCleanup::new(vec![obj_path.clone()]);
+        let compiler = LLVMCompiler::new()
+            .with_optimization(opt_level)
+            .with_refcounting(self.refcounting()?)
+            .with_target(BuildTarget::Wasm32Emscripten);
+        let (uses_screen, uses_sound) = match compiler.compile_to_object_with_source_status(
+            program,
+            &obj_path,
+            source_path,
+            Some(&mut status),
+        ) {
+            Ok(uses) => uses,
+            Err(err) => {
+                status.fail("Wasm build failed");
+                return Err(err);
+            }
+        };
+        status.update("Linking wi' emcc", StatusColor::Yellow);
+        match wasm::link_wasm(
+            &obj_path,
+            output_path,
+            uses_screen,
+            uses_sound,
+            opt_level,
+            emcc_args,
+        ) {
+            Ok(()) => {
+                status.finish("Wasm build complete", StatusColor::Green);
+                Ok(())
+            }
+            Err(err) => {
+                status.fail("Link failed");
+                Err(err)
             }
         }
-
-        // Run optimization passes
-        self.run_optimization_passes(codegen.get_module(), &target_machine)?;
-
-        if let Some(status) = status.as_mut() {
-            status.update("Writing object file", StatusColor::Yellow);
-        }
-
-        // Write object file
-        #[cfg(coverage)]
-        let write_object_file_fn: fn(&TargetMachine, &Module, &Path) -> Result<(), String> =
-            write_object_file;
-        #[cfg(coverage)]
-        let write_object_file_fn = unsafe { std::ptr::read_volatile(&write_object_file_fn) };
-        #[cfg(not(coverage))]
-        let write_object_file_fn = write_object_file;
-
-        if let Err(err) = write_object_file_fn(&target_machine, codegen.get_module(), output_path) {
-            return Err(HaversError::CompileError(err));
-        }
-
-        Ok((codegen.uses_screen, codegen.uses_sound))
     }
 
     /// Compile to native executable

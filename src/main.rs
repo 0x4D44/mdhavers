@@ -167,6 +167,16 @@ enum Commands {
         /// Emit LLVM IR instead of native binary
         #[arg(long)]
         emit_llvm: bool,
+
+        /// What tae build for: native (the default) or wasm32-emscripten (the browser:
+        /// <output>.js and <output>.wasm, linked wi' Emscripten's emcc)
+        #[arg(long, default_value = "native")]
+        target: String,
+
+        /// An extra argument for emcc when linking a wasm32-emscripten build
+        /// (repeatable, e.g. --emcc-arg=--preload-file --emcc-arg=data)
+        #[arg(long = "emcc-arg", allow_hyphen_values = true)]
+        emcc_args: Vec<String>,
     },
 }
 
@@ -225,7 +235,9 @@ fn cli_main() {
             output,
             opt_level,
             emit_llvm,
-        }) => build_native(&file, output, opt_level, emit_llvm),
+            target,
+            emcc_args,
+        }) => build_native(&file, output, opt_level, emit_llvm, &target, &emcc_args),
         None => {
             // If a file is provided directly, run it
             if let Some(file) = cli.file {
@@ -481,6 +493,8 @@ fn build_native(
     _output: Option<PathBuf>,
     _opt_level: u8,
     _emit_llvm: bool,
+    _target: &str,
+    _emcc_args: &[String],
 ) -> Result<(), String> {
     use colored::Colorize;
     let _ = read_file(path)?;
@@ -534,16 +548,50 @@ fn build_native(
     output: Option<PathBuf>,
     opt_level: u8,
     emit_llvm: bool,
+    target: &str,
+    emcc_args: &[String],
 ) -> Result<(), String> {
+    let target = mdhavers::BuildTarget::parse(target)?;
     let source = read_file(path)?;
     let program = match parse(&source) {
         Ok(p) => p,
         Err(e) => return Err(format_parse_error(&source, e)),
     };
 
+    if target == mdhavers::BuildTarget::Wasm32Emscripten && !emit_llvm {
+        let output_path = resolve_output_path(path, output, "js")?;
+        let compiler = mdhavers::LLVMCompiler::new();
+        if let Err(e) = compiler.compile_to_wasm_with_source(
+            &program,
+            &output_path,
+            opt_level,
+            Some(path),
+            emcc_args,
+        ) {
+            return Err(format!("{}", e));
+        }
+        println!(
+            "{} Built {} for the browser (wasm32-emscripten)",
+            "Braw!".green().bold(),
+            path.display()
+        );
+        println!(
+            "  {} {} (+ {})",
+            "Output:".dimmed(),
+            output_path.display(),
+            output_path.with_extension("wasm").display()
+        );
+        println!();
+        println!("{}", "Tae run under node:".dimmed());
+        println!("  {} node {}", "$".dimmed(), output_path.display());
+        return Ok(());
+    }
+
     if emit_llvm {
         // Emit LLVM IR
-        let compiler = mdhavers::LLVMCompiler::new().with_optimization(opt_level);
+        let compiler = mdhavers::LLVMCompiler::new()
+            .with_optimization(opt_level)
+            .with_target(target);
         let ir = match compiler.compile_to_ir_with_source(&program, Some(path)) {
             Ok(ir) => ir,
             Err(e) => return Err(format!("{}", e)),
@@ -1804,15 +1852,15 @@ mod tests {
 
         #[cfg(feature = "llvm")]
         {
-            build_native(&path, None, 0, true).expect("build_native emit llvm");
+            build_native(&path, None, 0, true, "native", &[]).expect("build_native emit llvm");
             assert!(dir.path().join("ok.ll").exists());
 
-            let err = build_native(&path, Some(dir.path().to_path_buf()), 0, true)
+            let err = build_native(&path, Some(dir.path().to_path_buf()), 0, true, "native", &[])
                 .expect_err("build_native emit llvm write error");
             assert!(err.contains("Cannae write"));
 
-            let _ = build_native(&path, None, 0, false).expect("build_native native");
-            let err = build_native(&path, Some(dir.path().to_path_buf()), 0, false)
+            let _ = build_native(&path, None, 0, false, "native", &[]).expect("build_native native");
+            let err = build_native(&path, Some(dir.path().to_path_buf()), 0, false, "native", &[])
                 .expect_err("build_native native error");
             assert!(!err.trim().is_empty());
         }

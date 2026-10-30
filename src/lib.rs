@@ -36,6 +36,8 @@ pub use value::Value;
 // LLVM compiler re-export
 #[cfg(feature = "llvm")]
 pub use llvm::LLVMCompiler;
+#[cfg(feature = "llvm")]
+pub use llvm::BuildTarget;
 
 /// Run mdhavers source code and return the result
 ///

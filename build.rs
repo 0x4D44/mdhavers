@@ -33,6 +33,9 @@ fn main() {
     println!("cargo:rerun-if-changed=runtime/mdh_runtime_rs/Cargo.toml");
     println!("cargo:rerun-if-changed=runtime/mdh_runtime_rs/Cargo.lock");
     println!("cargo:rerun-if-changed=runtime/mdh_runtime_rs/src/lib.rs");
+    println!("cargo:rerun-if-changed=runtime/mdh_runtime_rs/src/net.rs");
+    println!("cargo:rerun-if-changed=runtime/mdh_runtime_rs/src/net_stub.rs");
+    println!("cargo:rerun-if-changed=runtime/mdh_runtime_rs/src/audio_stub.rs");
     println!("cargo:rerun-if-changed=runtime/mdh_runtime_rs/src/audio.rs");
     println!("cargo:rerun-if-changed=runtime/mdh_runtime_rs/src/tri_runtime.rs");
     println!("cargo:rerun-if-changed=runtime/mdh_runtime_rs/src/tri_engine.rs");
