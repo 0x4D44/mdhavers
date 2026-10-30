@@ -1,26 +1,25 @@
 # MDH-BUG-FLU-00252 — bogle: a gamekeeper gets stuck when a corner of wall is between him and the player
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** bogle
 - **Raised:** 2026-10-30T15:47:56Z
 - **Discovery source:** Human
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261030T154851Z-ee286075
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00252-run-fix-20261030T154851Z-ee286075
-- **Owner base:** ffd8fc29ccaaa6f250cbb6c3d40bd4aa2a96a212
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-30T15:48:51Z
-- **Owner until:** 2026-10-30T19:48:51Z
-- **Owner session:** flux/2a9090d7-08f7-48c7-bee8-7b7d1d963ab2 (run fix-20261030T154851Z-ee286075)
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-30T15:47:56Z, raised via `deltic bugs new`)
+- **State history:** Open (2026-10-30T15:47:56Z, raised via `deltic bugs new`) -> Fixed (2026-10-30T16:22:25Z, deltic:auto role=fix run=fix-20261030T154851Z-ee286075 branch=task/bug-MDH-BUG-FLU-00252-run-fix-20261030T154851Z-ee286075 code=8c14464 gate=manual)
 
 ## Observation
 
