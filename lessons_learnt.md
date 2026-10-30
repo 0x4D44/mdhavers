@@ -1,5 +1,9 @@
 # Lessons learnt
 
+- stdlib/maths.braw:range_step - an agent's repro of a suspected infinite loop outlived its shell: the parent was
+  killed, the mdhavers child was re-parented to launchd and grew to 41 GB, forcing a site-wide build hold on FLUX
+  (2026-10-30, MDH-BUG-FLU-00248). Run every hang repro as `deltic timeout N` directly on the mdhavers binary (not on
+  a wrapper shell) with a memory cap (`ulimit -v`), and say so in worker briefs that ask for repros.
 - games/bogle/art/src:PROMPTS.md - a Codex worker that generates images through the deltic codex pool keeps every
   image in its session history, so after about ten 2 MB images the request passes the pool's 32 MiB cap (HTTP 413) and
   the thread cannot be resumed. Run image generation as a chain of fresh sessions of at most five images each
