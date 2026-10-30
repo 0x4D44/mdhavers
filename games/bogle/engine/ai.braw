@@ -21,6 +21,149 @@ dae actor_face(g, a, dx, dy) {
     }
 }
 
+# Walk one step only if the whole step is free; a refused step leaves the
+# actor where it was, so a chase can probe several directions in one tic.
+dae actor_try(g, a, dx, dy) {
+    ken saved = [a["x"], a["y"], a["z"], a["sector"]]
+    gin actor_move(g, a, dx, dy) {
+        gie aye
+    }
+    a["x"] = saved[0]
+    a["y"] = saved[1]
+    a["z"] = saved[2]
+    a["sector"] = saved[3]
+    gie nae
+}
+
+# Eight chase directions, 512 angle units apart: 0 east, 2 north, 4 west, 6 south.
+dae actor_try_dir(g, a, dir, speed) {
+    ken dx = bogle_cos(g["sin"], dir * 512) * speed / 65536
+    ken dy = bogle_sin(g["sin"], dir * 512) * speed / 65536
+    gin actor_try(g, a, dx, dy) {
+        a["movedir"] = dir
+        actor_face(g, a, dx, dy)
+        gie aye
+    }
+    gie nae
+}
+
+# Doom's P_NewChaseDir: the diagonal towards the target, then each axis with
+# the larger delta first, then the old direction, then a seeded scan of the
+# rest; turning round comes last. A new direction is held for a few tics.
+dae actor_new_chase_dir(g, a, tx, ty, speed) {
+    ken olddir = a["movedir"]
+    ken turnaround = -1
+    gin olddir >= 0 {
+        turnaround = (olddir + 4) % 8
+    }
+    ken deltax = (tx - a["x"]) / 65536
+    ken deltay = (ty - a["y"]) / 65536
+    ken d1 = -1
+    ken d2 = -1
+    gin deltax > 10 {
+        d1 = 0
+    } ither gin deltax < -10 {
+        d1 = 4
+    }
+    gin deltay > 10 {
+        d2 = 2
+    } ither gin deltay < -10 {
+        d2 = 6
+    }
+    a["movecount"] = game_random(g) % 16
+    gin d1 >= 0 an d2 >= 0 {
+        ken diagonal = 7
+        gin d1 == 0 an d2 == 2 {
+            diagonal = 1
+        } ither gin d1 == 4 an d2 == 2 {
+            diagonal = 3
+        } ither gin d1 == 4 {
+            diagonal = 5
+        }
+        gin diagonal != turnaround an actor_try_dir(g, a, diagonal, speed) {
+            gie aye
+        }
+    }
+    gin abs(deltay) > abs(deltax) {
+        ken swap = d1
+        d1 = d2
+        d2 = swap
+    }
+    fer dir in [d1, d2, olddir] {
+        gin dir >= 0 an dir != turnaround an actor_try_dir(g, a, dir, speed) {
+            gie aye
+        }
+    }
+    # Doom scans the rest from east; fanning out from the target's octant
+    # instead keeps the detour hugging the obstruction. A seeded coin picks
+    # which side of the target to try first.
+    ken target = (bogle_atan2(g["sin"], tx - a["x"], ty - a["y"]) + 256) / 512 % 8
+    ken side = 1
+    gin game_random(g) % 2 == 1 {
+        side = 7
+    }
+    fer step in [side, 8 - side, side * 2, 16 - side * 2, side * 3, 24 - side * 3, 4] {
+        ken dir = (target + step) % 8
+        gin dir != turnaround an actor_try_dir(g, a, dir, speed) {
+            gie aye
+        }
+    }
+    gin turnaround >= 0 an actor_try_dir(g, a, turnaround, speed) {
+        gie aye
+    }
+    a["movedir"] = -1
+    a["movecount"] = 0
+    gie nae
+}
+
+# Home straight on the target when the way is clear; round an obstruction,
+# hold a chase direction for its count before trying straight again.
+dae actor_chase(g, a, tx, ty, speed) {
+    gin nae contains(a, "movedir") {
+        a["movedir"] = -1
+        a["movecount"] = 0
+    }
+    a["movecount"] = a["movecount"] - 1
+    gin a["movecount"] >= 0 an a["movedir"] >= 0 an actor_try_dir(g, a, a["movedir"], speed) {
+        gie aye
+    }
+    ken velocity = actor_towards(a, tx, ty, speed)
+    gin actor_try(g, a, velocity[0], velocity[1]) {
+        actor_face(g, a, velocity[0], velocity[1])
+        a["movedir"] = (bogle_atan2(g["sin"], velocity[0], velocity[1]) + 256) / 512 % 8
+        a["movecount"] = 0
+        gie aye
+    }
+    gie actor_new_chase_dir(g, a, tx, ty, speed)
+}
+
+# A charge needs a lane for the whole body: the centre line and both flanks,
+# sixteen units either side, traced at knee height (just above a climbable
+# step) up to contact range of the player.
+dae keeper_lane(g, a) {
+    ken distance = actor_distance(a["x"], a["y"], g["x"], g["y"])
+    gin distance <= 48 {
+        gie aye
+    }
+    ken ux = (g["x"] - a["x"]) / distance
+    ken uy = (g["y"] - a["y"]) / distance
+    ken z = a["z"] + 25 * 65536
+    ken tz = g["z"] + 25 * 65536
+    fer side in [0, -16, 16] {
+        ken sx = a["x"] - uy * side
+        ken sy = a["y"] + ux * side
+        ken start = bogle_trace(g, a["x"], a["y"], z, a["sector"], sx, sy, z)
+        gin start[1] != -1 {
+            gie nae
+        }
+        ken hit = bogle_trace(g, sx, sy, z, start[0], g["x"] - ux * 32 - uy * side, g["y"] - uy * 32 + ux * side, tz)
+        gin hit[1] != -1 {
+            gie nae
+        }
+    }
+    gie aye
+}
+
 dae ghost_move(g, a, dx, dy) {
     ken x = a["x"] + dx
     ken y = a["y"] + dy
@@ -62,6 +205,10 @@ dae ai_tick(g) {
                         gin a["timer"] <= 0 {
                             a["state"] = "charge"
                             a["charge_tics"] = 0
+                            # The player slipped behind cover: hunt instead.
+                            gin nae keeper_lane(g, a) {
+                                a["state"] = "chase"
+                            }
                         }
                     } ither gin a["state"] == "charge" {
                         a["charge_tics"] = a["charge_tics"] + 1
@@ -89,7 +236,15 @@ dae ai_tick(g) {
                             }
                         }
                     } ither {
-                        gin bogle_sight(g, a["x"], a["y"], a["z"] + 32 * 65536, a["sector"], g["x"], g["y"], g["z"] + 32 * 65536, g["sector"]) {
+                        ken sees = bogle_sight(g, a["x"], a["y"], a["z"] + 32 * 65536, a["sector"], g["x"], g["y"], g["z"] + 32 * 65536, g["sector"])
+                        gin sees {
+                            a["last_x"] = g["x"]
+                            a["last_y"] = g["y"]
+                            a["hunt_tics"] = 175
+                        } ither gin nae contains(a, "hunt_tics") {
+                            a["hunt_tics"] = 0
+                        }
+                        gin sees an (nae a["seen_player"] or keeper_lane(g, a)) {
                             ken velocity = actor_towards(a, g["x"], g["y"], 163840)
                             a["dx"] = velocity[0]
                             a["dy"] = velocity[1]
@@ -102,6 +257,20 @@ dae ai_tick(g) {
                                 bogle_emit_sound(g, "keeper_roar")
                                 a["state"] = "fists"
                                 a["timer"] = 35
+                            }
+                        } ither gin a["hunt_tics"] > 0 {
+                            # No lane, or no sight: walk round the cover towards the
+                            # player, or to where he was last seen, then patrol again.
+                            a["hunt_tics"] = a["hunt_tics"] - 1
+                            a["state"] = "chase"
+                            gin nae sees an actor_distance(a["x"], a["y"], a["last_x"], a["last_y"]) < 24 {
+                                a["hunt_tics"] = 0
+                            } ither {
+                                actor_chase(g, a, a["last_x"], a["last_y"], 131072)
+                            }
+                            gin a["hunt_tics"] <= 0 {
+                                a["state"] = "patrol"
+                                a["timer"] = 0
                             }
                         } ither {
                             # Seeded patrol turns only when a wall interrupts a leg.
@@ -129,8 +298,8 @@ dae ai_tick(g) {
                         gin distance < 28 an bogle_sight(g, a["x"], a["y"], a["z"] + 24 * 65536, a["sector"], g["x"], g["y"], g["z"] + 24 * 65536, g["sector"]) {
                             damage_actor(g, a, 1)
                         } ither {
-                            ken velocity = actor_towards(a, g["x"], g["y"], 196608)
-                            actor_move(g, a, velocity[0], velocity[1])
+                            # Homes straight in, but works round a pillar or corner.
+                            actor_chase(g, a, g["x"], g["y"], 196608)
                         }
                     }
                 }

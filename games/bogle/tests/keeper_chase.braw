@@ -1,0 +1,138 @@
+fetch "games/bogle/engine/game"
+fetch "games/bogle/engine/map"
+fetch "games/bogle/engine/ai"
+fetch "games/bogle/engine/weapons"
+# MDH-BUG-FLU-00252: a keeper with a wall corner between him and the player
+# works round it instead of charging the corner, stunning and repeating.
+dae actor_test_game(m) {
+    ken g = {
+        "map": m,
+        "x": m["start_x"] * 65536,
+        "y": m["start_y"] * 65536,
+        "z": m["floor_h"][m["start_sector"]] * 65536,
+        "sector": m["start_sector"],
+        "health": 100,
+        "spirit": 0,
+        "mars": 0,
+        "powder": 0,
+        "puff": 100,
+        "owned": [aye, nae, nae, nae],
+        "weapon": 1,
+        "keys": 0,
+        "speed_tics": 0,
+        "tics": 0,
+        "seed": 1,
+        "sin": load_trig(),
+        "projectiles": [],
+    }
+    init_things(g)
+    gie g
+}
+
+# A 512-unit room cut into a 3x3 grid of convex cells at 192 and 320. A "#"
+# cell (top row first) is a raised block that stops both bodies and sight.
+dae grid_map(cells, things) {
+    ken cuts = [0, 192, 320, 512]
+    ken text = "BOGMAP 1\n"
+    fer j in 0..4 {
+        fer i in 0..4 {
+            text = text + "v " + tae_string(cuts[i]) + " " + tae_string(cuts[j]) + "\n"
+        }
+    }
+    fer j in 0..3 {
+        fer i in 0..3 {
+            ken floor = "0"
+            gin cells[(2 - j) * 3 + i] == "#" {
+                floor = "120"
+            }
+            ken v = j * 4 + i
+            text = text + "s " + floor + " 128 1 2 192 0 0 " + tae_string(v) + " " + tae_string(v + 1) + " " + tae_string(v + 5) + " " + tae_string(v + 4) + "\n"
+        }
+    }
+    gie map_parse(text + things)
+}
+
+# Tics until the first actor hurts the player, or -1 within the limit. Each
+# tic the keeper walks, his facing must stay within half an octant of his step.
+dae reach(g, limit) {
+    ken a = g["actors"][0]
+    fer t in 0..limit {
+        ken x = a["x"]
+        ken y = a["y"]
+        ai_tick(g)
+        g["tics"] = g["tics"] + 1
+        gin a["kind"] == 2 an a["state"] == "chase" an (a["x"] != x or a["y"] != y) {
+            ken step = bogle_atan2(g["sin"], a["x"] - x, a["y"] - y)
+            gin bogle_angle(a["facing"] - step + 256) >= 512 {
+                blether "keeper faces off his step at tic " + tae_string(t)
+                gie -1
+            }
+        }
+        gin g["health"] < 100 {
+            gie t
+        }
+    }
+    gie -1
+}
+
+# L-shaped room: the keeper patrols the east arm, spots the player down the
+# south arm past the inner corner (320, 192), and must get round it.
+ken g = actor_test_game(grid_map("##.##....", "t 1 60 100 0 0\nt 2 420 460 0 0\n"))
+ken t = reach(g, 1000)
+mak_siccar t >= 0
+blether "ok keeper works round a corner (tic " + tae_string(t) + ")"
+
+# Square pillar: the keeper sees the player along the pillar's north face, but
+# his body would clip its corner, so he walks round it rather than charging.
+g = actor_test_game(grid_map("....#....", "t 1 60 328 0 0\nt 2 470 333 0 0\n"))
+ken a = g["actors"][0]
+fer i in 0..36 {
+    ai_tick(g)
+}
+mak_siccar a["state"] == "chase"
+t = reach(g, 400)
+mak_siccar t >= 0
+blether "ok keeper walks round a pillar (tic " + tae_string(t) + ")"
+
+# The same room without the pillar: the lane is clear, so he still roars,
+# shakes his fists and charges.
+g = actor_test_game(grid_map(".........", "t 1 60 328 0 0\nt 2 470 333 0 0\n"))
+a = g["actors"][0]
+ai_tick(g)
+mak_siccar a["state"] == "fists" an a["seen_player"]
+fer i in 0..35 {
+    ai_tick(g)
+}
+mak_siccar a["state"] == "charge"
+blether "ok keeper still charges down a clear lane"
+
+# He winds up on a sighting, the player ducks behind the pillar, and he walks
+# to where he last saw him, then patrols again.
+g = actor_test_game(grid_map("....#....", "t 1 470 100 0 0\nt 2 470 400 0 0\n"))
+a = g["actors"][0]
+a["seen_player"] = aye
+ai_tick(g)
+mak_siccar a["state"] == "windup"
+g["x"] = 60 * 65536
+g["y"] = 256 * 65536
+g["sector"] = 3
+fer i in 0..18 {
+    ai_tick(g)
+}
+mak_siccar a["state"] == "chase"
+ken arrived = -1
+fer i in 0..250 {
+    ai_tick(g)
+    gin arrived < 0 an a["state"] == "patrol" {
+        arrived = actor_distance(a["x"], a["y"], 470 * 65536, 100 * 65536)
+    }
+}
+mak_siccar arrived >= 0 an arrived < 24
+mak_siccar g["health"] == 100
+blether "ok keeper walks to the last-seen spot, then patrols"
+
+# A woken haggis behind the pillar works round it too.
+g = actor_test_game(grid_map("....#....", "t 1 150 256 0 0\nt 3 380 250 0 0\n"))
+t = reach(g, 400)
+mak_siccar t >= 0
+blether "ok haggis works round a pillar (tic " + tae_string(t) + ")"

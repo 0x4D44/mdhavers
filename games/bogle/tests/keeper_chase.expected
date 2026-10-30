@@ -1,0 +1,5 @@
+ok keeper works round a corner (tic 880)
+ok keeper walks round a pillar (tic 220)
+ok keeper still charges down a clear lane
+ok keeper walks to the last-seen spot, then patrols
+ok haggis works round a pillar (tic 170)

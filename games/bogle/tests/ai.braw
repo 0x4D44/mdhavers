@@ -91,8 +91,9 @@ mak_siccar g["actors"][0]["sector"] == 1
 mak_siccar g["actors"][1]["x"] <= 240 * 65536
 mak_siccar g["actors"][2]["x"] <= 240 * 65536
 blether "ok ghost wall phase and corporeal collision"
-# Sight blocked by the solid divider leaves a keeper on a seeded patrol.
-g = actor_test_game(map_parse(replace(split_map, "t 4 255 64 0 0", "t 2 128 64 0 0")))
+# Sight blocked by the solid divider leaves a keeper on a seeded patrol. The
+# haggis is left out: pinned on the divider it draws its own seeded detours.
+g = actor_test_game(map_parse(replace(replace(split_map, "t 4 255 64 0 0", "t 2 128 64 0 0"), "t 3 240 100 0 0\n", "")))
 g["map"]["portal"][1] = -1
 g["map"]["portal"][7] = -1
 ai_tick(g)
