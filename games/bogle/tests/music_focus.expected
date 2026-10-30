@@ -1,3 +1,5 @@
-ok unfocused music fades to silence
-ok refocused music fades back
-ok muted music stays muted when focused
+ok unfocused output ramps down sample by sample
+ok unfocused effects and music are silent but still running
+ok refocused output ramps back and music carries on where it was
+ok silent mixer still advances the focus fade
+ok muted music stays silent when focused

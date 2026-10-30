@@ -3,12 +3,14 @@
 # eleven finite voices rotate without allocating anything inside a sample loop.
 # Kind 6 voices play a baked one-shot BMU1 sample from mixer["samples"]; the
 # shell registers them with bogle_audio_sample. An unregistered name is silent.
+# "focus_gain" is a master gain over the whole mix, 0..8192 (full), moving
+# one step per output sample toward "focus_target" (8192 samples, ~0.37 s).
 dae bogle_audio_new() {
     ken voices = []
     fer i in 0..12 {
         shove(voices, [0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0])
     }
-    gie {"voices": voices, "next": 1, "seed": 12345, "samples": {}, "drone_gain": 0, "drone_target": 0, "music": {"track": naething, "old": naething, "pos": 0, "old_pos": 0, "cross": 512, "gain": 0, "target": 0}}
+    gie {"voices": voices, "next": 1, "seed": 12345, "samples": {}, "drone_gain": 0, "drone_target": 0, "focus_gain": 8192, "focus_target": 8192, "music": {"track": naething, "old": naething, "pos": 0, "old_pos": 0, "cross": 512, "gain": 0, "target": 0}}
 }
 
 dae bogle_audio_event(mixer, event) {
@@ -137,6 +139,10 @@ dae bogle_audio_mix(mixer, sample_count) {
         }
     }
     gin (nae active an mixer["music"]["track"] == naething an mixer["music"]["old"] == naething) or sample_count == 0 {
+        # Silence still spends the fade's time, so a later sound starts at the
+        # gain the ramp would have reached.
+        ken drift = mixer["focus_target"] - mixer["focus_gain"]
+        mixer["focus_gain"] = mixer["focus_gain"] + max(-sample_count, min(sample_count, drift))
         gie pcm
     }
     ken sums = []
@@ -232,15 +238,33 @@ dae bogle_audio_mix(mixer, sample_count) {
             }
         }
     }
+    ken focus = mixer["focus_gain"]
+    ken focus_target = mixer["focus_target"]
     fer i in 0..sample_count {
         ken value = max(-32768, min(32767, sums[i]))
+        gin focus != focus_target {
+            focus = focus + max(-1, min(1, focus_target - focus))
+        }
+        gin focus != 8192 {
+            value = value * focus / 8192
+        }
         gin value < 0 {
             value = value + 65536
         }
         bytes_set(pcm, i * 2, value % 256)
         bytes_set(pcm, i * 2 + 1, value / 256)
     }
+    mixer["focus_gain"] = focus
     gie pcm
+}
+
+# Window focus fades everything the mixer outputs, without pausing anything:
+# music positions and effect voices keep advancing under the master gain.
+dae bogle_audio_focus(mixer, focused) {
+    mixer["focus_target"] = 0
+    gin focused {
+        mixer["focus_target"] = 8192
+    }
 }
 
 # Shell reconciles the sustained voice with the live held-fire cause, rather
@@ -312,8 +336,9 @@ dae bogle_music_load(path, oneshot = nae) {
     gie track
 }
 
-# An unfocused window fades the music out like the M toggle; effects play on.
+# M fades only the music. Focus is passed through to the master focus fade.
 dae bogle_music_select(mixer, track, enabled, focused = aye) {
+    bogle_audio_focus(mixer, focused)
     ken music = mixer["music"]
     ken changed = (music["track"] == naething) != (track == naething)
     gin music["track"] != naething an track != naething {
@@ -332,7 +357,7 @@ dae bogle_music_select(mixer, track, enabled, focused = aye) {
         music["gain"] = 0
     }
     music["target"] = 0
-    gin enabled an focused {
+    gin enabled {
         music["target"] = 512
     }
 }

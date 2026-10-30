@@ -57,7 +57,7 @@ boost does not stack with it), the mouse and Left/Right arrows turn, E uses door
 Space or left mouse fires, and 1–4 select owned weapons. Hold fire for at
 least 21 tics with the bagpipes, then release to blast; holding 35 tics fires
 automatically. Controls are also available from the title and pause menus.
-Each new level or restart shows its map-authored briefing; press any fresh key or mouse button to begin. The HUD objective advances from finding the airn key to finding the siller key, then reaching the gate. **M** toggles music on every screen. The music fades out while the window is not focused and back in when it is; sound effects keep playing.
+Each new level or restart shows its map-authored briefing; press any fresh key or mouse button to begin. The HUD objective advances from finding the airn key to finding the siller key, then reaching the gate. **M** toggles music on every screen. All game sound (music and effects) fades out over about 0.37 s while the window is not focused and back in when it is; music and effects keep running silently meanwhile.
 Death offers **Restart** and **Back to Title**. Completing the Gatehouse offers
 the same choices: there is no next level yet. Both screens show elapsed level
 time from the existing 35 Hz tic count; kills are not tracked, and secrets are counted in game state only.
@@ -349,7 +349,11 @@ table, plays the intro once, then samples L..N continuously. Music uses 48/256
 gain below effects, with 512-sample fades/crossfades (about 23 ms). Play selects
 gatehouse; all other screens select title. Pause offers Music ON/OFF; M is the
 shortcut. Muting fades while the track position keeps moving. Restart keeps
-the setting. Track composition and `tools/bake_music.braw` belong to the music
+the setting. Separately, `bogle_audio_focus` (also reached through
+`bogle_music_select`'s `focused` argument) sets a master gain over the whole
+mix that moves one step per sample across 8192 samples (about 0.37 s) each
+way; unfocused, music and voices keep advancing silently. `tests/music_focus`
+covers it. Track composition and `tools/bake_music.braw` belong to the music
 lane, separately from playback.
 
 `tests/hud_stage5c`, `briefing_stage5c`, `decal_walls`, `audio_stage5c`, `music`

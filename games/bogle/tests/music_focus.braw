@@ -1,39 +1,113 @@
 fetch "games/bogle/audio/mixer"
 
-# An unfocused window fades the music to silence; focus fades it back.
-ken data = bytes(20)
+# An unfocused window fades the whole mix (music and effects) to silence
+# over 8192 samples; focus fades it back. Nothing is paused or killed.
+ken data = bytes(16 + 1000)
 fer i in 0..4 {
     bytes_set(data, i, bytes_get(bytes_from_string("BMU1"), i))
 }
 bytes_write_u32be(data, 4, 22050)
-bytes_write_u32be(data, 8, 4)
-bytes_write_u32be(data, 12, 1)
-fer i in 0..4 {
-    bytes_set(data, 16 + i, [255, 127, 0, 128][i])
+bytes_write_u32be(data, 8, 1000)
+bytes_write_u32be(data, 12, 0)
+fer i in 0..1000 {
+    bytes_set(data, 16 + i, (i * 37) % 256)
 }
 write_bytes(".scratch/bogle-music-focus.bmu", data)
 ken track = bogle_music_load(".scratch/bogle-music-focus.bmu")
 mak_siccar track != naething
-ken m = bogle_audio_new()
-bogle_music_select(m, track, aye)
-bogle_audio_mix(m, 600)
-mak_siccar m["music"]["gain"] == 512
+
+dae pcm_at(pcm, i) {
+    ken v = bytes_get(pcm, i * 2) + bytes_get(pcm, i * 2 + 1) * 256
+    gin v >= 32768 {
+        v = v - 65536
+    }
+    gie v
+}
+
+# Twin mixers: `m` loses focus, `ref` stays focused, both play music plus the
+# sustained drone. Each output sample of `m` must be ref * gain / 8192, with
+# the gain moving one step per sample: a ramp, not a step.
+dae twin() {
+    ken x = bogle_audio_new()
+    bogle_music_select(x, track, aye, aye)
+    bogle_audio_held(x, aye)
+    gie x
+}
+ken m = twin()
+ken ref = twin()
+bogle_audio_mix(m, 1000)
+bogle_audio_mix(ref, 1000)
+mak_siccar m["focus_gain"] == 8192
+
+dae check_ramp(start, step, count) {
+    ken a = bogle_audio_mix(m, count)
+    ken b = bogle_audio_mix(ref, count)
+    ken g = start
+    ken between = 0
+    fer i in 0..count {
+        g = g + step
+        ken want = pcm_at(b, i) * g / 8192
+        mak_siccar pcm_at(a, i) == want
+        gin want != 0 an want != pcm_at(b, i) {
+            between = between + 1
+        }
+    }
+    mak_siccar between > count / 2
+    gie g
+}
+
 bogle_music_select(m, track, aye, nae)
-mak_siccar m["music"]["target"] == 0
-bogle_audio_mix(m, 512)
-mak_siccar m["music"]["gain"] == 0
-ken quiet = bogle_audio_mix(m, 8)
+mak_siccar m["focus_target"] == 0
+mak_siccar m["music"]["target"] == 512
+ken g = check_ramp(8192, -1, 4096)
+mak_siccar m["focus_gain"] == 4096
+g = check_ramp(g, -1, 4096)
+mak_siccar m["focus_gain"] == 0
+blether "ok unfocused output ramps down sample by sample"
+
+ken quiet = bogle_audio_mix(m, 2000)
+bogle_audio_mix(ref, 2000)
 fer i in 0..bytes_len(quiet) {
     mak_siccar bytes_get(quiet, i) == 0
 }
-blether "ok unfocused music fades to silence"
-bogle_music_select(m, track, aye, aye)
-mak_siccar m["music"]["target"] == 512
-bogle_audio_mix(m, 512)
+# The drone voice and the music keep running silently.
+mak_siccar m["voices"][0][0] == 1
 mak_siccar m["music"]["gain"] == 512
-blether "ok refocused music fades back"
+mak_siccar m["music"]["pos"] == ref["music"]["pos"]
+mak_siccar m["music"]["pos"] == (1000 + 8192 + 2000) % 1000
+blether "ok unfocused effects and music are silent but still running"
+
+bogle_music_select(m, track, aye, aye)
+mak_siccar m["focus_target"] == 8192
+g = check_ramp(0, 1, 4096)
+mak_siccar m["focus_gain"] == 4096
+g = check_ramp(g, 1, 4096)
+mak_siccar m["focus_gain"] == 8192
+ken back = bogle_audio_mix(m, 500)
+ken same = bogle_audio_mix(ref, 500)
+mak_siccar back == same
+mak_siccar m["music"]["pos"] == (1000 + 8192 * 2 + 2000 + 500) % 1000
+blether "ok refocused output ramps back and music carries on where it was"
+
+# Silence while unfocused still spends the fade's time.
+ken idle = bogle_audio_new()
+bogle_music_select(idle, naething, aye, nae)
+bogle_audio_mix(idle, 3000)
+mak_siccar idle["focus_gain"] == 8192 - 3000
+bogle_audio_mix(idle, 9000)
+mak_siccar idle["focus_gain"] == 0
+blether "ok silent mixer still advances the focus fade"
+
 # Focus never overrides the M toggle.
-bogle_music_select(m, track, nae, aye)
-bogle_audio_mix(m, 512)
-mak_siccar m["music"]["gain"] == 0
-blether "ok muted music stays muted when focused"
+ken off = bogle_audio_new()
+bogle_music_select(off, track, aye, aye)
+bogle_audio_mix(off, 600)
+bogle_music_select(off, track, nae, aye)
+bogle_audio_mix(off, 512)
+mak_siccar off["music"]["gain"] == 0
+mak_siccar off["focus_gain"] == 8192
+ken muted = bogle_audio_mix(off, 64)
+fer i in 0..bytes_len(muted) {
+    mak_siccar bytes_get(muted, i) == 0
+}
+blether "ok muted music stays silent when focused"
