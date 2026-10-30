@@ -1,0 +1,45 @@
+# E1M2 review captures at 320x200. Create .scratch/e1m2shots before running.
+fetch "games/bogle/shell/frontend"
+
+dae e1m2_shot(name, x, y, angle) {
+    ken ui = bogle_front_new("games/bogle/data/e1m2.map")
+    bogle_front_start(ui)
+    bogle_front_screen(ui, "play")
+    ken g = ui["game"]
+    ken m = g["map"]
+    ken sector = -1
+    fer s in 0..len(m["floor_h"]) {
+        gin sector == -1 an map_point(m, s, x, y) {
+            sector = s
+        }
+    }
+    g["x"] = x * 65536
+    g["y"] = y * 65536
+    g["sector"] = sector
+    g["z"] = m["floor_h"][sector] * 65536
+    g["view_z"] = g["z"] + 2686976
+    g["angle"] = angle
+    g["message"] = ""
+    ken fb = bytes(64000)
+    bogle_front_render(ui, fb, 320, 200)
+    ken palette = make_palette()
+    ken ppm = bytes_from_string("P6\n320 200\n255\n")
+    ken rgb = bytes(192000)
+    fer pixel in 0..64000 {
+        ken ink = bytes_get(fb, pixel)
+        fer channel in 0..3 {
+            bytes_set(rgb, pixel * 3 + channel, bytes_get(palette, ink * 3 + channel))
+        }
+    }
+    bytes_append(ppm, rgb)
+    write_bytes(".scratch/e1m2shots/" + name + ".ppm", ppm)
+    blether name + " " + tae_string(frame_hash(fb))
+}
+
+e1m2_shot("yard_start", 320, -352, 1024)
+e1m2_shot("hub", 64, 64, 640)
+e1m2_shot("malting_gallery", -320, 96, 1280)
+e1m2_shot("warehouse", 992, 448, 1024)
+e1m2_shot("tasting_key", 1600, 192, 0)
+e1m2_shot("still_house", -224, 864, 200)
+e1m2_shot("exit_gate", 784, 992, 0)

@@ -1,0 +1,432 @@
+# E1M2, The Distillery. Run this builder from the repository root.
+# Sector kinds: 0 normal, 1 door, 2 fryer (hot wash floor), 3 bog, 4 cold water.
+# Door tags: 0 unlocked, 1 iron key, 2 silver key.
+#
+# Layout (x east, y north, 128-unit cells):
+#   loch-side yard (open sky, start) -> mash-tun hall hub with a central tun;
+#   west wing: sunken malting floor, iron key on the kiln gallery ledge;
+#   east wing (iron door): stairs up to a dark bonded warehouse of cask aisles,
+#     silver key in the lit tasting room ambush, loading-dock drop back to the hub;
+#   north wing (silver door): wash back, still house with two copper stills
+#     and hot wash floors, bagpipes on the worm-tub platform, a stair up to the
+#     spirit safe and the exit chamber; the high walkway runs back over the
+#     hall balcony, a drop shortcut into the hub.
+#
+# Rooms are axis-aligned rectangles collected first, then emitted with every
+# other rectangle corner that lies on an edge inserted, so neighbouring cells of
+# different sizes always share exact portal edges (no T junctions).
+fetch "games/bogle/tools/mapbuild"
+
+ken specs = []
+ken extra_points = []
+
+dae cell(x0, y0, x1, y1, floor_h, ceil_h, floor_tex, ceil_tex, light, wall_tex, kind = 0) {
+    shove(specs, {"r": [x0, y0, x1, y1], "f": floor_h, "c": ceil_h, "ft": floor_tex, "ct": ceil_tex, "l": light, "wt": wall_tex, "k": kind, "door": nae, "tag": 0, "stairs": naething})
+}
+
+dae door_cell(x0, y0, x1, y1, floor_h, ceil_h, tag = 0) {
+    shove(specs, {"r": [x0, y0, x1, y1], "f": floor_h, "c": ceil_h, "ft": 1, "ct": 2, "l": 160, "wt": 0, "k": 1, "door": aye, "tag": tag, "stairs": naething})
+}
+
+# A staircase rising east, emitted through the shared stairs helper.
+dae stair_run(x, y, width, depth, count, floor_h, rise, ceil_h, floor_tex, light, wall_tex) {
+    shove(specs, {"r": [x, y, x + width * count, y + depth], "f": floor_h, "c": ceil_h, "ft": floor_tex, "ct": 2, "l": light, "wt": wall_tex, "k": 0, "door": nae, "tag": 0, "stairs": [x, y, width, depth, count, floor_h, rise, ceil_h]})
+}
+
+# A grid of cells; holes lists [column, row] cells left solid (pillars, casks, stills).
+dae grid(x0, y0, size, columns, rows, holes, floor_h, ceil_h, floor_tex, ceil_tex, light, wall_tex) {
+    fer row in 0..rows {
+        fer column in 0..columns {
+            gin nae contains(holes, [column, row]) {
+                ken x = x0 + column * size
+                ken y = y0 + row * size
+                cell(x, y, x + size, y + size, floor_h, ceil_h, floor_tex, ceil_tex, light, wall_tex)
+            }
+        }
+    }
+}
+
+dae spec_corners(spec) {
+    ken r = spec["r"]
+    ken points = [[r[0], r[1]], [r[2], r[1]], [r[2], r[3]], [r[0], r[3]]]
+    gin spec["stairs"] != naething {
+        ken s = spec["stairs"]
+        fer i in 1..s[4] {
+            shove(points, [s[0] + i * s[2], s[1]])
+            shove(points, [s[0] + i * s[2], s[1] + s[3]])
+        }
+    }
+    gie points
+}
+
+# Corners of other rectangles strictly inside one edge, ordered along it.
+dae edge_points(all_points, ax, ay, bx, by) {
+    ken values = []
+    fer p in all_points {
+        gin ay == by an p[1] == ay an p[0] > min(ax, bx) an p[0] < max(ax, bx) an nae contains(values, p[0]) {
+            shove(values, p[0])
+        }
+        gin ax == bx an p[0] == ax an p[1] > min(ay, by) an p[1] < max(ay, by) an nae contains(values, p[1]) {
+            shove(values, p[1])
+        }
+    }
+    values = sort(values)
+    ken result = []
+    ken descending = bx < ax or by < ay
+    fer i in 0..len(values) {
+        ken v = values[i]
+        gin descending {
+            v = values[len(values) - 1 - i]
+        }
+        gin ay == by {
+            shove(result, [v, ay])
+        } ither {
+            shove(result, [ax, v])
+        }
+    }
+    gie result
+}
+
+dae rect_polygon(all_points, r) {
+    ken corners = [[r[0], r[1]], [r[2], r[1]], [r[2], r[3]], [r[0], r[3]]]
+    ken polygon = []
+    fer i in 0..4 {
+        ken a = corners[i]
+        ken b = corners[(i + 1) % 4]
+        shove(polygon, a)
+        fer p in edge_points(all_points, a[0], a[1], b[0], b[1]) {
+            shove(polygon, p)
+        }
+    }
+    gie polygon
+}
+
+dae overlap(a, b) {
+    gie a[0] < b[2] an b[0] < a[2] an a[1] < b[3] an b[1] < a[3]
+}
+
+# Returns the builder plus, per sector, its spec (for wall textures).
+dae emit(b) {
+    fer i in 0..len(specs) {
+        fer j in i + 1..len(specs) {
+            map_need(nae overlap(specs[i]["r"], specs[j]["r"]), "overlapping rooms " + tae_string(specs[i]["r"]) + " " + tae_string(specs[j]["r"]))
+        }
+    }
+    ken all_points = []
+    fer p in extra_points {
+        shove(all_points, p)
+    }
+    fer spec in specs {
+        fer p in spec_corners(spec) {
+            shove(all_points, p)
+        }
+    }
+    ken owners = []
+    fer spec in specs {
+        gin spec["stairs"] != naething {
+            ken s = spec["stairs"]
+            ken steps = stairs(b, s[0], s[1], s[2], s[3], s[4], s[5], s[6], s[7])
+            fer index in 0..len(steps) {
+                ken row = b["sectors"][steps[index]]
+                row[2] = spec["ft"]
+                row[4] = spec["l"]
+                b["sectors"][steps[index]] = row
+                ken x = s[0] + index * s[2]
+                ken polygon = rect_polygon(all_points, [x, s[1], x + s[2], s[1] + s[3]])
+                map_need(len(polygon) == 4, "stair step edge has a T junction at " + tae_string(x))
+                shove(owners, spec)
+            }
+        } ither gin spec["door"] {
+            door(b, rect_polygon(all_points, spec["r"]), spec["f"], spec["c"], spec["tag"])
+            shove(owners, spec)
+        } ither {
+            room(b, rect_polygon(all_points, spec["r"]), spec["f"], spec["c"], spec["ft"], spec["ct"], spec["l"], spec["k"])
+            shove(owners, spec)
+        }
+    }
+    gie owners
+}
+
+ken distillery = new_map()
+distillery["name"] = "The Distillery"
+distillery["briefing"] = [
+    "The airn key lies on the kiln gallery ower the malting floor.",
+    "It opens the bonded warehouse, where the siller key is kept.",
+    "The siller door leads tae the still house an the high walkway.",
+    "Win oot the marked gate in the spirit safe. Face it, press E.",
+]
+
+# Loch-side yard: open sky, bright. Column 0 is the cold loch shallows.
+fer row in 0..3 {
+    fer column in 0..5 {
+        ken x = column * 128
+        ken y = -416 + row * 128
+        gin column == 0 {
+            cell(x, y, x + 128, y + 128, -8, 160, 14, -1, 232, 0, 4)
+        } ither {
+            cell(x, y, x + 128, y + 128, 0, 160, 1, -1, 240, 0)
+        }
+    }
+}
+# Boathouse alcove (optional supplies), dim under a low roof.
+cell(640, -288, 768, -160, 0, 128, 4, 4, 112, 4)
+cell(768, -288, 896, -160, 0, 128, 4, 4, 88, 4)
+door_cell(256, -32, 384, 0, 0, 160)
+
+# Mash-tun hall hub: 5x5 cells around a solid oak tun, north row a raised balcony.
+fer row in 0..5 {
+    fer column in 0..5 {
+        gin nae (column == 2 an row == 2) {
+            ken x = column * 128
+            ken y = row * 128
+            gin row == 4 an column >= 1 an column <= 3 {
+                cell(x, y, x + 128, y + 128, 64, 256, 4, 2, 208, 3)
+            } ither {
+                ken light = 176
+                gin (column + row) % 2 == 1 {
+                    light = 160
+                }
+                cell(x, y, x + 128, y + 128, 0, 256, 1, 2, light, 3)
+            }
+        }
+    }
+}
+
+# West wing: descending stair to the sunken malting floor, kiln gallery ledge.
+door_cell(-32, 128, 0, 256, 0, 160)
+stair_run(-288, 128, 32, 128, 8, -48, 6, 160, 3, 136, 3)
+fer row in 0..4 {
+    fer column in 0..4 {
+        gin nae ((column == 1 an row == 1) or (column == 2 an row == 3)) {
+            ken x = -800 + column * 128
+            ken y = -128 + row * 128
+            ken light = 112
+            gin column == 0 {
+                light = 152
+            }
+            cell(x, y, x + 128, y + 128, -48, 112, 9, 2, light, 3)
+        }
+    }
+}
+# Kiln column: a dark peat store (optional supplies) up to the gallery stair foot.
+cell(-928, -128, -800, 0, -48, 96, 9, 2, 72, 3)
+cell(-928, 0, -800, 128, -48, 112, 9, 2, 184, 3)
+cell(-928, 128, -800, 256, -48, 112, 9, 2, 184, 3)
+cell(-928, 256, -800, 384, -48, 112, 9, 2, 144, 3)
+cell(-928, 384, -800, 512, -48, 112, 9, 2, 128, 3)
+stair_run(-800, 416, 32, 96, 8, -48, 8, 112, 4, 120, 4)
+cell(-544, 384, -416, 512, 16, 112, 4, 2, 136, 4)
+cell(-416, 384, -288, 512, 16, 112, 4, 2, 160, 4)
+
+# East wing: iron door, stair up to the bonded warehouse cask aisles.
+door_cell(640, 384, 672, 512, 0, 160, 1)
+stair_run(672, 384, 32, 128, 8, 0, 6, 192, 1, 120, 4)
+ken warehouse_holes = [[0, 1], [0, 2], [1, 2], [2, 2], [3, 2], [1, 4], [3, 4], [3, 3], [2, 0]]
+fer row in 0..6 {
+    fer column in 0..5 {
+        gin nae contains(warehouse_holes, [column, row]) {
+            ken x = 928 + column * 128
+            ken y = row * 128
+            ken light = 72
+            gin (column == 1 an row == 3) or (column == 4 an row == 1) or (column == 0 an row == 0) {
+                light = 168
+            }
+            gin row == 5 an column % 2 == 0 {
+                light = 104
+            }
+            cell(x, y, x + 128, y + 128, 48, 224, 2, 4, light, 4)
+        }
+    }
+}
+# Cooperage alcove off the north-east aisle.
+cell(1440, 768, 1568, 896, 48, 160, 9, 4, 176, 4)
+# Tasting room: lit plinth with the siller key, dark flanking bays.
+fer row in 0..3 {
+    cell(1568, row * 128, 1696, row * 128 + 128, 48, 192, 1, 4, 160, 6)
+    gin row == 1 {
+        cell(1696, 128, 1824, 256, 64, 192, 4, 4, 224, 6)
+    } ither {
+        cell(1696, row * 128, 1824, row * 128 + 128, 48, 192, 2, 4, 64, 6)
+    }
+}
+# Loading dock: the warehouse's south-west aisle drops back into the hall.
+cell(672, 0, 928, 128, 48, 192, 2, 4, 144, 4)
+cell(640, 0, 672, 128, 48, 192, 2, 4, 144, 4)
+
+# North wing: silver door, wash back, still house, stair up to the spirit safe.
+door_cell(-32, 512, 0, 640, 0, 192, 2)
+cell(-288, 512, -32, 640, 0, 192, 2, 2, 120, 3)
+cell(-288, 640, -160, 800, 0, 192, 2, 2, 104, 3)
+fer row in 0..3 {
+    fer column in 0..6 {
+        gin nae (row == 1 an (column == 1 or column == 4)) {
+            ken x = -288 + column * 128
+            ken y = 800 + row * 128
+            gin row == 1 an (column == 2 or column == 3) {
+                cell(x, y, x + 128, y + 128, 0, 288, 12, 2, 200, 3, 2)
+            } ither {
+                cell(x, y, x + 128, y + 128, 0, 288, 1, 2, 160, 3)
+            }
+        }
+    }
+}
+# Worm-tub platform behind the stills.
+fer column in 0..3 {
+    ken x = 96 + column * 128
+    cell(x, 1184, x + 128, 1312, 24, 224, 4, 2, 184, 11)
+}
+stair_run(480, 800, 32, 128, 8, 0, 8, 224, 1, 168, 11)
+# Spirit safe at walkway height; the walkway runs back over the hall balcony.
+cell(736, 800, 864, 928, 64, 224, 11, 2, 200, 11)
+cell(736, 640, 864, 800, 64, 224, 11, 2, 176, 11)
+fer column in 0..4 {
+    ken x = 128 + column * 128
+    cell(x, 640, x + 128, 768, 64, 256, 4, 2, 192, 3)
+}
+cell(640, 640, 736, 768, 64, 256, 4, 2, 184, 3)
+# Exit chamber north of the spirit safe, painted gate on its east wall.
+cell(736, 928, 864, 1056, 64, 192, 11, 2, 224, 11)
+shove(extra_points, [864, 960])
+shove(extra_points, [864, 1024])
+# Wall pictures: a stag head in the hub, a banner in the still house.
+shove(extra_points, [0, 288])
+shove(extra_points, [0, 352])
+shove(extra_points, [-288, 960])
+shove(extra_points, [-288, 1024])
+
+ken owners = emit(distillery)
+
+# Things. Player start in the yard, facing the hall door.
+map_thing(distillery, 1, 320, -352, 1024)
+# Yard: a keeper in plain view, midges over the loch, curling stones and braziers.
+map_thing(distillery, 2, 480, -128, 2048)
+map_thing(distillery, 5, 64, -352)
+map_thing(distillery, 10, 576, -384)
+map_thing(distillery, 12, 576, -96)
+map_thing(distillery, 36, 160, -384)
+map_thing(distillery, 36, 176, -96)
+map_thing(distillery, 32, 224, -64)
+map_thing(distillery, 32, 416, -64)
+# Boathouse alcove.
+map_thing(distillery, 14, 704, -224)
+map_thing(distillery, 11, 832, -224)
+# Hub and balcony (the balcony is reached later from the walkway).
+map_thing(distillery, 2, 96, 448, 0)
+map_thing(distillery, 12, 64, 64)
+map_thing(distillery, 10, 576, 192)
+map_thing(distillery, 31, 32, 32)
+map_thing(distillery, 13, 192, 576)
+map_thing(distillery, 14, 448, 576)
+# Malting floor: Mars box at the stair foot, two keepers, a ghost on the gallery.
+map_thing(distillery, 15, -352, 160)
+map_thing(distillery, 2, -736, 64, 0)
+map_thing(distillery, 2, -480, -64, 1024)
+map_thing(distillery, 4, -480, 448, 3072)
+map_thing(distillery, 19, -352, 448)
+map_thing(distillery, 10, -736, 320)
+map_thing(distillery, 33, -400, -104)
+map_thing(distillery, 32, -896, 160)
+# Peat store (optional).
+map_thing(distillery, 11, -880, -96)
+map_thing(distillery, 16, -848, -32)
+# Bonded warehouse: blunderbuss under the lamp beside the entrance.
+map_thing(distillery, 17, 1120, 448)
+map_thing(distillery, 2, 1120, 704, 0)
+map_thing(distillery, 2, 1504, 576, 3072)
+map_thing(distillery, 3, 1120, 64)
+map_thing(distillery, 3, 1376, 64)
+map_thing(distillery, 10, 1248, 576)
+# Cooperage alcove (optional).
+map_thing(distillery, 16, 1504, 832)
+map_thing(distillery, 12, 1472, 864)
+map_thing(distillery, 32, 1536, 800)
+# Tasting room ambush: keepers wait in the dark bays either side of the key.
+map_thing(distillery, 20, 1760, 192)
+map_thing(distillery, 2, 1760, 64, 1024)
+map_thing(distillery, 2, 1760, 320, 3072)
+map_thing(distillery, 16, 1600, 320)
+map_thing(distillery, 12, 1600, 64)
+# Wash back and still house.
+map_thing(distillery, 2, -224, 576, 0)
+map_thing(distillery, 10, -96, 544)
+map_thing(distillery, 2, -224, 1120, 0)
+map_thing(distillery, 2, 416, 864, 2048)
+map_thing(distillery, 4, 160, 1120, 3072)
+map_thing(distillery, 3, 32, 1120)
+map_thing(distillery, 18, 288, 1248)
+map_thing(distillery, 11, 160, 1248)
+map_thing(distillery, 32, -256, 1152)
+map_thing(distillery, 32, 448, 1152)
+# Spirit safe and exit: a guard, and the trigger on the painted gate face (x 864).
+map_thing(distillery, 12, 800, 704)
+map_thing(distillery, 2, 784, 1024, 3072)
+map_thing(distillery, 21, 856, 992, 0, 2)
+
+# Wall textures per room; walls facing a door keep upper 0 so doors get faces.
+# Tun faces are oak; still faces are fryer-oil copper; three painted panels.
+ken parsed = validate(distillery)
+# The engine tracks portal crossings against each wall's whole line, so one
+# sector must never have two portal walls on the same line.
+fer s in 0..len(parsed["floor_h"]) {
+    ken first = parsed["wall_first"][s]
+    fer i in first..first + parsed["wall_count"][s] {
+        fer j in i + 1..first + parsed["wall_count"][s] {
+            gin parsed["portal"][i] >= 0 an parsed["portal"][j] >= 0 {
+                ken a = parsed["wall_v1"][i]
+                ken b = parsed["wall_v2"][i]
+                ken c1 = map_cross(parsed["vx"][a], parsed["vy"][a], parsed["vx"][b], parsed["vy"][b], parsed["vx"][parsed["wall_v1"][j]], parsed["vy"][parsed["wall_v1"][j]])
+                ken c2 = map_cross(parsed["vx"][a], parsed["vy"][a], parsed["vx"][b], parsed["vy"][b], parsed["vx"][parsed["wall_v2"][j]], parsed["vy"][parsed["wall_v2"][j]])
+                map_need(c1 != 0 or c2 != 0, "collinear portals in sector " + tae_string(s) + " at " + tae_string(parsed["vx"][a]) + "," + tae_string(parsed["vy"][a]))
+            }
+        }
+    }
+}
+dae on_rect_boundary(r, x, y) {
+    gin x < r[0] or x > r[2] or y < r[1] or y > r[3] {
+        gie nae
+    }
+    gie x == r[0] or x == r[2] or y == r[1] or y == r[3]
+}
+ken specials = [
+    [[256, 256, 384, 384], 4],
+    [[-160, 928, -32, 1056], 12],
+    [[224, 928, 352, 1056], 12],
+]
+ken pictures = [
+    [[0, 352], [0, 288], 16],
+    [[-288, 1024], [-288, 960], 17],
+    [[864, 960], [864, 1024], 18],
+]
+ken walls = []
+fer s in 0..len(owners) {
+    ken first = parsed["wall_first"][s]
+    fer i in 0..parsed["wall_count"][s] {
+        ken w = first + i
+        ken next = parsed["portal"][w]
+        ken a = [parsed["vx"][parsed["wall_v1"][w]], parsed["vy"][parsed["wall_v1"][w]]]
+        ken z = [parsed["vx"][parsed["wall_v2"][w]], parsed["vy"][parsed["wall_v2"][w]]]
+        ken texture = owners[s]["wt"]
+        gin next < 0 {
+            fer special in specials {
+                gin on_rect_boundary(special[0], a[0], a[1]) an on_rect_boundary(special[0], z[0], z[1]) {
+                    texture = special[1]
+                }
+            }
+            fer picture in pictures {
+                gin a == picture[0] an z == picture[1] {
+                    texture = picture[2]
+                }
+            }
+        }
+        gin texture != 0 an parsed["kind"][s] != 1 {
+            gin next >= 0 an parsed["kind"][next] == 1 {
+                shove(walls, [s, i, 0, texture, texture, 0, 0, 0])
+            } ither {
+                shove(walls, [s, i, texture, texture, texture, 0, 0, 0])
+            }
+        }
+    }
+}
+distillery["walls"] = walls
+write(distillery, "games/bogle/data/e1m2.map")
+blether "e1m2 sectors " + tae_string(len(distillery["sectors"])) + " things " + tae_string(len(distillery["things"])) + " walls " + tae_string(len(walls))

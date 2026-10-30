@@ -1,0 +1,91 @@
+fetch "games/bogle/engine/game"
+
+# E1M2 structural facts: size, keys, weapons, doors and the painted exit.
+ken e1m1 = load_map("games/bogle/data/e1m1.map")
+ken e1m2 = load_map("games/bogle/data/e1m2.map")
+mak_siccar e1m2["name"] == "The Distillery"
+mak_siccar len(e1m2["briefing"]) >= 3
+blether "ok e1m2 loads and validates"
+mak_siccar len(e1m2["floor_h"]) >= 3 * len(e1m1["floor_h"])
+blether "ok sectors at least three times e1m1"
+
+dae e1m2_count(m, kind) {
+    ken n = 0
+    fer t in m["thing_type"] {
+        gin t == kind {
+            n = n + 1
+        }
+    }
+    gie n
+}
+mak_siccar e1m2_count(e1m2, 19) == 1 an e1m2_count(e1m2, 20) == 1
+blether "ok one airn key and one siller key"
+fer kind in [15, 17, 18] {
+    mak_siccar e1m2_count(e1m2, kind) >= 1
+}
+ken e1m2_game = new_game(e1m2)
+mak_siccar e1m2_game["owned"][0]
+blether "ok sgian-dubh owned, Mars, blunderbuss and bagpipe pickups placed"
+
+ken iron_doors = 0
+ken silver_doors = 0
+fer s in 0..len(e1m2["floor_h"]) {
+    gin e1m2["kind"][s] == 1 an e1m2["tag"][s] == 1 {
+        iron_doors = iron_doors + 1
+    }
+    gin e1m2["kind"][s] == 1 an e1m2["tag"][s] == 2 {
+        silver_doors = silver_doors + 1
+    }
+}
+mak_siccar iron_doors >= 1 an silver_doors >= 1
+blether "ok keyed doors for both keys"
+
+mak_siccar e1m2_count(e1m2, 21) == 1
+ken exit_index = -1
+fer t in 0..len(e1m2["thing_type"]) {
+    gin e1m2["thing_type"][t] == 21 {
+        exit_index = t
+    }
+}
+mak_siccar bit_an(e1m2["thing_flags"][exit_index], 2) != 0
+ken ex = e1m2["thing_x"][exit_index]
+ken ey = e1m2["thing_y"][exit_index]
+ken gates = 0
+ken near_gate = nae
+fer w in 0..len(e1m2["mid_tex"]) {
+    gin e1m2["mid_tex"][w] == 18 an e1m2["portal"][w] == -1 {
+        gates = gates + 1
+        ken a = e1m2["wall_v1"][w]
+        ken b = e1m2["wall_v2"][w]
+        ken wx = e1m2["vx"][b] - e1m2["vx"][a]
+        ken wy = e1m2["vy"][b] - e1m2["vy"][a]
+        ken px = ex - e1m2["vx"][a]
+        ken py = ey - e1m2["vy"][a]
+        ken along = px * wx + py * wy
+        ken length2 = wx * wx + wy * wy
+        # The trigger lies in front of the gate face (left of the CCW wall), within 8 units.
+        ken cross = wx * py - wy * px
+        gin along >= 0 an along <= length2 an cross > 0 an cross * cross <= 64 * length2 {
+            near_gate = aye
+        }
+    }
+}
+mak_siccar gates == 1 an near_gate
+blether "ok one exit trigger within 8 units of its painted gate"
+
+# Sector tracking tests whole wall lines, so no sector has two collinear portals.
+fer s in 0..len(e1m2["floor_h"]) {
+    ken first = e1m2["wall_first"][s]
+    fer i in first..first + e1m2["wall_count"][s] {
+        fer j in i + 1..first + e1m2["wall_count"][s] {
+            gin e1m2["portal"][i] >= 0 an e1m2["portal"][j] >= 0 {
+                ken a = e1m2["wall_v1"][i]
+                ken b = e1m2["wall_v2"][i]
+                ken c1 = map_cross(e1m2["vx"][a], e1m2["vy"][a], e1m2["vx"][b], e1m2["vy"][b], e1m2["vx"][e1m2["wall_v1"][j]], e1m2["vy"][e1m2["wall_v1"][j]])
+                ken c2 = map_cross(e1m2["vx"][a], e1m2["vy"][a], e1m2["vx"][b], e1m2["vy"][b], e1m2["vx"][e1m2["wall_v2"][j]], e1m2["vy"][e1m2["wall_v2"][j]])
+                mak_siccar c1 != 0 or c2 != 0
+            }
+        }
+    }
+}
+blether "ok no sector has two portals on one line"
