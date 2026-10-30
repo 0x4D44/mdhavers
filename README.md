@@ -4,6 +4,16 @@
 
 mdhavers is a dynamically-typed programming language that uses Scots vocabulary for its keywords and produces error messages in Scots dialect. It's a fully-featured language with an interpreter, a JavaScript compiler, and a friendly REPL.
 
+## Documentation
+
+The full documentation lives in [`docs/`](docs/README.md) (an mdBook, browsable on GitHub):
+
+- [Getting started](docs/src/getting-started/installation.md) and the [language guide](docs/src/learn/01-basics.md)
+- [Built-in functions](docs/src/reference/builtins.md), including [Screen, Keyboard and Mouse](docs/src/reference/screen.md) and [Sound](docs/src/reference/sound.md)
+- [Standard library](docs/src/reference/stdlib.md), [keywords](docs/src/reference/keywords.md) and the [CLI reference](docs/src/reference/cli.md)
+
+Build the book with `mdbook build docs`.
+
 ## Quick Start
 
 ```bash

@@ -2,6 +2,25 @@
 
 Complete reference of all built-in functions in mdhavers.
 
+## Built-ins by area
+
+This page covers the core language built-ins. Further areas have their own pages:
+
+| Page | Covers |
+|---|---|
+| [Screen, Keyboard and Mouse](./screen.md) | `screen_open`, `screen_shaw`, `key_down`, `mouse_x` and the rest of the framebuffer window API |
+| [Sound (PCM output)](./sound.md) | `sound_open`, `sound_queue`, `sound_queued`, `sound_close` |
+| [System, Files, Time and Logging](./builtins/system.md) | Environment, process, file system, dates, timers, logging |
+| [Text, Regex and JSON](./builtins/text-data.md) | Extra string helpers, `regex_*`, `json_*` |
+| [Collections, Sets, Random and Maths](./builtins/collections.md) | Creel (set) operations, list helpers, random numbers |
+| [Audio and MIDI](./builtins/audio.md) | `soond_*`, `muisic_*`, `midi_*` file playback |
+| [Graphics (raylib)](./builtins/graphics.md) | `draw_*`, colours (interpreter with the `graphics` feature) |
+| [Tri 3D](./builtins/tri.md) | The `tri` 3D module |
+
+Networking, DNS, event loop, threads, TLS and DTLS are further down this page.
+Run `python3 scripts/docs_coverage.py` from the repository root to list any
+registered built-in that no page documents.
+
 ## Scots-Flavored Functions
 
 These functions have distinctly Scottish names and personality!
@@ -30,10 +49,10 @@ These functions have distinctly Scottish names and personality!
 | Function | Description | Example |
 |----------|-------------|---------|
 | `wheesht(str)` | Trim whitespace (be quiet) | `wheesht("  hi  ")` → `"hi"` |
-| `scottify(str)` | Convert English to Scots | `scottify("hello")` → `"hullo"` |
+| `scottify(str)` | Convert English words to Scots | `scottify("small child")` → `"wee bairn"` |
 | `stooshie(str)` | Shuffle characters (chaos) | `stooshie("hello")` → random |
 | `blooter(str)` | Scramble randomly | `blooter("hello")` → random |
-| `tattie_scone(s, n)` | Repeat with \| separator | `tattie_scone("la", 3)` → `"la\|la\|la"` |
+| `tattie_scone(s, n)` | Repeat with ` \| ` separator | `tattie_scone("la", 3)` → `"la \| la \| la"` |
 | `sporran_fill(s, w, c)` | Center-pad string | `sporran_fill("hi", 6, "-")` → `"--hi--"` |
 | `haggis_hunt(s, needle)` | Find all occurrences | `haggis_hunt("aa", "a")` → `[0,1]` |
 
@@ -68,9 +87,9 @@ These functions have distinctly Scottish names and personality!
 
 | Function | Description | Example |
 |----------|-------------|---------|
-| `clype(x)` | Debug print with type (tell tales) | `clype(42)` → prints type info |
+| `clype(x)` | Describe a value and its type (tell tales); returns a string, prints nothing | `clype(42)` → `"[integer] integer: 42"` |
 | `indices_o(x, val)` | Find all indices of value | `indices_o([1,2,1], 1)` → `[0,2]` |
-| `braw_date(ts)` | Format date Scottish style | `braw_date(noo())` |
+| `braw_date(ts)` | Format a Unix time in seconds (or `naething` for now) Scottish style | `braw_date(the_noo())` |
 | `grup_up(list, fn)` | Group by function | `grup_up([1,2,3], \|x\| x%2)` |
 | `pairt_by(list, fn)` | Partition by predicate | `pairt_by([1,2,3], \|x\| x>1)` |
 | `pair_up(list)` | Create pairs | `pair_up([1,2,3,4])` → `[[1,2],[3,4]]` |
@@ -83,7 +102,7 @@ These functions have distinctly Scottish names and personality!
 | `gaun(list, fn)` | Map (going over) | `gaun([1,2], \|x\| x*2)` → `[2,4]` |
 | `sieve(list, fn)` | Filter | `sieve([1,2,3], \|x\| x>1)` → `[2,3]` |
 | `tumble(list, init, fn)` | Reduce/fold | `tumble([1,2], 0, \|a,x\| a+x)` → `3` |
-| `ilk(list, fn)` | For-each (each) | `ilk([1,2], print)` |
+| `ilk(list, fn)` | For-each (each); returns `naething` | `ilk([1,2], shaw)` (with `dae shaw(x) { blether x }`) |
 
 ## Type Functions
 
@@ -101,14 +120,14 @@ These functions have distinctly Scottish names and personality!
 | Function | Description | Example |
 |----------|-------------|---------|
 | `len(x)` | Length | `len([1,2,3])` → `3` |
-| `shove(list, x)` | Append (push) | `shove([1,2], 3)` → `[1,2,3]` |
-| `yank(list)` | Pop last | `yank([1,2,3])` → `3` |
+| `shove(list, x)` | Append in place (push); returns `naething` | `shove(l, 3)` makes `[1,2]` into `[1,2,3]` |
+| `yank(list)` | Remove and return the last item | `yank([1,2,3])` → `3` |
 | `sort(list)` | Sort ascending | `sort([3,1,2])` → `[1,2,3]` |
 | `reverse(x)` | Reverse | `reverse([1,2,3])` → `[3,2,1]` |
 | `contains(x, y)` | Check membership | `contains([1,2], 1)` → `aye` |
 | `coont(x, y)` | Count occurrences | `coont([1,1,2], 1)` → `2` |
 | `shuffle(list)` | Random shuffle | `shuffle([1,2,3])` |
-| `jammy(min, max)` | Random int in range | `jammy(1, 10)` → random |
+| `jammy(min, max)` | Random int from `min` to `max - 1`; needs `min < max` | `jammy(1, 10)` → 1 to 9 |
 
 ## String Operations
 
@@ -141,7 +160,7 @@ These functions have distinctly Scottish names and personality!
 | `dict_has(d, key)` | Key exists? | `dict_has({"a":1}, "a")` → `aye` |
 | `dict_remove(d, key)` | Copy without key (the original is untouched) | `dict_remove({"a":1}, "a")` → `{}` |
 | `heave_oot(d, key)` | Remove key from `d` in place; a missing key is ignored; returns `d`. Use it in loops that delete many keys. Also removes an item from a creel. | `heave_oot(d, "a")` |
-| `dict_invert(d)` | Swap key/value | `dict_invert({"a":1})` → `{1:"a"}` |
+| `dict_invert(d)` | Swap key/value; new keys are strings | `dict_invert({"a":1})` → `{"1":"a"}` |
 | `fae_pairs(list)` | Create from pairs | `fae_pairs([["a",1]])` → `{"a":1}` |
 
 ## Math Functions
@@ -219,8 +238,8 @@ These functions have distinctly Scottish names and personality!
 | Function | Description | Example |
 |----------|-------------|---------|
 | `noo()` | Current time (ms) | `noo()` → timestamp |
-| `the_noo()` | Current timestamp | `the_noo()` |
-| `tick()` | High-precision (ns) | `tick()` → nanoseconds |
+| `the_noo()` | Current Unix time (seconds) | `the_noo()` |
+| `tick()` | Current Unix time (ns) | `tick()` → nanoseconds |
 | `mono_ms()` | Monotonic ms since start | `mono_ms()` |
 | `mono_ns()` | Monotonic ns since start | `mono_ns()` |
 | `bide(ms)` | Sleep (wait) | `bide(1000)` → sleeps 1s |
@@ -254,7 +273,7 @@ These functions have distinctly Scottish names and personality!
 | `assert(cond, msg)` | Assert true | `assert(x > 0, "must be positive")` |
 | `assert_equal(a, b)` | Assert equal | `assert_equal(1+1, 2)` |
 | `assert_nae_equal(a, b)` | Assert not equal | `assert_nae_equal(1, 2)` |
-| `mak_siccar(cond, msg)` | Assert (Scots) | `mak_siccar(x > 0)` |
+| `mak_siccar cond, msg` | Assert statement (a keyword, not a function; the message is optional) | `mak_siccar x > 0` |
 
 ## Bytes & Binary
 
@@ -300,7 +319,7 @@ These functions have distinctly Scottish names and personality!
 | Function | Description |
 |----------|-------------|
 | `dns_lookup(host)` | A/AAAA lookup |
-| `dns_srv(domain)` | SRV lookup |
+| `dns_srv(service, domain)` | SRV lookup of `service.domain` (an empty `service` looks up `domain`) |
 | `dns_naptr(domain)` | NAPTR lookup |
 
 ## Event Loop & Timers
@@ -321,7 +340,7 @@ These functions have distinctly Scottish names and personality!
 
 | Function | Description |
 |----------|-------------|
-| `thread_spawn(fn, args)` | Spawn thread |
+| `thread_spawn(fn, args)` | Spawn thread; `args` is a list or `naething`. The interpreter accepts only built-in functions and runs them at once |
 | `thread_join(handle)` | Join thread |
 | `thread_detach(handle)` | Detach thread |
 | `mutex_new()` | Create mutex |
@@ -329,17 +348,15 @@ These functions have distinctly Scottish names and personality!
 | `mutex_unlock(m)` | Unlock mutex |
 | `mutex_try_lock(m)` | Try lock mutex |
 | `condvar_new()` | Create condvar |
-| `condvar_wait(cv, m)` | Wait on condvar |
+| `condvar_wait(cv, m)` | Wait on condvar (the interpreter returns `aye` at once) |
 | `condvar_timed_wait(cv, m, ms)` | Timed wait |
 | `condvar_signal(cv)` | Signal condvar |
 | `condvar_broadcast(cv)` | Broadcast condvar |
 | `atomic_new(val)` | Create atomic |
 | `atomic_load(a)` | Load atomic |
 | `atomic_store(a, val)` | Store atomic |
-| `atomic_add(a, val)` | Add atomic |
-| `atomic_sub(a, val)` | Subtract atomic |
-| `atomic_swap(a, val)` | Swap atomic |
-| `atomic_compare_exchange(a, expect, val)` | CAS |
+| `atomic_add(a, val)` | Add to atomic; returns the new value |
+| `atomic_cas(a, expected, desired)` | Compare-and-swap; returns `aye` if it swapped |
 | `chan_new(capacity)` | Create channel |
 | `chan_send(chan, value)` | Send on channel |
 | `chan_recv(chan)` | Receive on channel |
