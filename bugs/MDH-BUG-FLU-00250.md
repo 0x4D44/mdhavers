@@ -1,26 +1,25 @@
 # MDH-BUG-FLU-00250 — bogle: body_substep picks the wrong neighbour when a sector has two portals on one straight line
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** bogle
 - **Raised:** 2026-10-30T13:16:32Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261030T141042Z-e6b97de8
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00250-run-fix-20261030T141042Z-e6b97de8
-- **Owner base:** 15dce43184f7cbcf6d8fb8713cec62f1b13c5a4c
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-30T14:10:42Z
-- **Owner until:** 2026-10-30T18:10:42Z
-- **Owner session:** flux/2a9090d7-08f7-48c7-bee8-7b7d1d963ab2 (run fix-20261030T141042Z-e6b97de8)
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-30T13:16:32Z, raised via `deltic bugs new`)
+- **State history:** Open (2026-10-30T13:16:32Z, raised via `deltic bugs new`) -> Fixed (2026-10-30T14:27:20Z, deltic:auto role=fix run=fix-20261030T141042Z-e6b97de8 branch=task/bug-MDH-BUG-FLU-00250-run-fix-20261030T141042Z-e6b97de8 code=bf2957917b11c595175d6844df0c945ebe76c6da gate=manual)
 
 ## Observation
 
