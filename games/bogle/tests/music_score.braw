@@ -1,0 +1,36 @@
+fetch "games/bogle/music/midi"
+make_dir(".scratch/music")
+
+mak_siccar midi_vlq(0) == midi_bytes([0])
+mak_siccar midi_vlq(127) == midi_bytes([127])
+mak_siccar midi_vlq(128) == midi_bytes([129,0])
+mak_siccar midi_vlq(16383) == midi_bytes([255,127])
+mak_siccar midi_vlq(16384) == midi_bytes([129,128,0])
+mak_siccar midi_vlq(268435455) == midi_bytes([255,255,255,127])
+blether "ok MIDI variable-length integer boundaries"
+
+# A fixed two-note score pins the whole file, independently of the serializer.
+# The off and on at tick 480 must have a zero delta between them, off first.
+ken score_track = []
+midi_note(score_track, 0, 0, 480, 62, 64)
+midi_note(score_track, 0, 480, 480, 62, 66)
+midi_write(".scratch/music/score.mid", [score_track], 800000, 4, 2, 960)
+ken score_expected = midi_bytes([
+    77,84,104,100,0,0,0,6,0,1,0,2,1,224,
+    77,84,114,107,0,0,0,20,
+    0,255,81,3,12,53,0,
+    0,255,88,4,4,2,24,8,
+    135,64,255,47,0,
+    77,84,114,107,0,0,0,22,
+    0,144,62,64,
+    131,96,128,62,0,
+    0,144,62,66,
+    131,96,128,62,0,
+    0,255,47,0
+])
+mak_siccar read_bytes(".scratch/music/score.mid") == score_expected
+blether "ok MIDI header, tempo, track lengths and off-before-on ordering"
+
+ken score_ties = [[480,1,[1]], [0,1,[2]], [480,0,[3]], [0,1,[4]]]
+mak_siccar midi_sort(score_ties) == [[0,1,[2]], [0,1,[4]], [480,0,[3]], [480,1,[1]]]
+blether "ok stable MIDI event ordering"

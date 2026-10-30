@@ -1,0 +1,6 @@
+ok comma and apostrophe glyphs exist for briefing text
+ok briefing freezes and dismisses without fire or mouse carry
+ok map text restart and fresh any key debounce
+ok briefing draws at both sizes without ticking
+ok exit prompt matches facing reach and read only use
+ok physical held accept cannot dismiss the new briefing

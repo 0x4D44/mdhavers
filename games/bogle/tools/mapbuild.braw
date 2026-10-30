@@ -111,11 +111,24 @@ dae builder_line(prefix, values) {
 
 dae builder_text(b) {
     ken text = "BOGMAP 1\n"
+    gin contains(b, "name") {
+        text = text + "name " + b["name"] + "\n"
+    }
+    gin contains(b, "briefing") {
+        fer line in b["briefing"] {
+            text = text + "briefing " + line + "\n"
+        }
+    }
     fer v in b["vertices"] {
         text = text + builder_line("v", v)
     }
     fer s in b["sectors"] {
         text = text + builder_line("s", s)
+    }
+    gin contains(b, "walls") {
+        fer wall in b["walls"] {
+            text = text + builder_line("w", wall)
+        }
     }
     fer t in b["things"] {
         text = text + builder_line("t", t)

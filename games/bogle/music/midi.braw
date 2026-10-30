@@ -1,0 +1,122 @@
+# Small deterministic Standard MIDI File writer. Times are integer ticks:
+# 480 ticks/quarter, 240/eighth. No clock, randomness or external MIDI library.
+# Fetching the helper only defines functions. MIDI channels/programs are zero-based.
+ken MIDI_PPQ = 480
+
+dae midi_bytes(values) {
+    ken out = bytes(len(values))
+    fer i in 0..len(values) { bytes_set(out, i, values[i]) }
+    gie out
+}
+
+dae midi_event(track, tick, message, priority = 1) {
+    mak_siccar tick >= 0
+    shove(track, [tick, priority, message])
+}
+
+dae midi_note(track, channel, tick, duration, pitch, velocity) {
+    mak_siccar duration > 0 an pitch >= 0 an pitch < 128
+    mak_siccar velocity > 0 an velocity < 128
+    midi_event(track, tick, [144 + channel, pitch, velocity])
+    # Note-offs sort before note-ons at the same tick, including a repeated pitch.
+    midi_event(track, tick + duration, [128 + channel, pitch, 0], 0)
+}
+
+dae midi_channel(track, channel, program, volume, reverb = 38) {
+    midi_event(track, 0, [192 + channel, program])
+    midi_event(track, 0, [176 + channel, 7, volume])
+    midi_event(track, 0, [176 + channel, 10, 64])  # centre: assets become mono
+    midi_event(track, 0, [176 + channel, 91, reverb])
+    midi_event(track, 0, [176 + channel, 93, 0])
+}
+
+dae midi_vlq(value) {
+    mak_siccar value >= 0 an value <= 268435455
+    ken digits = [value % 128]
+    value = value / 128
+    whiles value > 0 {
+        shove(digits, 128 + value % 128)
+        value = value / 128
+    }
+    ken result = bytes(len(digits))
+    fer i in 0..len(digits) {
+        bytes_set(result, i, digits[len(digits) - 1 - i])
+    }
+    gie result
+}
+
+# Stable merge sort keeps author order for simultaneous program/controller events.
+dae midi_sort(events) {
+    gin len(events) < 2 { gie events }
+    ken mid = len(events) / 2
+    ken left = []
+    ken right = []
+    fer i in 0..mid { shove(left, events[i]) }
+    fer i in mid..len(events) { shove(right, events[i]) }
+    left = midi_sort(left)
+    right = midi_sort(right)
+    ken result = []
+    ken a = 0
+    ken b = 0
+    whiles a < len(left) an b < len(right) {
+        gin left[a][0] < right[b][0] or (left[a][0] == right[b][0] an left[a][1] <= right[b][1]) {
+            shove(result, left[a])
+            a = a + 1
+        } ither {
+            shove(result, right[b])
+            b = b + 1
+        }
+    }
+    whiles a < len(left) { shove(result, left[a]); a = a + 1 }
+    whiles b < len(right) { shove(result, right[b]); b = b + 1 }
+    gie result
+}
+
+dae midi_chunk(tag, payload) {
+    ken result = bytes_from_string(tag)
+    ken size = bytes(4)
+    bytes_write_u32be(size, 0, bytes_len(payload))
+    bytes_append(result, size)
+    bytes_append(result, payload)
+    gie result
+}
+
+dae midi_write(path, tracks, tempo_us, numerator, denominator_power, end_tick) {
+    ken conductor = []
+    midi_event(conductor, 0, [255, 81, 3, tempo_us / 65536, (tempo_us / 256) % 256, tempo_us % 256])
+    midi_event(conductor, 0, [255, 88, 4, numerator, denominator_power, 24, 8])
+    ken header = bytes(6)
+    bytes_write_u16be(header, 0, 1)
+    bytes_write_u16be(header, 2, len(tracks) + 1)
+    bytes_write_u16be(header, 4, MIDI_PPQ)
+    ken file = midi_chunk("MThd", header)
+    ken all_tracks = [conductor]
+    fer track in tracks { shove(all_tracks, track) }
+    fer track in all_tracks {
+        midi_event(track, end_tick, [255, 47, 0], 2)
+        ken payload = bytes(0)
+        ken previous = 0
+        fer event in midi_sort(track) {
+            mak_siccar event[0] <= end_tick
+            bytes_append(payload, midi_vlq(event[0] - previous))
+            bytes_append(payload, midi_bytes(event[2]))
+            previous = event[0]
+        }
+        bytes_append(file, midi_chunk("MTrk", payload))
+    }
+    write_bytes(path, file)
+}
+
+# A bar consists of [MIDI pitch, duration in eighth-notes]; pitch 0 is a rest.
+# Gate leaves air between strokes without changing the score's timing.
+dae midi_bar(track, channel, tick, bar, velocity, gate = 88) {
+    ken cursor = tick
+    fer note in bar {
+        ken duration = note[1] * 240
+        gin note[0] > 0 {
+            midi_note(track, channel, cursor, max(1, duration * gate / 100), note[0], velocity)
+        }
+        cursor = cursor + duration
+    }
+    gie cursor - tick
+}

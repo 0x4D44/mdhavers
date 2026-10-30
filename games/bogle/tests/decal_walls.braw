@@ -1,0 +1,88 @@
+fetch "games/bogle/engine/game"
+
+ken decal_map = load_map("games/bogle/data/e1m1.map")
+ken decal_good = aye
+fer kind in [30, 34, 35] {
+    ken absent = nae contains(decal_map["thing_type"], kind)
+    blether "wall dressing removed " + tae_string(kind) + " " + tae_string(absent)
+    decal_good = decal_good an absent
+}
+mak_siccar decal_good
+blether "ok wall dressing uses wall segments, free-standing furniture stays"
+fetch "games/bogle/tools/decals"
+mak_siccar decal_map["name"] == "The Gatehouse"
+mak_siccar contains(decal_map["briefing"][0], "airn") an contains(decal_map["briefing"][0], "siller")
+mak_siccar contains(decal_map["briefing"][1], "gate")
+blether "ok briefing comes from map text"
+fer kind in [31, 32, 33, 36] {
+    mak_siccar contains(decal_map["thing_type"], kind)
+}
+ken decal_walls = [decal_map["wall_first"][7] + 3, decal_map["wall_first"][11] + 1, decal_map["wall_first"][19] + 3, decal_map["wall_first"][42] + 2]
+fer i in 0..4 {
+    ken wall = decal_walls[i]
+    mak_siccar decal_map["portal"][wall] == -1
+    mak_siccar decal_map["mid_tex"][wall] == 15 + i
+    ken a = decal_map["wall_v1"][wall]
+    ken b = decal_map["wall_v2"][wall]
+    mak_siccar abs(decal_map["vx"][a] - decal_map["vx"][b]) + abs(decal_map["vy"][a] - decal_map["vy"][b]) == 64
+}
+blether "ok each decal has one solid 64-unit wall segment"
+ken base = bogle_asset("tex_granite", 64, 64)
+ken exit_wall = bogle_asset("tex_exit_gate", 64, 64)
+mak_siccar bytes_get(exit_wall, 4 * 64 + 14) == 15
+mak_siccar bytes_get(exit_wall, 8 * 64 + 18) == 0
+mak_siccar bytes_get(exit_wall, 32 * 64 + 18) == 47
+mak_siccar bytes_get(exit_wall, 23 * 64 + 29) == 47
+mak_siccar bytes_get(exit_wall, 29 * 64 + 35) == 47
+mak_siccar bytes_get(exit_wall, 27 * 64 + 35) == 0
+blether "ok exit has a high contrast framed up arrow"
+fer asset in bogle_decal_assets() {
+    ken actual = bogle_asset(asset[0], 64, 64)
+    mak_siccar actual == asset[1]
+    fer i in 0..4096 {
+        mak_siccar bytes_get(actual, i) != 255
+    }
+    gin asset[0] != "tex_exit_gate" {
+        ken changed = 0
+        fer x in 0..64 {
+            fer y in 0..64 {
+                gin x < 16 or x >= 48 or y < 40 or y >= 56 {
+                    mak_siccar bytes_get(actual, x * 64 + y) == bytes_get(base, x * 64 + y)
+                } ither gin bytes_get(actual, x * 64 + y) != bytes_get(base, x * 64 + y) {
+                    changed = changed + 1
+                }
+            }
+        }
+        mak_siccar changed > 20
+    }
+}
+blether "ok wall composites rebake exactly, stay opaque and preserve surrounding stone"
+ken g = new_game(decal_map)
+fer a in g["actors"] {
+    gin a["kind"] == 21 {
+        mak_siccar bogle_actor_art(g, a) == ""
+    }
+}
+blether "ok painted exit retains an invisible use trigger"
+# The same wall renderer handles head-on and near-plane/oblique projection.
+# Removing only the wall picture must change visible pixels in both views.
+g["x"] = 192 * 65536
+g["y"] = 336 * 65536
+g["sector"] = 7
+g["actors"] = []
+fer angle in [1024, 1744] {
+    gin angle == 1744 {
+        g["x"] = 240 * 65536
+        g["y"] = 360 * 65536
+    }
+    g["angle"] = angle
+    ken picture = g["textures"][15]
+    ken with_picture = bytes(4000)
+    ken without = bytes(4000)
+    bogle_render(g, with_picture, 80, 50)
+    g["textures"][15] = base
+    bogle_render(g, without, 80, 50)
+    g["textures"][15] = picture
+    mak_siccar with_picture != without
+}
+blether "ok cow remains painted on the wall head-on and at a close sharp angle"

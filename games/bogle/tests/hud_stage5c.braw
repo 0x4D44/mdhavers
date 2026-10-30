@@ -1,0 +1,82 @@
+fetch "games/bogle/engine/game"
+fetch "games/bogle/engine/map"
+ken g = new_game(load_map("games/bogle/data/e1m1.map"))
+mak_siccar bogle_hud_objective(g) == "FIND AIRN KEY"
+g["keys"] = 1
+mak_siccar bogle_hud_objective(g) == "FIND SILLER KEY"
+g["keys"] = 2
+mak_siccar bogle_hud_objective(g) == "FIND AIRN KEY"
+g["keys"] = 3
+mak_siccar bogle_hud_objective(g) == "REACH THE GATE"
+blether "ok objectives derive from both key bits"
+mak_siccar bogle_hud_ammo(g, 1) == "-"
+g["mars"] = 17
+g["powder"] = 9
+g["puff"] = 63
+mak_siccar bogle_hud_ammo(g, 2) == "17"
+mak_siccar bogle_hud_ammo(g, 3) == "9"
+mak_siccar bogle_hud_ammo(g, 4) == "63"
+mak_siccar bogle_hud_weapon_ink(g, 1) == 15
+mak_siccar bogle_hud_weapon_ink(g, 2) == 8
+g["owned"][1] = aye
+mak_siccar bogle_hud_weapon_ink(g, 2) == 13
+g["weapon"] = 2
+mak_siccar bogle_hud_weapon_ink(g, 2) == 15
+blether "ok current ammo counts owned dim and selected strip"
+fer dims in [[320, 200], [80, 50], [320, 150]] {
+    ken w = dims[0]
+    ken h = dims[1]
+    ken fb = bytes(w * h)
+    bogle_hud(g, fb, w, h)
+    ken snapshot = bytes_slice(fb, 0, bytes_len(fb))
+    bogle_hud(g, fb, w, h)
+    mak_siccar snapshot == fb
+    mak_siccar bytes_get(fb, w * h - 1) == 2
+    # Both health and spirit numeric groups retain foreground at each size.
+    ken top = h - bogle_hud_height(w, h)
+    ken lit = 0
+    fer y in top..h {
+        fer x in 0..w {
+            gin bytes_get(fb, y * w + x) != 2 {
+                lit = lit + 1
+            }
+        }
+    }
+    mak_siccar lit > 100
+}
+mak_siccar g["keys"] == 3 an g["mars"] == 17 an g["health"] == 100
+blether "ok full and compact hud deterministic and read only"
+# Isolate each actual key icon from labels, objective text and the face.
+fer dims in [[320, 200], [80, 50], [320, 150]] {
+    ken w = dims[0]
+    ken h = dims[1]
+    ken top = h - bogle_hud_height(w, h)
+    g["keys"] = 0
+    ken empty = bytes(w * h)
+    bogle_hud(g, empty, w, h)
+    fer i in 0..2 {
+        g["keys"] = i + 1
+        ken held = bytes(w * h)
+        bogle_hud(g, held, w, h)
+        ken left = 282
+        ken y0 = top + 6 + i * 14
+        ken width = 10
+        ken height = 14
+        gin w == 80 {
+            left = 64 + i * 8
+            y0 = top
+            width = 7
+            height = 7
+        }
+        ken changed = 0
+        fer y in y0..y0 + height {
+            fer x in left..left + width {
+                gin bytes_get(empty, y * w + x) != bytes_get(held, y * w + x) {
+                    changed = changed + 1
+                }
+            }
+        }
+        mak_siccar changed >= 4
+    }
+}
+blether "ok airn and siller icons each draw only when held at both sizes"

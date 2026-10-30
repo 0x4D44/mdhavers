@@ -1,0 +1,45 @@
+# Device-free real E1M1 replay stream, used to measure repeated alarm voices.
+fetch "games/bogle/shell/replay"
+fetch "games/bogle/audio/mixer"
+ken g = new_game(load_map("games/bogle/data/e1m1.map"))
+ken m = bogle_audio_new()
+ken inputs = replay_inputs("games/bogle/replays/e1m1.txt")
+ken output = bytes(len(inputs) * 1260)
+ken at = 0
+ken buzzes = 0
+ken overlaps = 0
+ken ringing = 0
+ken longest = 0
+ken consecutive = 0
+fer input in inputs {
+    ken events = tic(g, input)
+    gin contains(events, "midge") {
+        buzzes = buzzes + 1
+        fer voice in m["voices"] {
+            gin (voice[0] == 2 an voice[4] == 1200 * 65536 / 22050) or (voice[0] == 4 an voice[9] == 7 an voice[10] == 240) {
+                overlaps = overlaps + 1
+            }
+        }
+    }
+    bogle_audio_events(m, events)
+    ken active = nae
+    fer voice in m["voices"] {
+        gin (voice[0] == 2 an voice[4] == 1200 * 65536 / 22050) or (voice[0] == 4 an voice[9] == 7 an voice[10] == 240) {
+            active = aye
+        }
+    }
+    gin active {
+        ringing = ringing + 1
+        consecutive = consecutive + 1
+    } ither {
+        consecutive = 0
+    }
+    longest = max(longest, consecutive)
+    ken pcm = bogle_audio_mix(m, 630)
+    fer i in 0..1260 {
+        bytes_set(output, at + i, bytes_get(pcm, i))
+    }
+    at = at + 1260
+}
+write_bytes(".scratch/audio5c/replay.pcm", output)
+blether [len(inputs), buzzes, overlaps, ringing, longest]

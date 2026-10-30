@@ -1,0 +1,177 @@
+fetch "games/bogle/tools/bake_music"
+make_dir(".scratch/music")
+
+dae music_test_need(ok, message) {
+    gin nae ok {
+        hurl "music bake test failed: " + message
+    }
+}
+
+dae music_test_put_text(target, at, text) {
+    ken source = bytes_from_string(text)
+    fer i in 0..bytes_len(source) {
+        bytes_set(target, at + i, bytes_get(source, i))
+    }
+}
+
+dae music_test_put_u16le(target, at, value) {
+    bytes_set(target, at, value % 256)
+    bytes_set(target, at + 1, value / 256)
+}
+
+dae music_test_put_u32le(target, at, value) {
+    bytes_set(target, at, value % 256)
+    bytes_set(target, at + 1, value / 256 % 256)
+    bytes_set(target, at + 2, value / 65536 % 256)
+    bytes_set(target, at + 3, value / 16777216 % 256)
+}
+
+dae music_test_chunk(tag, payload) {
+    ken size = bytes_len(payload)
+    ken chunk = bytes(8 + size + size % 2)
+    music_test_put_text(chunk, 0, tag)
+    music_test_put_u32le(chunk, 4, size)
+    fer i in 0..size {
+        bytes_set(chunk, 8 + i, bytes_get(payload, i))
+    }
+    gie chunk
+}
+
+dae music_test_wav(rate, channels, samples, odd_chunk = aye, data_first = aye) {
+    ken pcm = bytes(len(samples) * 2)
+    fer i in 0..len(samples) {
+        ken value = samples[i]
+        gin value < 0 {
+            value = value + 65536
+        }
+        music_test_put_u16le(pcm, i * 2, value)
+    }
+    ken format = bytes(16)
+    music_test_put_u16le(format, 0, 1)
+    music_test_put_u16le(format, 2, channels)
+    music_test_put_u32le(format, 4, rate)
+    music_test_put_u32le(format, 8, rate * channels * 2)
+    music_test_put_u16le(format, 12, channels * 2)
+    music_test_put_u16le(format, 14, 16)
+
+    ken body = bytes_from_string("WAVE")
+    gin odd_chunk {
+        bytes_append(body, music_test_chunk("JUNK", bytes_from_string("xyz")))
+    }
+    gin data_first {
+        bytes_append(body, music_test_chunk("data", pcm))
+        bytes_append(body, music_test_chunk("fmt ", format))
+    } ither {
+        bytes_append(body, music_test_chunk("fmt ", format))
+        bytes_append(body, music_test_chunk("data", pcm))
+    }
+    ken wav = bytes(8)
+    music_test_put_text(wav, 0, "RIFF")
+    music_test_put_u32le(wav, 4, bytes_len(body))
+    bytes_append(wav, body)
+    gie wav
+}
+
+dae music_test_decode(code) {
+    ken inverted = 255 - code
+    ken negative = inverted >= 128
+    ken segment = (inverted % 128) / 16
+    ken mantissa = inverted % 16
+    ken magnitude = ((mantissa * 8 + 132) * BMU_POW2[segment]) - 132
+    gin negative {
+        magnitude = -magnitude
+    }
+    gie magnitude
+}
+
+dae music_test_reject(path, start_frame, frame_count, loop_start, message) {
+    ken rejected = nae
+    hae_a_bash {
+        bake_music(path, ".scratch/music/rejected.bmu", start_frame, frame_count, loop_start)
+    } gin_it_gangs_wrang err {
+        rejected = aye
+    }
+    music_test_need(rejected, message)
+}
+
+music_test_need(music_mulaw(0) == 255 an music_mulaw(1) == 255 an music_mulaw(-1) == 127, "mu-law zero and near-zero vectors")
+music_test_need(music_mulaw(1000) == 206 an music_mulaw(-1000) == 78, "mu-law +/-1000 vectors")
+music_test_need(music_mulaw(32124) == 128 an music_mulaw(-32124) == 0, "mu-law full-scale vectors")
+music_test_need(music_test_decode(255) == 0 an music_test_decode(168) == 5884 an music_test_decode(0) == -32124, "known mu-law decoded samples")
+blether "ok G.711 vectors and decoded samples"
+
+# First pass is a loud negative constant. The selected second pass is a ramp;
+# the odd JUNK chunk and data-before-format order exercise RIFF chunk walking.
+ken music_ramp = [
+    -20000, -10000, 0, -20000, -10000, 0,
+    -20000, -10000, 0, -20000, -10000, 0,
+    1000, 2000, 3000, 0, 4000, 8000,
+    -6000, 6000, 18000, 24000, 0, 0,
+]
+ken music_wav_path = ".scratch/music/multichannel.wav"
+write_bytes(music_wav_path, music_test_wav(11025, 3, music_ramp, aye, aye))
+ken music_info = music_wav_info(music_wav_path)
+music_test_need(music_info["rate"] == 11025 an music_info["channels"] == 3 an music_info["frames"] == 8, "WAV metadata and frame count")
+music_test_need(music_seconds_to_frames(11025, 1, 1) == 11025, "exact rational duration conversion")
+ken music_result = bake_music(music_wav_path, ".scratch/music/multichannel.bmu", 4, 4, 3)
+ken music_bmu = read_bytes(".scratch/music/multichannel.bmu")
+music_test_need(bytes_len(music_bmu) == 24, "resampled output byte count")
+music_test_need(bytes_get(music_bmu, 0) == 66 an bytes_get(music_bmu, 1) == 77 an bytes_get(music_bmu, 2) == 85 an bytes_get(music_bmu, 3) == 49, "BMU1 magic")
+music_test_need(bytes_read_u32be(music_bmu, 4) == 22050 an bytes_read_u32be(music_bmu, 8) == 8 an bytes_read_u32be(music_bmu, 12) == 3, "resampled rate, count and loop offset")
+ken music_ramp_codes = [168, 158, 153, 147, 142, 140, 137, 137]
+ken music_ramp_decoded = [5884, 8828, 11388, 14460, 17788, 19836, 22908, 22908]
+fer i in 0..8 {
+    ken code = bytes_get(music_bmu, 16 + i)
+    music_test_need(code == music_ramp_codes[i], "multichannel resampling and normalization code " + tae_string(i))
+    music_test_need(music_test_decode(code) == music_ramp_decoded[i], "known decoded ramp sample " + tae_string(i))
+}
+music_test_need(music_result["rate"] == 22050 an music_result["frames"] == 8 an music_result["loop_start"] == 3 an music_result["peak"] == 8000, "bake metadata")
+blether "ok odd RIFF chunks, 3-channel mix, second-pass selection and 11025 Hz resampling"
+
+# Downsampling at half-rate selects every second source frame. Unequal stereo
+# channels preserve the same means as the mono pass-through fixture below.
+ken music_downsample_path = ".scratch/music/downsample.wav"
+ken music_downsample_samples = [
+    -1500, -500, 20000, -20000,
+    -3000, 3000, 20000, -20000,
+    0, 2000, 20000, -20000,
+    -1000, 1000, 20000, -20000,
+]
+write_bytes(music_downsample_path, music_test_wav(44100, 2, music_downsample_samples, nae, nae))
+ken music_downsample_info = music_wav_info(music_downsample_path)
+music_test_need(music_downsample_info["rate"] == 44100 an music_downsample_info["channels"] == 2 an music_downsample_info["frames"] == 8, "44.1 kHz stereo metadata")
+bake_music(music_downsample_path, ".scratch/music/downsample.bmu", 0, 8, 1)
+ken music_downsample_bmu = read_bytes(".scratch/music/downsample.bmu")
+music_test_need(bytes_read_u32be(music_downsample_bmu, 4) == 22050 an bytes_read_u32be(music_downsample_bmu, 8) == 4 an bytes_read_u32be(music_downsample_bmu, 12) == 1, "44.1 kHz downsample header")
+fer i in 0..4 {
+    music_test_need(bytes_get(music_downsample_bmu, 16 + i) == [9, 255, 137, 255][i], "44.1 kHz stereo downsample sample " + tae_string(i))
+}
+blether "ok 44100 Hz stereo downsampling to the render rate"
+
+ken music_mono_path = ".scratch/music/mono.wav"
+write_bytes(music_mono_path, music_test_wav(22050, 1, [-1000, 0, 1000, 0], nae, nae))
+bake_music(music_mono_path, ".scratch/music/mono.bmu", 0, 4, 1)
+ken music_mono_bmu = read_bytes(".scratch/music/mono.bmu")
+music_test_need(bytes_read_u32be(music_mono_bmu, 8) == 4 an bytes_read_u32be(music_mono_bmu, 12) == 1, "22050 Hz passthrough header")
+music_test_need(bytes_get(music_mono_bmu, 16) == 9 an bytes_get(music_mono_bmu, 17) == 255 an bytes_get(music_mono_bmu, 18) == 137 an bytes_get(music_mono_bmu, 19) == 255, "normalized mono samples")
+
+ken music_silent_path = ".scratch/music/silent.wav"
+write_bytes(music_silent_path, music_test_wav(22050, 1, [0, 0], nae, nae))
+bake_music(music_silent_path, ".scratch/music/silent.bmu", 0, 2, 0)
+ken music_silent_bmu = read_bytes(".scratch/music/silent.bmu")
+music_test_need(bytes_get(music_silent_bmu, 16) == 255 an bytes_get(music_silent_bmu, 17) == 255, "silence stays mu-law silence")
+blether "ok mono pass-through, loop metadata and silent normalization"
+
+music_test_reject(music_wav_path, 0, 0, 0, "empty cut rejected")
+music_test_reject(music_wav_path, 7, 2, 0, "out-of-range cut rejected")
+music_test_reject(music_wav_path, 4, 4, 8, "out-of-range loop start rejected")
+write_bytes(".scratch/music/truncated.wav", bytes_slice(read_bytes(music_wav_path), 0, 20))
+music_test_reject(".scratch/music/truncated.wav", 0, 1, 0, "truncated RIFF rejected")
+ken music_bad_duration = nae
+hae_a_bash {
+    music_seconds_to_frames(11025, 1, 2)
+} gin_it_gangs_wrang err {
+    music_bad_duration = aye
+}
+music_test_need(music_bad_duration, "fractional input frame duration rejected")
+blether "ok malformed WAVs, invalid cuts and fractional frame rejection"

@@ -8,7 +8,7 @@ dae map_need(ok, message) {
 }
 
 dae map_empty() {
-    gie {"vx": [], "vy": [], "floor_h": [], "ceil_h": [], "floor_tex": [], "ceil_tex": [], "light": [], "kind": [], "tag": [], "wall_first": [], "wall_count": [], "wall_v1": [], "wall_v2": [], "portal": [], "upper_tex": [], "lower_tex": [], "mid_tex": [], "x_off": [], "y_off": [], "flags": [], "thing_type": [], "thing_x": [], "thing_y": [], "thing_angle": [], "thing_flags": [], "thing_sector": [], "thing_z": [], "thing_state": [], "thing_tics": [], "thing_health": [], "start_x": 0, "start_y": 0, "start_angle": 0, "start_sector": -1}
+    gie {"vx": [], "vy": [], "floor_h": [], "ceil_h": [], "floor_tex": [], "ceil_tex": [], "light": [], "kind": [], "tag": [], "wall_first": [], "wall_count": [], "wall_v1": [], "wall_v2": [], "portal": [], "upper_tex": [], "lower_tex": [], "mid_tex": [], "x_off": [], "y_off": [], "flags": [], "thing_type": [], "thing_x": [], "thing_y": [], "thing_angle": [], "thing_flags": [], "thing_sector": [], "thing_z": [], "thing_state": [], "thing_tics": [], "thing_health": [], "start_x": 0, "start_y": 0, "start_angle": 0, "start_sector": -1, "name": "", "briefing": []}
 }
 
 dae map_integer(text) {
@@ -266,6 +266,17 @@ dae map_parse(text) {
                 map_need(tokens == ["BOGMAP", "1"], "header/version")
                 header = aye
             } ither {
+                gin tokens[0] == "name" or tokens[0] == "briefing" {
+                    ken text = wheesht(scran(line, len(tokens[0]), len(line)))
+                    map_need(len(text) > 0 an len(text) <= 68, "briefing text length")
+                    gin tokens[0] == "name" {
+                        m["name"] = text
+                    } ither {
+                        map_need(len(m["briefing"]) < 6, "too many briefing lines")
+                        shove(m["briefing"], text)
+                    }
+                    haud
+                }
                 ken values = []
                 fer i in 1..len(tokens) {
                     shove(values, map_integer(tokens[i]))

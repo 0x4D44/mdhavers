@@ -1,0 +1,31 @@
+fetch "games/bogle/shell/frontend"
+dae music_press(ui, menu) {
+    bogle_front_step(ui, 0, {"menu": 0, "keys": 0, "dx": 0})
+    bogle_front_step(ui, 0, {"menu": menu, "keys": 0, "dx": 0})
+}
+
+ken ui = bogle_front_new("games/bogle/data/e1m1.map")
+mak_siccar ui["music_enabled"]
+music_press(ui, 32)
+mak_siccar nae ui["music_enabled"]
+bogle_front_step(ui, 0, {"menu": 32, "keys": 0, "dx": 0})
+mak_siccar nae ui["music_enabled"]
+music_press(ui, 32)
+mak_siccar ui["music_enabled"]
+bogle_front_start(ui)
+music_press(ui, 16)
+mak_siccar ui["screen"] == "play"
+music_press(ui, 32)
+mak_siccar nae ui["music_enabled"] an ui["game"]["tics"] == 0
+music_press(ui, 8)
+mak_siccar ui["screen"] == "pause"
+ui["selection"] = 4
+music_press(ui, 4)
+mak_siccar ui["music_enabled"] an ui["screen"] == "pause"
+bogle_front_step(ui, 100000, {"menu": 4, "keys": 0, "dx": 0})
+mak_siccar ui["music_enabled"] an ui["game"]["tics"] == 0
+music_press(ui, 4)
+mak_siccar nae ui["music_enabled"]
+bogle_front_start(ui)
+mak_siccar nae ui["music_enabled"] an ui["screen"] == "briefing"
+blether "ok M and pause music toggle debounce freeze and persist on restart"

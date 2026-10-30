@@ -4,6 +4,12 @@
 fetch "games/bogle/tools/mapbuild"
 
 ken gatehouse = new_map()
+gatehouse["name"] = "The Gatehouse"
+gatehouse["briefing"] = [
+    "Find the airn key, then the siller key.",
+    "Win oot the marked gate on the battlements.",
+    "Face doors an the exit, then press E.",
+]
 # Courtyard: a well and a midge-infested bog in the north-east corner.
 fer row in 0..3 {
     fer column in 0..3 {
@@ -15,7 +21,12 @@ fer row in 0..3 {
             kind = 3
             texture = 10
         }
-        room(gatehouse, [[x, y], [x + 128, y], [x + 128, y + 128], [x, y + 128]], 0, 192, texture, -1, 176, kind)
+        ken points = [[x, y], [x + 128, y], [x + 128, y + 128], [x, y + 128]]
+        gin column == 1 an row == 2 {
+            # One 64-unit wall panel for the cow; neighbouring portals unchanged.
+            points = [[x, y], [x + 128, y], [x + 128, y + 128], [224, 384], [160, 384], [x, y + 128]]
+        }
+        room(gatehouse, points, 0, 192, texture, -1, 176, kind)
     }
 }
 door(gatehouse, [[384, 128], [448, 128], [448, 256], [384, 256]], 0, 160)
@@ -29,7 +40,14 @@ fer row in 0..3 {
         gin row == 0 {
             floor_h = column * 12
         }
-        room(gatehouse, [[x, y], [x + 128, y], [x + 128, y + 128], [x, y + 128]], floor_h, 192, 4, 2, 208)
+        ken points = [[x, y], [x + 128, y], [x + 128, y + 128], [x, y + 128]]
+        gin column == 0 an row == 0 {
+            points = [[x, y], [592, 0], [656, 0], [x + 128, y], [x + 128, y + 128], [x, y + 128]]
+        }
+        gin column == 2 an row == 2 {
+            points = [[x, y], [x + 128, y], [x + 128, y + 128], [944, 384], [880, 384], [x, y + 128]]
+        }
+        room(gatehouse, points, floor_h, 192, 4, 2, 208)
     }
 }
 # Chippy kitchen and landing. Fryer is optional, never the only route.
@@ -53,7 +71,7 @@ fer step in 0..4 {
     ken x = 2176 + step * 64
     room(gatehouse, [[x, 128], [x + 64, 128], [x + 64, 256], [x, 256]], (step + 1) * 6, 192, 1, -1, 192)
 }
-room(gatehouse, [[2432, 128], [2560, 128], [2560, 256], [2432, 256]], 24, 192, 1, -1, 208)
+room(gatehouse, [[2432, 128], [2560, 128], [2560, 160], [2560, 224], [2560, 256], [2432, 256]], 24, 192, 1, -1, 208)
 
 map_thing(gatehouse, 1, 64, 192)
 map_thing(gatehouse, 17, 160, 192)
@@ -78,13 +96,18 @@ map_thing(gatehouse, 18, 1952, 192)
 map_thing(gatehouse, 16, 2000, 192)
 map_thing(gatehouse, 5, 2080, 192)
 map_thing(gatehouse, 2, 2240, 192, 2048)
-map_thing(gatehouse, 21, 2504, 192)
+# Invisible use trigger in front of the painted exit gate.
+map_thing(gatehouse, 21, 2504, 192, 0, 2)
 # Dressing: stag heads, armour, brazier, thistle, cow portrait, banner, curling stone.
 map_thing(gatehouse, 36, 64, 64)
-map_thing(gatehouse, 30, 624, 4)
 map_thing(gatehouse, 31, 624, 328)
-map_thing(gatehouse, 35, 912, 380)
-map_thing(gatehouse, 34, 192, 380)
 map_thing(gatehouse, 32, 1904, 144)
 map_thing(gatehouse, 33, 2120, 240)
+# Specific directed, solid segments carry baked wall decals (texture ids15..18).
+gatehouse["walls"] = [
+    [7, 3, 0, 0, 15, 0, 0, 0],
+    [11, 1, 0, 0, 16, 0, 0, 0],
+    [19, 3, 0, 0, 17, 0, 0, 0],
+    [42, 2, 0, 0, 18, 0, 0, 0],
+]
 write(gatehouse, "games/bogle/data/e1m1.map")

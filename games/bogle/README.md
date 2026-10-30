@@ -1,4 +1,4 @@
-# Bogle Castle, stage 5b
+# Bogle Castle, stage 5c
 
 The engine is a pure integer portal renderer. Positions and heights in game state
 use signed 16.16 integers; map coordinates are integer units. Angles cover one
@@ -8,7 +8,7 @@ or arctangent table. Walls use perspective-correct texture columns and 16.16 ver
 and ceilings sample world texels per column. The fixed palette has 32 baked
 light maps with sector and distance shading. Sprites face the player, sort far
 to near, and clip against the screen and portal drawsegs; index 255 is transparent.
-The tartan ghost and the cylindrical sky are full bright.
+The tartan ghost and the cylindrical sky are full bright. Wall pictures use baked wall composites and follow wall perspective; only actors and free-standing dressing face the player.
 
 Run from the repository root with `MDHAVERS_HOME` pointing there:
 
@@ -21,7 +21,7 @@ mdhavers build games/bogle/shell/native.braw -o .scratch/bogle
 Startup shows the castle splash with **Press ony key**, then the title menu:
 **New Game**, **Controls**, **Kit List**, **Quit**. Navigate menus with Up/Down or W/S and
 choose with Enter/Space. Escape during play opens **Resume**, **Restart Level**,
-**Controls**, **Kit List**, **Quit**; Escape also resumes or returns from Controls or the Kit List. Menus
+**Controls**, **Kit List**, **Music ON/OFF**, **Quit**; Escape also resumes or returns from Controls or the Kit List. Menus
 freeze the simulation and release the mouse. Resume captures it again. Held
 menu keys must be released before they can fire or choose another item.
 
@@ -29,6 +29,7 @@ WASD moves, the mouse and Left/Right arrows turn, E uses doors and the exit,
 Space or left mouse fires, and 1–4 select owned weapons. Hold fire for at
 least 21 tics with the bagpipes, then release to blast; holding 35 tics fires
 automatically. Controls are also available from the title and pause menus.
+Each new level or restart shows its map-authored briefing; press any fresh key or mouse button to begin. The HUD objective advances from finding the airn key to finding the siller key, then reaching the gate. **M** toggles music on every screen.
 Death offers **Restart** and **Back to Title**. Completing the Gatehouse offers
 the same choices: there is no next level yet. Both screens show elapsed level
 time from the existing 35 Hz tic count; kills and secrets are not tracked.
@@ -80,14 +81,14 @@ generated from the L-shaped room.
 BOGMAP 1 records follow design section 4.5. Texture ids 0..9 select granite,
 flagstone moss, slate underside, dungeon brick, oak panel, thistle tapestry,
 Celtic lintel, cell door, portcullis and peat straw. IDs 10..14 add bog, chapel
-stone, fryer oil, exit lever and loch water. Other accepted IDs use granite.
+stone, fryer oil, exit lever and loch water. IDs 15..18 are granite with the cow portrait, stag head, banner, and the marked exit gate. Other accepted IDs use granite.
 Ceiling texture -1 means sky. Sector kinds are normal 0, door 1, fryer 2,
 bog 3 and cold water 4. Door tags 0/1/2 mean unlocked/iron/silver. Thing type 1
 is the player start; 2..5 select gamekeeper, haggis, tartan ghost and midges.
 Types 10..20 are oatcake, haggis plate, juice can, juice bottle, shortbread, Mars
 box, powder, blunderbuss, bagpipes, iron key and silver key. Type 21 is the exit;
 30..36 are stag head, armour, brazier, thistle, cow portrait, banner and curling
-stone. Wall flag bit 1 blocks. Doors move their ceilings and wait for bodies
+stone. Exit thing flag bit 2 hides its sprite when a painted gate supplies the picture; the use trigger remains. Wall flag bit 1 blocks. Doors move their ceilings and wait for bodies
 to clear before closing. Loader
 validation pairs exact geometric reversed edges, rejects partial or repeated
 edges, enforces convex CCW polygons and reachability, and locates the player.
@@ -110,8 +111,7 @@ and restart. `BOGLE_FRONTEND=1 BOGLE_MAP=games/bogle/data/e1m1.map
 BOGLE_REPLAY=games/bogle/replays/frontend.txt` selects shell replay mode in
 `headless.braw`; each row is `dt_ms menu_bits gameplay_keys mouse_dx` and each
 output row is frame number, screen and frame hash. Menu bits are Up=1, Down=2,
-Choose=4, Escape=8, Any Key=16. The existing two-column engine replay format
-and its frame hashes are unchanged.
+Choose=4, Escape=8, Any Key=16, Music=32. New Game and Restart enter the briefing before play. The existing two-column engine replay format is unchanged. Stage 5c reblesses gameplay and front-end frames after three-backend agreement; stage 2 and 3 hashes are unchanged.
 The 671-tic `e1m1.txt` playthrough runs in full natively with RC off/on; its
 first 140 tics run on the debug interpreter. Five frame hashes include the
 exit overlay. `bagpipes_replay.braw` separately asserts the recorded blast
@@ -189,19 +189,18 @@ missing-key prompts.
 Sound is synthesized and mixed in `audio/mixer.braw`: mono signed 16-bit
 little-endian PCM at 22050 Hz, with twelve bounded voices, integer envelopes,
 seeded noise and clipping. Slot zero sustains the bagpipe drone while filling;
-release gives a blast or a sad deflate. Other procedural cues cover the sgian-dubh
+release gives a blast or a sad deflate. The shell reconciles the drone with held fire, the selected pipes, active charge and live play state each frame; it fades away when that cause ends. Other procedural cues cover the sgian-dubh
 swish, Mars throw/splat, blunderbuss, door grind, pickup chime, gamekeeper shout,
 haggis fuse/explosion, ghost wail, midge buzz, player oof and menu blips. There
-are no audio sample files or new dependencies. Effects are mono, without
+are no effect sample files or new dependencies. Optional music is streamed from indexed mu-law files described below. Effects are mono, without
 positional panning or distance attenuation.
 
 `tic` returns a fresh list of sound event names; the pure front end collects
 all due tics' events for its host. These outputs do not affect simulation or
 rendering. The native shell fills to 1323 queued samples (60 ms) each frame;
 three approximately 5 ms AudioQueue buffers account for the device's extra
-buffering. Pausing stops the drone, resuming a charged bag restores it, and a
-new run resets mixer voices. The existing headless and replay hosts import no
-audio bridge and retain their committed frame hashes.
+buffering. Pausing fades the drone; resuming only sustains it while fire is held and the pipes are actively filling. A new run resets effect voices while preserving music and its on/off setting. The existing headless and replay hosts import no
+audio bridge; audio does not affect their frame hashes.
 
 The OS-only native bridge provides `sound_open(rate, channels)`,
 `sound_queue(bytes)`, `sound_queued()` and `sound_close()`. It accepts 22050 or
@@ -241,8 +240,7 @@ Pickups gently bob two units above and below their spawn height and briefly brig
 integer tic schedule. Their messages explain health, spirit, ammunition, weapon
 unlocks and the key's door. Girder Juice in a can restores **15** health; the
 bottle fills health and doubles speed for three seconds. The cow portrait,
-tartan banner and stag head are scenery hung beside walls with centres at eye
-height. The cow now hangs on the courtyard's south wall near the start. Armour,
+tartan banner and stag head are painted into specific solid wall panels, with centres at eye height. They have no billboard things in E1M1. The cow now hangs on the courtyard's south wall near the start. Armour,
 braziers, thistle pots and curling stones block movement like furniture. The
 banner is scenery; the separate bagpipe pickup unlocks weapon 4.
 
@@ -259,3 +257,54 @@ usual 64x96 sprite data. Missing art uses an explicit FACE placeholder or the
 existing keeper attack picture. The source art is maintained separately.
 `tools/polish_shots.braw` writes review PPMs to `.scratch/shots5b/`, including all
 Kit List pages, the HUD, courtyard dressing/pickup bob and both fist phases.
+
+
+Stage 5c fills the 44-row status bar at 320x200: health and spirit icons and
+large numbers sit left of the face; current ammo and three per-weapon counts
+sit right; held airn/siller keys have small pickup-sprite icons. Owned weapons
+are lit, unavailable weapons dim, and the selected weapon has an underline.
+One objective line derives directly from the two key bits. At 80x50 a 19-row
+compact layout keeps the 3x5 text readable instead of shrinking the letters.
+The map briefing is frozen until a fresh key; held fire and mouse motion are
+discarded as on other menu transitions. BOGMAP supports optional `name <text>`
+and repeated `briefing <text>` records (up to six lines, 68 characters each).
+
+The battlement exit has a painted high-contrast bright-green up arrow in a black
+lit frame and a nearby **E: win oot** prompt. The prompt is placed on the top
+message line so it never covers the gate. The escaped message remains.
+`tools/bake_decals.braw`
+rebuilds four 64x64 palette-indexed wall variants from existing BOG sprites
+and wall art. Run it after rebaking source art, then rebuild `maps/e1m1.braw`.
+Only the relevant solid walls are split into 64-unit panels; portals and the
+671-tic gameplay replay stay unchanged. Armour, brazier, thistle and curling
+stone remain blocking sprites.
+
+The old midge buzz overlapped on the E1M1 replay: 29 overlaps and a longest
+continuous 3.69 seconds. It is now a quiet 1800-sample noise flutter, shorter
+than the seven-tic retrigger interval; the same replay has zero overlaps and
+bursts of at most three tics. `tools/audio_probe.braw` reproduces the device-free
+PCM and voice measurements (create `.scratch/audio5c` first).
+
+Music files are optional `data/music_title.bmu` and `data/music_gatehouse.bmu`.
+The shell loads them once; a missing, malformed or unsupported file means
+silence. BMU1 is a 16-byte header: ASCII BMU1, then big-endian u32 sample rate
+22050, sample count N, and loop start L (0 <= L < N), followed by exactly N
+8-bit G.711 mu-law mono samples. The mixer decodes through a 256-entry integer
+table, plays the intro once, then samples L..N continuously. Music uses 48/256
+gain below effects, with 512-sample fades/crossfades (about 23 ms). Play selects
+gatehouse; all other screens select title. Pause offers Music ON/OFF; M is the
+shortcut. Muting fades while the track position keeps moving. Restart keeps
+the setting. Track composition and `tools/bake_music.braw` belong to the music
+lane, separately from playback.
+
+`tests/hud_stage5c`, `briefing_stage5c`, `decal_walls`, `audio_stage5c`, `music`
+and `music_controls` cover layout, key icons, objectives, briefing freeze/input,
+wall composites, held-effect lifetime, mu-law decoding/looping/switching/fades,
+and both music controls. Each is a `.braw` fixture with expected output.
+The 3x5 game font includes comma and apostrophe glyphs, so the authored briefing
+keeps its punctuation.
+`tools/stage5c_shots.braw` writes headless PPM captures to `.scratch/shots5c`;
+PNG review captures include `exit_gate_far`, `exit_gate_near`, and the prompt-
+bearing `exit_gate`. The cow detail omits only the held weapon so its wall
+perspective is visible. Interpreter/native parity and changed hash groups are
+recorded in the stage 5c journal.

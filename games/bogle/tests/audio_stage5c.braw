@@ -1,0 +1,16 @@
+fetch "games/bogle/audio/mixer"
+ken m = bogle_audio_new()
+bogle_audio_event(m, "pipe_fill")
+bogle_audio_mix(m, 128)
+bogle_audio_held(m, nae)
+bogle_audio_mix(m, 512)
+mak_siccar m["voices"][0][0] == 0
+bogle_audio_held(m, aye)
+bogle_audio_mix(m, 128)
+mak_siccar m["voices"][0][0] == 1
+bogle_audio_event(m, "midge")
+mak_siccar m["voices"][1][2] < 4410
+mak_siccar m["voices"][1][6] <= 1000
+bogle_audio_mix(m, 4410)
+mak_siccar m["voices"][1][0] == 0
+blether "ok held pipes fade and quiet nonoverlapping midges"

@@ -1,0 +1,4 @@
+ok objectives derive from both key bits
+ok current ammo counts owned dim and selected strip
+ok full and compact hud deterministic and read only
+ok airn and siller icons each draw only when held at both sizes

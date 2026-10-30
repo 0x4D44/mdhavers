@@ -1,0 +1,59 @@
+# Headless review captures. Create .scratch/shots5c before running.
+fetch "games/bogle/shell/frontend"
+
+dae stage5c_shot(ui, name) {
+    ken fb = bytes(64000)
+    bogle_front_render(ui, fb, 320, 200)
+    gin name == "cow_sharp_angle" {
+        # Detail capture omits the held weapon so it cannot hide the picture.
+        bogle_render(ui["game"], fb, 320, 200)
+        bogle_hud(ui["game"], fb, 320, 200)
+    }
+    ken palette = make_palette()
+    ken ppm = bytes_from_string("P6\n320 200\n255\n")
+    ken rgb = bytes(192000)
+    fer pixel in 0..64000 {
+        ken ink = bytes_get(fb, pixel)
+        fer channel in 0..3 {
+            bytes_set(rgb, pixel * 3 + channel, bytes_get(palette, ink * 3 + channel))
+        }
+    }
+    bytes_append(ppm, rgb)
+    write_bytes(".scratch/shots5c/" + name + ".ppm", ppm)
+    blether name + " " + tae_string(frame_hash(fb))
+}
+
+ken shot_ui = bogle_front_new("games/bogle/data/e1m1.map")
+bogle_front_start(shot_ui)
+stage5c_shot(shot_ui, "briefing")
+bogle_front_screen(shot_ui, "play")
+ken shot_game = shot_ui["game"]
+ken shot_inputs = replay_inputs("games/bogle/replays/e1m1.txt")
+fer i in 0..560 {
+    tic(shot_game, shot_inputs[i])
+}
+stage5c_shot(shot_ui, "hud_in_play")
+# Actual doorway view before the use action finishes the level.
+fer i in 560..630 {
+    tic(shot_game, shot_inputs[i])
+}
+shot_game["message"] = ""
+stage5c_shot(shot_ui, "exit_gate_far")
+fer i in 630..650 {
+    tic(shot_game, shot_inputs[i])
+}
+shot_game["message"] = ""
+stage5c_shot(shot_ui, "exit_gate_near")
+fer i in 650..670 {
+    tic(shot_game, shot_inputs[i])
+}
+shot_game["message"] = ""
+stage5c_shot(shot_ui, "exit_gate")
+bogle_front_start(shot_ui)
+bogle_front_screen(shot_ui, "play")
+shot_game = shot_ui["game"]
+shot_game["x"] = 232 * 65536
+shot_game["y"] = 352 * 65536
+shot_game["sector"] = 7
+shot_game["angle"] = 1608
+stage5c_shot(shot_ui, "cow_sharp_angle")

@@ -1,0 +1,59 @@
+fetch "games/bogle/shell/frontend"
+ken ui = bogle_front_new("games/bogle/data/e1m1.map")
+bogle_front_start(ui)
+mak_siccar ui["screen"] == "briefing"
+mak_siccar len(bogle_briefing_lines(ui["game"]["map"])) >= 3
+mak_siccar contains(bogle_font, ",") an contains(bogle_font, "'")
+blether "ok comma and apostrophe glyphs exist for briefing text"
+ken state = ui["game"]
+bogle_front_step(ui, 100000, {"menu": 0, "keys": 0, "dx": 900})
+mak_siccar state["tics"] == 0 an ui["pending_dx"] == 0
+bogle_front_step(ui, 100000, {"menu": 16, "keys": 64, "dx": 900})
+mak_siccar ui["screen"] == "play" an state["tics"] == 0
+mak_siccar ui["accumulator"] == 0 an ui["pending_dx"] == 0
+bogle_front_step(ui, 29, {"menu": 16, "keys": 64, "dx": 0})
+mak_siccar state["cooldown"] == 0
+blether "ok briefing freezes and dismisses without fire or mouse carry"
+ken m = {"briefing": ["A CUSTOM HALL", "FIND ITS KEY", "LEAVE ALIVE"]}
+mak_siccar bogle_briefing_lines(m) == m["briefing"]
+bogle_front_start(ui)
+mak_siccar ui["screen"] == "briefing" an ui["run"] == 2
+bogle_front_step(ui, 29, {"menu": 16, "keys": 0, "dx": 0})
+mak_siccar ui["screen"] == "briefing"
+bogle_front_step(ui, 0, {"menu": 0, "keys": 0, "dx": 0})
+bogle_front_step(ui, 0, {"menu": 1, "keys": 0, "dx": 0})
+mak_siccar ui["screen"] == "play"
+blether "ok map text restart and fresh any key debounce"
+bogle_front_screen(ui, "briefing")
+fer dims in [[320, 200], [80, 50]] {
+    ken fb = bytes(dims[0] * dims[1])
+    bogle_front_render(ui, fb, dims[0], dims[1])
+    mak_siccar bytes_len(fb) == dims[0] * dims[1]
+}
+mak_siccar state["tics"] == 1
+blether "ok briefing draws at both sizes without ticking"
+ken exit_map = map_parse("BOGMAP 1\nv 0 0\nv 128 0\nv 128 128\nv 0 128\ns 0 128 1 2 192 0 0 0 1 2 3\nt 1 32 64 0 0\n")
+ken exit_game = new_game(exit_map, aye)
+exit_game["actors"] = [{"active": aye, "kind": 21, "x": 96 * 65536, "y": 64 * 65536, "z": 0, "sector": 0}]
+mak_siccar bogle_door_prompt(exit_game) == "E: win oot"
+exit_game["x"] = 31 * 65536
+mak_siccar bogle_door_prompt(exit_game) == ""
+exit_game["x"] = 32 * 65536
+exit_game["angle"] = 2048
+mak_siccar bogle_door_prompt(exit_game) == ""
+exit_game["angle"] = 0
+mak_siccar bogle_door_prompt(exit_game) == "E: win oot"
+mak_siccar nae exit_game["won"]
+blether "ok exit prompt matches facing reach and read only use"
+# The physical host tags any held key consistently on both sides of a screen
+# transition, so held Enter cannot turn into a fresh any-key press on entry.
+ken host_ui = bogle_front_new("games/bogle/data/e1m1.map")
+bogle_front_screen(host_ui, "title")
+bogle_front_step(host_ui, 0, {"menu": bogle_front_menu(4, aye), "keys": 64, "dx": 0})
+mak_siccar host_ui["screen"] == "briefing"
+bogle_front_step(host_ui, 29, {"menu": bogle_front_menu(4, aye), "keys": 64, "dx": 0})
+mak_siccar host_ui["screen"] == "briefing" an host_ui["game"]["tics"] == 0
+bogle_front_step(host_ui, 0, {"menu": bogle_front_menu(0, nae), "keys": 0, "dx": 0})
+bogle_front_step(host_ui, 0, {"menu": bogle_front_menu(4, aye), "keys": 64, "dx": 0})
+mak_siccar host_ui["screen"] == "play" an host_ui["game"]["cooldown"] == 0
+blether "ok physical held accept cannot dismiss the new briefing"

@@ -6,12 +6,14 @@ dae bogle_audio_new() {
     fer i in 0..12 {
         shove(voices, [0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0])
     }
-    gie {"voices": voices, "next": 1, "seed": 12345}
+    gie {"voices": voices, "next": 1, "seed": 12345, "drone_gain": 0, "drone_target": 0, "music": {"track": naething, "old": naething, "pos": 0, "old_pos": 0, "cross": 512, "gain": 0, "target": 0}}
 }
 
 dae bogle_audio_event(mixer, event) {
     gin event == "pipe_stop" or event == "pipe_blast" or event == "pipe_deflate" {
         mixer["voices"][0][0] = 0
+        mixer["drone_gain"] = 0
+        mixer["drone_target"] = 0
     }
     gin event == "pipe_stop" {
         gie naething
@@ -19,7 +21,8 @@ dae bogle_audio_event(mixer, event) {
     # kind, duration, start/end Hz, amplitude, noise hold period, noise mix /256.
     ken profile = []
     gin event == "pipe_fill" {
-        profile = [1, 0, 110, 110, 3600, 1, 0]
+        profile = [1, 0, 110, 110, 1200, 1, 0]
+        mixer["drone_target"] = 256
     }
     gin event == "pipe_blast" {
         profile = [2, 8500, 660, 165, 10000, 3, 48]
@@ -58,7 +61,7 @@ dae bogle_audio_event(mixer, event) {
         profile = [5, 15000, 480, 190, 6500, 1, 0]
     }
     gin event == "midge" {
-        profile = [2, 6000, 1200, 1700, 4000, 1, 24]
+        profile = [4, 1800, 180, 110, 900, 7, 240]
     }
     gin event == "oof" {
         profile = [3, 4500, 180, 55, 8000, 45, 50]
@@ -112,12 +115,12 @@ dae bogle_audio_mix(mixer, sample_count) {
             active = aye
         }
     }
-    gin nae active or sample_count == 0 {
+    gin (nae active an mixer["music"]["track"] == naething an mixer["music"]["old"] == naething) or sample_count == 0 {
         gie pcm
     }
     ken sums = []
     fer i in 0..sample_count {
-        shove(sums, 0)
+        shove(sums, bogle_music_sample(mixer["music"]))
     }
     fer voice in mixer["voices"] {
         ken kind = voice[0]
@@ -139,6 +142,15 @@ dae bogle_audio_mix(mixer, sample_count) {
                 gin duration != 0 {
                     step = start + (finish - start) * age / duration
                     envelope = amplitude * (duration - age) / duration
+                }
+                gin kind == 1 {
+                    ken gain = mixer["drone_gain"]
+                    gain = gain + max(-1, min(1, mixer["drone_target"] - gain))
+                    mixer["drone_gain"] = gain
+                    envelope = envelope * gain / 256
+                    gin gain == 0 an mixer["drone_target"] == 0 {
+                        voice[0] = 0
+                    }
                 }
                 gin age < 64 {
                     envelope = envelope * age / 64
@@ -195,4 +207,119 @@ dae bogle_audio_mix(mixer, sample_count) {
         bytes_set(pcm, i * 2 + 1, value / 256)
     }
     gie pcm
+}
+
+# Shell reconciles the sustained voice with the live held-fire cause, rather
+# than a charged bag left behind by a pause or a simulation transition.
+dae bogle_audio_held(mixer, held) {
+    gin held {
+        bogle_audio_event(mixer, "pipe_fill")
+        mixer["drone_target"] = 256
+    } ither {
+        mixer["drone_target"] = 0
+    }
+}
+
+# Standard G.711 mu-law: invert the byte, expand exponent/mantissa with
+# bias 0x84. The encoder clips its linear input at 32635.
+dae bogle_mulaw(value) {
+    ken bits = 255 - value
+    ken magnitude = (bit_an(bits, 15) * 8 + 132) * bogle_music_pow2(bit_an(bits / 16, 7)) - 132
+    gin bit_an(bits, 128) != 0 {
+        gie -magnitude
+    }
+    gie magnitude
+}
+
+dae bogle_music_pow2(power) {
+    ken value = 1
+    fer i in 0..power {
+        value = value * 2
+    }
+    gie value
+}
+
+dae bogle_music_load(path) {
+    ken track = naething
+    hae_a_bash {
+        ken data = read_bytes(path)
+        gin bytes_len(data) >= 16 {
+            ken header = bytes_from_string("BMU1")
+            ken valid = aye
+            fer i in 0..4 {
+                gin bytes_get(data, i) != bytes_get(header, i) {
+                    valid = nae
+                }
+            }
+            ken rate = bytes_read_u32be(data, 4)
+            ken count = bytes_read_u32be(data, 8)
+            ken loop = bytes_read_u32be(data, 12)
+            gin valid an rate == 22050 an count > 0 an loop < count an bytes_len(data) == count + 16 {
+                ken table = []
+                fer i in 0..256 {
+                    shove(table, bogle_mulaw(i))
+                }
+                track = {"data": data, "count": count, "loop": loop, "table": table, "path": path}
+            }
+        }
+    } gin_it_gangs_wrang err {
+        track = naething
+    }
+    gie track
+}
+
+dae bogle_music_select(mixer, track, enabled) {
+    ken music = mixer["music"]
+    ken changed = (music["track"] == naething) != (track == naething)
+    gin music["track"] != naething an track != naething {
+        changed = music["track"]["path"] != track["path"]
+    }
+    gin changed {
+        music["old"] = music["track"]
+        music["old_pos"] = music["pos"]
+        music["track"] = track
+        music["pos"] = 0
+        music["cross"] = 0
+    }
+    # With no source or fading tail there is no audible envelope to retain.
+    # Reset it so muting during a missing track cannot leak a later track.
+    gin music["track"] == naething an music["old"] == naething {
+        music["gain"] = 0
+    }
+    music["target"] = 0
+    gin enabled {
+        music["target"] = 512
+    }
+}
+
+dae bogle_music_sample(music) {
+    gin music["track"] == naething an music["old"] == naething {
+        gie 0
+    }
+    ken result = 0
+    fer side in 0..2 {
+        ken track = music["track"]
+        ken key = "pos"
+        ken weight = music["cross"]
+        gin side == 1 {
+            track = music["old"]
+            key = "old_pos"
+            weight = 512 - weight
+        }
+        gin track != naething {
+            ken pos = music[key]
+            result = result + track["table"][bytes_get(track["data"], 16 + pos)] * weight / 512
+            pos = pos + 1
+            gin pos >= track["count"] {
+                pos = track["loop"]
+            }
+            music[key] = pos
+        }
+    }
+    music["cross"] = min(512, music["cross"] + 1)
+    gin music["cross"] == 512 {
+        music["old"] = naething
+    }
+    music["gain"] = music["gain"] + max(-1, min(1, music["target"] - music["gain"]))
+    gie result * music["gain"] * 48 / 131072
 }

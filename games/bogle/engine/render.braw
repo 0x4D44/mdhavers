@@ -559,6 +559,7 @@ ken bogle_font = {
     "+": "000010111010000",
     "/": "001001010100100",
     ".": "000000000000010",
+    ",": "000000000010100",
     "'": "010010000000000",
 }
 
@@ -682,7 +683,7 @@ dae bogle_overlay(g, fb, w, h) {
         }
     }
     ken scale = max(1, min(w / 320, h / 200))
-    ken hud = min(h, max(8, h * 44 / 200))
+    ken hud = bogle_hud_height(w, h)
     ken weapon_width = max(1, w * 2 / 5)
     ken weapon_height = max(1, h * 12 / 25)
     ken left = (w - weapon_width) / 2
@@ -699,50 +700,7 @@ dae bogle_overlay(g, fb, w, h) {
             }
         }
     }
-    fer y in h - hud..h {
-        fer x in 0..w {
-            bytes_set(fb, y * w + x, 2)
-        }
-    }
-    ken face = bogle_face(g)
-    ken face_name = face
-    gin face == "look_left" or face == "look_right" {
-        face_name = "look"
-    }
-    ken faces = bogle_hud_assets()
-    ken face_size = min(32 * scale, max(1, hud - 4 * scale))
-    ken face_left = (w - face_size) / 2
-    ken face_top = h - hud + 2 * scale
-    fer y in max(0, face_top - scale)..min(h, face_top + face_size + scale) {
-        fer x in max(0, face_left - scale)..min(w, face_left + face_size + scale) {
-            bytes_set(fb, y * w + x, 13)
-        }
-    }
-    bogle_blit(fb, w, h, faces[face_name], 32, 32, face_left, face_top, face_size, face_size, face == "look_right")
-    gin contains(faces["missing"], face_name) {
-        bogle_text(fb, w, h, face_left, face_top + 12 * scale, "FACE", 15, scale)
-    }
-    ken health_label = tae_string(g["health"])
-    gin hud >= 32 * scale {
-        health_label = "HEALTH " + health_label
-        bogle_text(fb, w, h, 3 * scale, h - hud + 12 * scale, "SPIRIT " + tae_string(g["spirit"]), 13, scale)
-    }
-    bogle_text(fb, w, h, 3 * scale, h - hud + 3 * scale, health_label, 15, scale)
-    ken ammo = "-"
-    gin weapon == 2 {
-        ammo = tae_string(g["mars"])
-    }
-    gin weapon == 3 {
-        ammo = tae_string(g["powder"])
-    }
-    gin weapon == 4 {
-        ammo = tae_string(g["puff"])
-    }
-    gin hud >= 32 * scale {
-        ammo = "AMMO " + ammo
-        bogle_text(fb, w, h, 3 * scale, h - 6 * scale, "1 SGIAN-DUBH  2 MARS  3 BUSS  4 PIPES", 13, scale)
-    }
-    bogle_text(fb, w, h, w * 2 / 3, h - hud + 3 * scale, ammo, 15, scale)
+    bogle_hud(g, fb, w, h)
     ken message = g["message"]
     gin g["won"] {
         message = "YE'VE ESCAPED THE GATEHOUSE!"
@@ -752,5 +710,117 @@ dae bogle_overlay(g, fb, w, h) {
     }
     gin len(message) > 0 {
         bogle_text(fb, w, h, 4 * scale, 4 * scale, message, 15, scale)
+    }
+}
+
+# All status text is derived from current state; no objective counter can drift.
+dae bogle_hud_objective(g) {
+    gin bit_an(g["keys"], 1) == 0 {
+        gie "FIND AIRN KEY"
+    }
+    gin bit_an(g["keys"], 2) == 0 {
+        gie "FIND SILLER KEY"
+    }
+    gie "REACH THE GATE"
+}
+
+dae bogle_hud_ammo(g, weapon) {
+    gin weapon == 2 {
+        gie tae_string(g["mars"])
+    }
+    gin weapon == 3 {
+        gie tae_string(g["powder"])
+    }
+    gin weapon == 4 {
+        gie tae_string(g["puff"])
+    }
+    gie "-"
+}
+
+dae bogle_hud_weapon_ink(g, weapon) {
+    gin nae g["owned"][weapon - 1] {
+        gie 8
+    }
+    gin g["weapon"] == weapon {
+        gie 15
+    }
+    gie 13
+}
+
+dae bogle_hud_height(w, h) {
+    gin w < 240 or h < 150 {
+        gie min(h, 19)
+    }
+    gie min(h, max(44, h * 44 / 200))
+}
+
+dae bogle_hud(g, fb, w, h) {
+    ken top = h - bogle_hud_height(w, h)
+    fer y in top..h {
+        fer x in 0..w {
+            bytes_set(fb, y * w + x, 2)
+        }
+    }
+    ken art = bogle_gameplay_assets()
+    ken face = bogle_face(g)
+    ken face_name = face
+    gin face == "look_left" or face == "look_right" {
+        face_name = "look"
+    }
+    ken faces = bogle_hud_assets()
+    gin w < 240 or h < 150 {
+        # Compact layout uses native 3x5 letters rather than shrinking text away.
+        bogle_text(fb, w, h, 1, top + 1, bogle_hud_objective(g), 15, 1)
+        bogle_text(fb, w, h, 1, top + 8, "H" + tae_string(g["health"]), 15, 1)
+        bogle_text(fb, w, h, 19, top + 8, "S" + tae_string(g["spirit"]), 13, 1)
+        bogle_blit(fb, w, h, faces[face_name], 32, 32, 35, top + 7, 7, 7, face == "look_right")
+        bogle_text(fb, w, h, 45, top + 8, "A" + bogle_hud_ammo(g, g["weapon"]), 15, 1)
+        fer i in 1..5 {
+            bogle_text(fb, w, h, 1 + (i - 1) * 20, top + 14, tae_string(i) + bogle_hud_ammo(g, i), bogle_hud_weapon_ink(g, i), 1)
+        }
+        fer i in 0..2 {
+            gin bit_an(g["keys"], i + 1) != 0 {
+                bogle_blit(fb, w, h, art[["pick_key_tartan", "pick_key_silver"][i]], 64, 96, 64 + i * 8, top, 7, 7)
+            }
+        }
+        gie naething
+    }
+    ken scale = max(1, min(w / 320, h / 200))
+    # Draw at reference coordinates with integer scaling for larger buffers.
+    bogle_text(fb, w, h, 4 * scale, top + 2 * scale, bogle_hud_objective(g), 15, scale)
+    bogle_blit(fb, w, h, art["pick_haggis_plate"], 64, 96, 3 * scale, top + 9 * scale, 18 * scale, 24 * scale)
+    bogle_text(fb, w, h, 24 * scale, top + 10 * scale, "HEALTH", 13, scale)
+    bogle_text(fb, w, h, 24 * scale, top + 18 * scale, tae_string(g["health"]), 15, 2 * scale)
+    bogle_blit(fb, w, h, art["pick_shortbread"], 64, 96, 76 * scale, top + 9 * scale, 18 * scale, 24 * scale)
+    bogle_text(fb, w, h, 97 * scale, top + 10 * scale, "SPIRIT", 13, scale)
+    bogle_text(fb, w, h, 97 * scale, top + 18 * scale, tae_string(g["spirit"]), 15, 2 * scale)
+    bogle_blit(fb, w, h, faces[face_name], 32, 32, 143 * scale, top + 9 * scale, 26 * scale, 26 * scale, face == "look_right")
+    gin contains(faces["missing"], face_name) {
+        bogle_text(fb, w, h, 147 * scale, top + 19 * scale, "FACE", 15, scale)
+    }
+    bogle_text(fb, w, h, 178 * scale, top + 10 * scale, "AMMO", 13, scale)
+    bogle_text(fb, w, h, 178 * scale, top + 18 * scale, bogle_hud_ammo(g, g["weapon"]), 15, 2 * scale)
+    fer i in 2..5 {
+        ken row = top + (9 + (i - 2) * 9) * scale
+        bogle_text(fb, w, h, 225 * scale, row, ["MARS", "SHOT", "PUFF"][i - 2] + " " + bogle_hud_ammo(g, i), bogle_hud_weapon_ink(g, i), scale)
+    }
+    fer i in 0..2 {
+        ken row = top + (8 + i * 14) * scale
+        ken ink = 8
+        gin bit_an(g["keys"], i + 1) != 0 {
+            ink = 15
+            bogle_blit(fb, w, h, art[["pick_key_tartan", "pick_key_silver"][i]], 64, 96, 282 * scale, row - 2 * scale, 10 * scale, 14 * scale)
+        }
+        bogle_text(fb, w, h, 296 * scale, row + 3 * scale, ["AIRN", "SILLER"][i], ink, scale)
+    }
+    fer i in 1..5 {
+        ken x = (4 + (i - 1) * 79) * scale
+        ken ink = bogle_hud_weapon_ink(g, i)
+        gin g["weapon"] == i {
+            fer xx in x..min(w, x + 73 * scale) {
+                bytes_set(fb, (top + 35 * scale) * w + xx, 15)
+            }
+        }
+        bogle_text(fb, w, h, x, top + 37 * scale, ["1 SGIAN-DUBH", "2 MARS BARS", "3 BUSS", "4 BAGPIPES"][i - 1], ink, scale)
     }
 }

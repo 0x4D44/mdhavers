@@ -1,0 +1,62 @@
+# Indexed composites reuse baked art; no new image sources or quantisation.
+fetch "games/bogle/engine/render"
+fetch "games/bogle/tools/bake"
+
+# A 64x64 wall is vertically stretched over its sector. In a 192-unit room,
+# rows40..55 put a 48-unit picture at floor+24, centred at eye height.
+dae bogle_decal_wall(base, picture) {
+    ken wall = bytes_slice(base, 0, 4096)
+    fer x in 0..32 {
+        fer y in 0..16 {
+            ken ink = bytes_get(picture, (x * 2) * 96 + y * 6)
+            gin ink != 255 {
+                bytes_set(wall, (x + 16) * 64 + y + 40, ink)
+            }
+        }
+    }
+    gie wall
+}
+
+dae bogle_exit_wall() {
+    ken wall = bogle_asset("tex_portcullis", 64, 64)
+    # Text helper writes row-major; transpose before/after stamping the sign.
+    ken canvas = bytes(4096)
+    fer x in 0..64 {
+        fer y in 0..64 {
+            ken ink = bytes_get(wall, x * 64 + y)
+            gin x >= 4 an x < 60 an y >= 14 an y < 50 {
+                # A black panel and a white frame survive the small projected
+                # texture at both the doorway and close-up distances.
+                ink = 0
+                gin x == 4 or x == 59 or y == 14 or y == 49 {
+                    ink = 15
+                }
+            }
+            bytes_set(canvas, y * 64 + x, ink)
+        }
+    }
+    # A solid up arrow survives perspective sampling better than a tiny word.
+    # Palette index 47 is the brightest game green; the white frame remains lit.
+    fer y in 18..30 {
+        ken half = y - 17
+        fer x in (32 - half)..(33 + half) {
+            bytes_set(canvas, y * 64 + x, 47)
+        }
+    }
+    fer x in 28..36 {
+        fer y in 30..43 {
+            bytes_set(canvas, y * 64 + x, 47)
+        }
+    }
+    gie bake_column_major(64, 64, canvas)
+}
+
+dae bogle_decal_assets() {
+    ken stone = bogle_asset("tex_granite", 64, 64)
+    gie [
+        ["tex_cow_wall", bogle_decal_wall(stone, bogle_asset("dec_cow_portrait", 64, 96))],
+        ["tex_stag_wall", bogle_decal_wall(stone, bogle_asset("dec_stag_head", 64, 96))],
+        ["tex_banner_wall", bogle_decal_wall(stone, bogle_asset("dec_banner", 64, 96))],
+        ["tex_exit_gate", bogle_exit_wall()],
+    ]
+}

@@ -1,0 +1,49 @@
+# Run from the repository root after rendering both two-pass MIDI scores.
+fetch "games/bogle/tools/bake_music"
+
+dae music_decode_sample(code) {
+    ken value = 255 - code
+    ken magnitude = (value % 16 * 8 + 132) * BMU_POW2[(value % 128) / 16] - 132
+    gin value >= 128 { gie -magnitude }
+    gie magnitude
+}
+
+# Compare 512 decoded samples on each side of the join, including N-1 -> L.
+# The boundary step should be assessed against ordinary neighbouring steps;
+# the render is not assumed to have identical oscillator phase on both passes.
+dae music_seam(path) {
+    ken data = read_bytes(path)
+    ken count = bytes_read_u32be(data, 8)
+    ken loop = bytes_read_u32be(data, 12)
+    music_need(bytes_len(data) == 16 + count an loop < count, "bad BMU seam input")
+    ken first = music_decode_sample(bytes_get(data, 16 + loop))
+    ken last = music_decode_sample(bytes_get(data, 15 + count))
+    ken join = abs(first - last)
+    ken max_step = join
+    ken window = min(512, count - loop)
+    ken previous = music_decode_sample(bytes_get(data, 16 + count - window))
+    fer i in (count - window + 1)..count {
+        ken sample = music_decode_sample(bytes_get(data, 16 + i))
+        max_step = max(max_step, abs(sample - previous))
+        previous = sample
+    }
+    previous = first
+    fer i in (loop + 1)..(loop + window) {
+        ken sample = music_decode_sample(bytes_get(data, 16 + i))
+        max_step = max(max_step, abs(sample - previous))
+        previous = sample
+    }
+    gie {"join": join, "max_step": max_step}
+}
+
+fer track in [["title", 384, 5, 1693440], ["gatehouse", 72, 1, 1587600]] {
+    ken name = track[0]
+    ken input = ".scratch/music/" + name + ".wav"
+    ken output = "games/bogle/data/music_" + name + ".bmu"
+    ken info = music_wav_info(input)
+    ken body_frames = music_seconds_to_frames(info["rate"], track[1], track[2])
+    ken result = bake_music(input, output, body_frames, body_frames, 0)
+    mak_siccar result["frames"] == track[3]
+    ken seam = music_seam(output)
+    blether "Braw: " + name + " samples=" + tae_string(result["frames"]) + " L=0 join_step=" + tae_string(seam["join"]) + " max_step_512=" + tae_string(seam["max_step"])
+}

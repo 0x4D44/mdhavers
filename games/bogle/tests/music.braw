@@ -1,0 +1,84 @@
+fetch "games/bogle/audio/mixer"
+ken m = bogle_audio_new()
+mak_siccar bogle_music_load(".scratch/bogle-music-absent.bmu") == naething
+ken data = bytes(20)
+fer i in 0..4 {
+    bytes_set(data, i, bytes_get(bytes_from_string("BMU1"), i))
+}
+bytes_write_u32be(data, 4, 22050)
+bytes_write_u32be(data, 8, 4)
+bytes_write_u32be(data, 12, 1)
+fer i in 0..4 {
+    bytes_set(data, 16 + i, [255, 127, 0, 128][i])
+}
+write_bytes(".scratch/bogle-music-synthetic.bmu", data)
+ken track = bogle_music_load(".scratch/bogle-music-synthetic.bmu")
+mak_siccar track != naething
+mak_siccar bogle_mulaw(255) == 0
+mak_siccar bogle_mulaw(127) == 0
+mak_siccar bogle_mulaw(0) == -32124
+mak_siccar bogle_mulaw(128) == 32124
+bogle_music_select(m, track, aye)
+bogle_audio_mix(m, 7)
+mak_siccar m["music"]["pos"] == 1
+bogle_audio_mix(m, 3)
+mak_siccar m["music"]["pos"] == 1
+bogle_music_select(m, track, nae)
+bogle_audio_mix(m, 512)
+mak_siccar m["music"]["gain"] == 0
+ken quiet = bogle_audio_mix(m, 8)
+fer i in 0..bytes_len(quiet) {
+    mak_siccar bytes_get(quiet, i) == 0
+}
+bytes_write_u32be(data, 12, 4)
+write_bytes(".scratch/bogle-music-invalid.bmu", data)
+mak_siccar bogle_music_load(".scratch/bogle-music-invalid.bmu") == naething
+# Every split must preserve loop, fade and exact PCM, including a track change.
+ken a = bogle_audio_new()
+ken b = bogle_audio_new()
+bogle_music_select(a, track, aye)
+bogle_music_select(b, track, aye)
+ken whole = bogle_audio_mix(a, 600)
+ken first = bogle_audio_mix(b, 123)
+ken second = bogle_audio_mix(b, 477)
+fer i in 0..246 {
+    mak_siccar bytes_get(whole, i) == bytes_get(first, i)
+}
+fer i in 0..954 {
+    mak_siccar bytes_get(whole, i + 246) == bytes_get(second, i)
+}
+mak_siccar a["music"]["gain"] == 512
+mak_siccar a["music"]["pos"] == b["music"]["pos"]
+ken saved_pos = a["music"]["pos"]
+bogle_music_select(a, track, aye)
+mak_siccar a["music"]["pos"] == saved_pos
+mak_siccar a["music"]["cross"] == 512
+bogle_music_select(a, naething, aye)
+mak_siccar a["music"]["old"] != naething
+bogle_audio_mix(a, 512)
+mak_siccar a["music"]["old"] == naething
+write_bytes(".scratch/bogle-music-second.bmu", read_bytes(".scratch/bogle-music-synthetic.bmu"))
+ken other = bogle_music_load(".scratch/bogle-music-second.bmu")
+bogle_music_select(b, other, aye)
+mak_siccar b["music"]["old"]["path"] == track["path"]
+mak_siccar b["music"]["track"]["path"] == other["path"]
+mak_siccar b["music"]["pos"] == 0
+bogle_audio_mix(b, 512)
+mak_siccar b["music"]["old"] == naething
+ken reference = bogle_audio_new()
+bogle_music_select(reference, track, aye)
+bogle_audio_mix(reference, 600)
+ken sample = bogle_audio_mix(reference, 2)
+mak_siccar bytes_get(sample, 0) + 256 * bytes_get(sample, 1) == 6023
+mak_siccar bytes_get(sample, 2) == 0 an bytes_get(sample, 3) == 0
+blether "ok optional BMU validation mulaw loop and mute fade"
+# Missing tracks cannot retain a stale audible gain across a later muted switch.
+bogle_music_select(reference, naething, aye)
+bogle_audio_mix(reference, 600)
+bogle_music_select(reference, naething, nae)
+bogle_audio_mix(reference, 600)
+bogle_music_select(reference, track, nae)
+ken muted_switch = bogle_audio_mix(reference, 600)
+fer i in 0..bytes_len(muted_switch) {
+    mak_siccar bytes_get(muted_switch, i) == 0
+}

@@ -1,0 +1,10 @@
+wall dressing removed 30 aye
+wall dressing removed 34 aye
+wall dressing removed 35 aye
+ok wall dressing uses wall segments, free-standing furniture stays
+ok briefing comes from map text
+ok each decal has one solid 64-unit wall segment
+ok exit has a high contrast framed up arrow
+ok wall composites rebake exactly, stay opaque and preserve surrounding stone
+ok painted exit retains an invisible use trigger
+ok cow remains painted on the wall head-on and at a close sharp angle

@@ -1,0 +1,5 @@
+ok G.711 vectors and decoded samples
+ok odd RIFF chunks, 3-channel mix, second-pass selection and 11025 Hz resampling
+ok 44100 Hz stereo downsampling to the render rate
+ok mono pass-through, loop metadata and silent normalization
+ok malformed WAVs, invalid cuts and fractional frame rejection

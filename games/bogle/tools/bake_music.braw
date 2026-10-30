@@ -1,0 +1,223 @@
+# Offline BMU1 music baker. Fetching this file defines the API; it never bakes.
+# Input is PCM WAV, signed 16-bit little-endian, with any positive channel count.
+# The selected input frames are mixed to mono, linearly resampled to 22050 Hz,
+# peak-normalised to 23170, and encoded with standard G.711 mu-law.
+
+ken BMU_RATE = 22050
+ken BMU_PEAK = 23170
+ken BMU_BIAS = 132
+ken BMU_MAX_OUTPUT_FRAMES = 50000000
+ken BMU_POW2 = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
+
+dae music_need(ok, message) {
+    gin nae ok {
+        hurl "BMU: " + message
+    }
+}
+
+dae music_u16le(data, at) {
+    music_need(at >= 0 an at + 2 <= bytes_len(data), "truncated 16-bit WAV field")
+    gie bytes_get(data, at) + bytes_get(data, at + 1) * 256
+}
+
+dae music_u32le(data, at) {
+    music_need(at >= 0 an at + 4 <= bytes_len(data), "truncated 32-bit WAV field")
+    gie bytes_get(data, at) + bytes_get(data, at + 1) * 256 + bytes_get(data, at + 2) * 65536 + bytes_get(data, at + 3) * 16777216
+}
+
+dae music_tag(data, at, tag) {
+    gin at < 0 or at + len(tag) > bytes_len(data) {
+        gie nae
+    }
+    fer i in 0..len(tag) {
+        gin bytes_get(data, at + i) != ord(tag[i]) {
+            gie nae
+        }
+    }
+    gie aye
+}
+
+# `keep_pcm` is false for metadata-only reads, so the runner can discover a
+# source rate and frame count without copying the audio payload.
+dae music_parse_wav(data, keep_pcm = aye) {
+    ken file_len = bytes_len(data)
+    music_need(file_len >= 12, "WAV header is truncated")
+    music_need(music_tag(data, 0, "RIFF") an music_tag(data, 8, "WAVE"), "expected a RIFF/WAVE file")
+    ken riff_size = music_u32le(data, 4)
+    music_need(riff_size >= 4, "RIFF size is too small")
+    ken riff_end = 8 + riff_size
+    music_need(riff_end <= file_len, "RIFF payload is truncated")
+
+    ken saw_format = nae
+    ken channels = 0
+    ken sample_rate = 0
+    ken block_align = 0
+    ken pcm = bytes(0)
+    ken pcm_size = 0
+    ken pos = 12
+    whiles pos < riff_end {
+        music_need(riff_end - pos >= 8, "truncated WAV chunk header")
+        ken chunk_size = music_u32le(data, pos + 4)
+        ken chunk_data = pos + 8
+        ken chunk_end = chunk_data + chunk_size
+        music_need(chunk_end <= riff_end, "WAV chunk exceeds RIFF size")
+        ken next_chunk = chunk_end + chunk_size % 2
+        music_need(next_chunk <= riff_end, "truncated WAV chunk padding")
+
+        gin music_tag(data, pos, "fmt ") {
+            music_need(nae saw_format, "WAV has more than one format chunk")
+            music_need(chunk_size >= 16, "WAV format chunk is too short")
+            ken encoding = music_u16le(data, chunk_data)
+            channels = music_u16le(data, chunk_data + 2)
+            sample_rate = music_u32le(data, chunk_data + 4)
+            ken byte_rate = music_u32le(data, chunk_data + 8)
+            block_align = music_u16le(data, chunk_data + 12)
+            ken bits_per_sample = music_u16le(data, chunk_data + 14)
+            music_need(encoding == 1, "WAV encoding must be integer PCM")
+            music_need(channels > 0 an sample_rate > 0, "WAV channel count and rate must be positive")
+            music_need(bits_per_sample == 16, "WAV must use 16-bit samples")
+            music_need(block_align == channels * 2, "WAV block alignment does not match its channels")
+            music_need(byte_rate == sample_rate * block_align, "WAV byte rate does not match its format")
+            saw_format = aye
+        } ither gin music_tag(data, pos, "data") {
+            pcm_size = pcm_size + chunk_size
+            gin keep_pcm {
+                bytes_append(pcm, bytes_slice(data, chunk_data, chunk_end))
+            }
+        }
+        pos = next_chunk
+    }
+
+    music_need(saw_format, "WAV has no format chunk")
+    music_need(pcm_size > 0 an pcm_size % block_align == 0, "WAV data is empty or ends mid-frame")
+    gie {"rate": sample_rate, "channels": channels, "frames": pcm_size / block_align, "pcm": pcm}
+}
+
+# Metadata helper for callers choosing a repeated pass from the input WAV.
+dae music_wav_info(path) {
+    ken info = music_parse_wav(read_bytes(path), nae)
+    gie {"rate": info["rate"], "channels": info["channels"], "frames": info["frames"]}
+}
+
+# Convert a rational duration to an exact input-frame offset. Reject a time
+# that does not land on a WAV frame boundary rather than silently drifting.
+dae music_seconds_to_frames(rate, seconds_numerator, seconds_denominator) {
+    music_need(rate > 0 an seconds_numerator >= 0 an seconds_denominator > 0, "duration must be a non-negative rational")
+    ken scaled = rate * seconds_numerator
+    music_need(scaled % seconds_denominator == 0, "duration does not land on a WAV frame")
+    gie scaled / seconds_denominator
+}
+
+dae music_mono_frame(pcm, frame, channels) {
+    ken sum = 0
+    fer channel in 0..channels {
+        ken at = (frame * channels + channel) * 2
+        ken sample = bytes_get(pcm, at) + bytes_get(pcm, at + 1) * 256
+        gin sample >= 32768 {
+            sample = sample - 65536
+        }
+        sum = sum + sample
+    }
+    gie sum / channels
+}
+
+# Linear interpolation uses source positions i * rate / 22050. The final
+# source frame is held for the last output position when rounding the count up.
+dae music_resampled_sample(pcm, start_frame, frame_count, channels, rate, output_frame) {
+    ken position = output_frame * rate
+    ken source_frame = position / BMU_RATE
+    ken fraction = position % BMU_RATE
+    gin source_frame >= frame_count {
+        source_frame = frame_count - 1
+        fraction = 0
+    }
+    ken next_frame = source_frame + 1
+    gin next_frame >= frame_count {
+        next_frame = frame_count - 1
+    }
+    ken left = music_mono_frame(pcm, start_frame + source_frame, channels)
+    ken right = music_mono_frame(pcm, start_frame + next_frame, channels)
+    ken delta = (right - left) * fraction
+    ken offset = 0
+    gin delta >= 0 {
+        offset = (delta + BMU_RATE / 2) / BMU_RATE
+    } ither {
+        offset = (delta - BMU_RATE / 2) / BMU_RATE
+    }
+    gie left + offset
+}
+
+# ITU-T G.711 mu-law, using the 132 bias, 32635 clip, and complemented bits.
+dae music_mulaw(sample) {
+    gin sample > 32767 {
+        sample = 32767
+    }
+    gin sample < -32768 {
+        sample = -32768
+    }
+    ken mask = 255
+    ken magnitude = sample
+    gin sample < 0 {
+        mask = 127
+        magnitude = -sample
+    }
+    gin magnitude > 32635 {
+        magnitude = 32635
+    }
+    magnitude = magnitude + BMU_BIAS
+
+    ken segment = 0
+    ken boundary = 255
+    whiles segment < 7 an magnitude > boundary {
+        segment = segment + 1
+        boundary = boundary * 2 + 1
+    }
+    ken mantissa = (magnitude / BMU_POW2[segment + 3]) % 16
+    ken code = segment * 16 + mantissa
+    gie mask - code
+}
+
+# Bake a selected body in input frames. loop_start_output is an index inside
+# the resampled body. A caller selecting a second pass supplies its start_frame.
+dae bake_music(input_path, output_path, start_frame, frame_count, loop_start_output) {
+    ken wav = music_parse_wav(read_bytes(input_path))
+    ken rate = wav["rate"]
+    ken channels = wav["channels"]
+    ken input_frames = wav["frames"]
+    ken pcm = wav["pcm"]
+    music_need(start_frame >= 0 an frame_count > 0 an start_frame + frame_count <= input_frames, "selected input frames are outside the WAV")
+
+    ken output_frames = (frame_count * BMU_RATE + rate / 2) / rate
+    music_need(output_frames > 0 an output_frames <= BMU_MAX_OUTPUT_FRAMES, "selected music body has an unsupported output size")
+    music_need(loop_start_output >= 0 an loop_start_output < output_frames, "loop start is outside the output body")
+
+    ken peak = 0
+    fer i in 0..output_frames {
+        ken sample = music_resampled_sample(pcm, start_frame, frame_count, channels, rate, i)
+        ken magnitude = sample
+        gin magnitude < 0 {
+            magnitude = -magnitude
+        }
+        gin magnitude > peak {
+            peak = magnitude
+        }
+    }
+
+    ken result = bytes(16 + output_frames)
+    ken magic = bytes_from_string("BMU1")
+    fer i in 0..4 {
+        bytes_set(result, i, bytes_get(magic, i))
+    }
+    bytes_write_u32be(result, 4, BMU_RATE)
+    bytes_write_u32be(result, 8, output_frames)
+    bytes_write_u32be(result, 12, loop_start_output)
+    fer i in 0..output_frames {
+        ken sample = music_resampled_sample(pcm, start_frame, frame_count, channels, rate, i)
+        gin peak > 0 {
+            sample = sample * BMU_PEAK / peak
+        }
+        bytes_set(result, 16 + i, music_mulaw(sample))
+    }
+    write_bytes(output_path, result)
+    gie {"rate": BMU_RATE, "frames": output_frames, "loop_start": loop_start_output, "peak": peak}
+}

@@ -38,6 +38,7 @@ dae init_things(g) {
                 "sector": m["thing_sector"][i],
                 "angle": m["thing_angle"][i],
                 "kind": kind,
+                "flags": m["thing_flags"][i],
                 "health": hp,
                 "state": state,
                 "timer": 0,

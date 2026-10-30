@@ -1,0 +1,3 @@
+ok MIDI variable-length integer boundaries
+ok MIDI header, tempo, track lengths and off-before-on ordering
+ok stable MIDI event ordering

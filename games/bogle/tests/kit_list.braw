@@ -39,6 +39,8 @@ kit_press(ui, 8)
 mak_siccar ui["screen"] == "title"
 blether "ok title entry page wrap held key and escape return"
 bogle_front_start(ui)
+mak_siccar ui["screen"] == "briefing"
+kit_press(ui, 16)
 kit_press(ui, 8)
 fer i in 0..3 {
     kit_press(ui, 2)

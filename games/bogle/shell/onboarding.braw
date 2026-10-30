@@ -18,6 +18,17 @@ dae bogle_door_prompt(g) {
             gie "E: open"
         }
     }
+    # Match the exit use predicate exactly, including facing, reach and sight.
+    fer a in g["actors"] {
+        gin a["active"] an a["kind"] == 21 {
+            ken dx = (a["x"] - g["x"]) / 65536
+            ken dy = (a["y"] - g["y"]) / 65536
+            ken dot = dx * bogle_cos(g["sin"], g["angle"]) + dy * bogle_sin(g["sin"], g["angle"])
+            gin dx * dx + dy * dy <= 4096 an dot >= 0 an bogle_sight(g, g["x"], g["y"], g["view_z"], g["sector"], a["x"], a["y"], a["z"] + 24 * 65536, a["sector"]) {
+                gie "E: win oot"
+            }
+        }
+    }
     gie ""
 }
 
@@ -58,4 +69,12 @@ dae bogle_kit_blit(fb, art, sw, sh, left, top, width, height) {
             }
         }
     }
+}
+
+# Map-authored lines take precedence; old geometry fixtures keep a short default.
+dae bogle_briefing_lines(map) {
+    gin contains(map, "briefing") an len(map["briefing"]) > 0 {
+        gie map["briefing"]
+    }
+    gie ["THE GATEHOUSE", "FIND THE AIRN KEY. OPEN THE GALLERY.", "FIND THE SILLER KEY. REACH THE GATE.", "FACE DOORS AND PRESS E TO OPEN."]
 }

@@ -3,11 +3,21 @@
 fetch "replay"
 fetch "onboarding"
 
+# Hosts tag physical held keys on every screen, preserving edge identity when
+# New Game enters a briefing while Enter/Space is still held.
+dae bogle_front_menu(menu, any_held) {
+    gin any_held {
+        gie bit_or(menu, 16)
+    }
+    gie menu
+}
+
 dae bogle_front_new(map_path) {
     gie {
         "screen": "splash",
         "selection": 0,
         "kit_page": 0,
+        "music_enabled": aye,
         "return": "title",
         "map_path": map_path,
         "game": naething,
@@ -32,7 +42,7 @@ dae bogle_front_start(ui) {
     # Reload pristine geometry: doors mutate their map's ceiling heights.
     ui["game"] = new_game(load_map(ui["map_path"]))
     ui["run"] = ui["run"] + 1
-    bogle_front_screen(ui, "play")
+    bogle_front_screen(ui, "briefing")
 }
 
 dae bogle_front_items(screen) {
@@ -40,7 +50,7 @@ dae bogle_front_items(screen) {
         gie ["New Game", "Controls", "Kit List", "Quit"]
     }
     gin screen == "pause" {
-        gie ["Resume", "Restart Level", "Controls", "Kit List", "Quit"]
+        gie ["Resume", "Restart Level", "Controls", "Kit List", "Music ON/OFF", "Quit"]
     }
     gin screen == "dead" {
         gie ["Restart", "Back to Title"]
@@ -55,8 +65,11 @@ dae bogle_front_step(ui, dt_ms, input) {
     ui["consumed"] = []
     ui["sounds"] = []
     ken menu = input["menu"]
-    ken pressed = bit_an(menu, bit_xor(ui["last_menu"], 31))
+    ken pressed = bit_an(menu, bit_xor(ui["last_menu"], 63))
     ui["last_menu"] = menu
+    gin bit_an(pressed, 32) != 0 {
+        ui["music_enabled"] = nae ui["music_enabled"]
+    }
     ken keys = input["keys"]
     ui["blocked_keys"] = bit_an(ui["blocked_keys"], keys)
     gin ui["screen"] == "quit" {
@@ -68,6 +81,12 @@ dae bogle_front_step(ui, dt_ms, input) {
         }
         # A held Space or mouse button used in a menu must be released to fire.
         ui["blocked_keys"] = bit_or(ui["blocked_keys"], keys)
+        gin ui["screen"] == "briefing" {
+            gin bit_an(pressed, 31) != 0 {
+                bogle_front_screen(ui, "play")
+            }
+            gie aye
+        }
         gin ui["screen"] == "splash" {
             gin pressed != 0 {
                 bogle_front_screen(ui, "title")
@@ -113,6 +132,8 @@ dae bogle_front_step(ui, dt_ms, input) {
             ken action = items[ui["selection"]]
             gin action == "New Game" or action == "Restart" or action == "Restart Level" {
                 bogle_front_start(ui)
+            } ither gin action == "Music ON/OFF" {
+                ui["music_enabled"] = nae ui["music_enabled"]
             } ither gin action == "Resume" {
                 bogle_front_screen(ui, "play")
             } ither gin action == "Controls" {
@@ -193,8 +214,12 @@ dae bogle_front_render(ui, fb, w, h) {
         gin len(prompt) > 0 {
             ken scale = max(1, min(w / 320, h / 200))
             ken left = max(0, (w - (len(prompt) * 4 - 1) * scale) / 2)
-            # Above the crosshair and the highest weapon tip (row 60) at 320x200.
+            # Exit prompts use the top message line so they never cover the
+            # painted gate. Door prompts remain above the crosshair.
             ken top = max(2 * scale, h / 2 - 48 * scale)
+            gin prompt == "E: win oot" {
+                top = 4 * scale
+            }
             fer y in top - 2 * scale..top + 7 * scale {
                 fer x in left..min(w, left + len(prompt) * 4 * scale) {
                     gin y >= 0 an y < h {
@@ -203,9 +228,36 @@ dae bogle_front_render(ui, fb, w, h) {
                 }
             }
             bogle_text(fb, w, h, left, top, prompt, 15, scale)
-        } ither gin ui["game"]["tics"] < 210 {
-            bogle_text(fb, w, h, 4, 15, "FIND THE GATE. E OPENS DOORS.", 15, 1)
         }
+        gie naething
+    }
+    gin screen == "briefing" an (w < 240 or h < 150) {
+        fer i in 0..w * h {
+            bytes_set(fb, i, 0)
+        }
+        bogle_text(fb, w, h, 1, 0, "BRIEFING", 15, 1)
+        ken text = ""
+        fer line in bogle_briefing_lines(ui["game"]["map"]) {
+            text = text + line + " "
+        }
+        ken columns = max(1, w / 4)
+        ken x = 1
+        ken y = 7
+        ken col = 0
+        fer letter in text {
+            gin y + 5 > h - 7 {
+                brak
+            }
+            bogle_text(fb, w, h, x, y, letter, 13, 1)
+            x = x + 4
+            col = col + 1
+            gin col >= columns {
+                x = 1
+                col = 0
+                y = y + 5
+            }
+        }
+        bogle_text(fb, w, h, 1, h - 6, "ONY KEY - START", 15, 1)
         gie naething
     }
     ken canvas = bytes(320 * 200)
@@ -228,15 +280,29 @@ dae bogle_front_render(ui, fb, w, h) {
     gin screen == "splash" {
         bogle_front_box(canvas, 80, 167, 160, 18, 0)
         bogle_front_text(canvas, 173, "Press ony key", 15, 2)
+    } ither gin screen == "briefing" {
+        bogle_front_text(canvas, 28, "LEVEL BRIEFING", 15, 2)
+        gin contains(ui["game"]["map"], "name") {
+            bogle_front_text(canvas, 44, ui["game"]["map"]["name"], 15)
+        }
+        ken lines = bogle_briefing_lines(ui["game"]["map"])
+        ken y = 60
+        fer line in lines {
+            gin y <= 152 {
+                bogle_front_text(canvas, y, line, 13)
+                y = y + 16
+            }
+        }
+        bogle_front_text(canvas, 174, "PRESS ONY KEY", 15, 2)
     } ither gin screen == "kit" {
         bogle_kit_render(canvas, ui["kit_page"])
     } ither gin screen == "controls" {
         bogle_front_text(canvas, 24, "CONTROLS", 15, 2)
-        ken lines = ["WASD - MOVE", "MOUSE OR LEFT RIGHT - TURN", "E - OPEN DOORS AND USE EXIT", "SPACE OR LEFT MOUSE - FIRE", "1-4 - SELECT OWNED WEAPON", "BAGPIPES - HOLD FIRE THEN RELEASE", "ESCAPE - PAUSE OR RESUME", "MENUS - ARROWS OR W S", "ENTER OR SPACE - CHOOSE"]
+        ken lines = ["WASD - MOVE", "MOUSE OR LEFT RIGHT - TURN", "E - OPEN DOORS AND USE EXIT", "SPACE OR LEFT MOUSE - FIRE", "1-4 - SELECT OWNED WEAPON", "BAGPIPES - HOLD FIRE THEN RELEASE", "ESCAPE - PAUSE OR RESUME", "M - MUSIC ON/OFF", "MENUS - ARROWS OR W S", "ENTER OR SPACE - CHOOSE"]
         ken y = 48
         fer line in lines {
             bogle_front_text(canvas, y, line)
-            y = y + 12
+            y = y + 11
         }
         bogle_front_text(canvas, 168, "ENTER SPACE OR ESCAPE - BACK", 13)
     } ither {
@@ -263,13 +329,23 @@ dae bogle_front_render(ui, fb, w, h) {
         }
         fer i in 0..len(items) {
             ken label = items[i]
+            gin label == "Music ON/OFF" {
+                label = "Music OFF"
+                gin ui["music_enabled"] {
+                    label = "Music ON"
+                }
+            }
             ken ink = 13
             gin i == ui["selection"] {
                 label = "- " + label + " -"
                 ink = 15
             }
             bogle_front_text(canvas, y, label, ink, 2)
-            y = y + 18
+            gin screen == "pause" {
+                y = y + 15
+            } ither {
+                y = y + 18
+            }
         }
         bogle_front_box(canvas, 54, 176, 212, 13, 0)
         bogle_front_text(canvas, 180, "ARROWS OR W S - ENTER OR SPACE", 15)

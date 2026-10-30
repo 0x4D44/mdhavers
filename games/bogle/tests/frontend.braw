@@ -28,6 +28,8 @@ mak_siccar front["screen"] == "title"
 mak_siccar front["selection"] == 0
 blether "ok splash title wrapping and controls return"
 front_input(front, 4, 64, 999, 100000)
+mak_siccar front["screen"] == "briefing"
+front_input(front, 16, 64, 0, 0)
 mak_siccar front["screen"] == "play"
 mak_siccar front["game"]["tics"] == 0
 front_input(front, 4, 64, 0, 29)
@@ -64,6 +66,8 @@ blether "ok pause controls resume freeze time and discard mouse motion"
 front_press(front, 8)
 front_press(front, 2)
 front_press(front, 4)
+mak_siccar front["screen"] == "briefing"
+front_press(front, 16)
 mak_siccar front["screen"] == "play"
 mak_siccar front["run"] == 2
 mak_siccar front["game"]["tics"] == 0
@@ -75,6 +79,8 @@ front_input(front, 0, 1)
 mak_siccar front["screen"] == "dead"
 mak_siccar front["game"]["tics"] == 0
 front_press(front, 4)
+mak_siccar front["screen"] == "briefing"
+front_press(front, 16)
 mak_siccar front["screen"] == "play"
 mak_siccar front["game"]["health"] == 100
 front["game"]["won"] = aye
@@ -86,6 +92,7 @@ mak_siccar front["screen"] == "title"
 blether "ok death restart and completion back to title"
 # Fraction retained after four-tic cap; dx consumed exactly once.
 front_press(front, 4)
+front_press(front, 16)
 front_input(front, 0, 0, 20, 0)
 front_input(front, 0, 0, 12, 114)
 mak_siccar len(front["consumed"]) == 3
@@ -98,6 +105,7 @@ mak_siccar front["accumulator"] == 25
 blether "ok exact 35hz fractional accumulator and bounded catchup"
 ken mouse_front = bogle_front_new("games/bogle/data/e1m1.map")
 bogle_front_start(mouse_front)
+front_press(mouse_front, 16)
 front_input(mouse_front, 0, 0, 9223372036854775807, 0)
 front_input(mouse_front, 0, 0, 1, 29)
 mak_siccar mouse_front["game"]["angle"] == 0
@@ -108,7 +116,7 @@ mak_siccar mouse_front["game"]["angle"] == 1
 blether "ok queued mouse rotation handles i64 endpoints"
 front_press(front, 8)
 front_press(front, 1)
-mak_siccar front["selection"] == 4
+mak_siccar front["selection"] == 5
 mak_siccar nae front_press(front, 4)
 mak_siccar front["screen"] == "quit"
 blether "ok pause quit is explicit"

@@ -1,0 +1,6 @@
+# Rebuild the four stage5c wall variants from existing indexed art.
+fetch "games/bogle/tools/decals"
+fer asset in bogle_decal_assets() {
+    write_bytes("games/bogle/data/" + asset[0] + ".bog", bake_make_bog(64, 64, asset[1]))
+    blether "Baked " + asset[0]
+}
