@@ -702,6 +702,7 @@ impl LLVMCompiler {
         self.run_optimization_passes(codegen.get_module(), &target_machine)?;
         if self.target == BuildTarget::Wasm32Emscripten {
             wasm::redirect_mul_overflow(codegen.get_module());
+            wasm::guard_stack(codegen.get_module());
         }
 
         if let Some(status) = status.as_mut() {

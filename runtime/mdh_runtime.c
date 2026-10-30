@@ -11830,6 +11830,12 @@ static __thread jmp_buf **__mdh_try_stack = NULL;
 static __thread int64_t __mdh_try_depth = 0;
 static __thread int64_t __mdh_try_cap = 0;
 static __thread MdhValue __mdh_last_error;
+#if defined(__EMSCRIPTEN__)
+/* Compiled code's call depth (see the wasm stack guard below) at each handler, put back
+ * when a raise longjmps to it over frames that never return. */
+uint32_t __mdh_wasm_depth = 0;
+static uint32_t *__mdh_try_wasm_depth = NULL;
+#endif
 
 int64_t __mdh_jmp_buf_size(void) {
     return (int64_t)sizeof(jmp_buf);
@@ -11847,8 +11853,20 @@ void __mdh_try_push(void *env) {
             exit(1);
         }
         __mdh_try_stack = grown;
+#if defined(__EMSCRIPTEN__)
+        uint32_t *depths =
+            (uint32_t *)realloc(__mdh_try_wasm_depth, (size_t)new_cap * sizeof(uint32_t));
+        if (!depths) {
+            fprintf(stderr, "Och! Ran oot o' room fer nested hae_a_bash blocks\n");
+            exit(1);
+        }
+        __mdh_try_wasm_depth = depths;
+#endif
         __mdh_try_cap = new_cap;
     }
+#if defined(__EMSCRIPTEN__)
+    __mdh_try_wasm_depth[__mdh_try_depth] = __mdh_wasm_depth;
+#endif
     __mdh_try_stack[__mdh_try_depth++] = (jmp_buf *)env;
 }
 
@@ -11897,6 +11915,9 @@ static void __mdh_hurl_owned(MdhValue msg) {
     __mdh_release(old);
     if (__mdh_try_depth > 0) {
         jmp_buf *envp = __mdh_try_stack[__mdh_try_depth - 1];
+#if defined(__EMSCRIPTEN__)
+        __mdh_wasm_depth = __mdh_try_wasm_depth[__mdh_try_depth - 1];
+#endif
         longjmp(*envp, 1);
     }
     /* Uncaught: print message to stderr and exit */
@@ -12024,7 +12045,33 @@ int32_t __mdh_stack_low(void) {
 #endif
 }
 
-#if !defined(_WIN32) && !defined(MDH_STACK_GUARD_SANITIZED)
+#if defined(__EMSCRIPTEN__)
+#include <emscripten/stack.h>
+/* wasm has no guard pages, so no tripwire: compiled code compares its stack pointer with
+ * this floor on entry to each function (`guard_stack` in src/llvm/wasm.rs)
+ * and calls __mdh_wasm_stack_overflow below it. It stops above the runtime's own limit,
+ * which stops above the raise's room. 0 until armed: no check. */
+uintptr_t __mdh_wasm_stack_floor = 0;
+/* The engine's own stack (not linear memory) holds every wasm frame, and V8 gives it
+ * about 984 KiB (node and Chrome alike); past that it traps, uncatchably. Compiled code
+ * adds an estimate of each frame to __mdh_wasm_depth (`guard_stack` in src/llvm/wasm.rs)
+ * and raises past this many bytes, leaving the rest for runtime frames and the raise. */
+#define MDH_WASM_DEPTH_LIMIT (640u * 1024u)
+uint32_t __mdh_wasm_depth_limit = MDH_WASM_DEPTH_LIMIT;
+
+void __mdh_wasm_stack_overflow(void) { __mdh_stack_overflow_raise(); }
+
+static void __mdh_stack_guard_init(void) {
+    uintptr_t lo = emscripten_stack_get_end();
+    uintptr_t hi = emscripten_stack_get_base();
+    if (hi <= lo || hi - lo < 4 * (MDH_STACK_TRIP + 2 * MDH_STACK_RUNTIME_MARGIN)) {
+        return; /* too small a stack: no check */
+    }
+    __mdh_stack_limit = lo + MDH_STACK_TRIP + MDH_STACK_RUNTIME_MARGIN;
+    __mdh_wasm_stack_floor = lo + MDH_STACK_TRIP + 2 * MDH_STACK_RUNTIME_MARGIN;
+}
+static void __mdh_stack_guard_fini(void) {}
+#elif !defined(_WIN32) && !defined(MDH_STACK_GUARD_SANITIZED)
 #include <signal.h>
 #include <sys/mman.h>
 #if defined(__APPLE__)

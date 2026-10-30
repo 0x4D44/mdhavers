@@ -5536,8 +5536,8 @@ impl<'ctx> CodeGen<'ctx> {
     /// Compiled code that calls nothing out (the int path of a recursive function) carries
     /// no probe at all; its frames reach the tripwire in compiled code.
     fn emit_stack_probes(&mut self) {
-        // wasm has no guard pages: an overflow there traps instead (see
-        // runtime/mdh_runtime.c), so probes would only cost time.
+        // wasm has no guard pages to probe: each function checks its stack instead, once
+        // optimised (`wasm::guard_stack`).
         if self.wasm32 {
             return;
         }

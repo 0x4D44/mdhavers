@@ -81,7 +81,9 @@ const EMCC_ABI_FLAGS: &[&str] = &[
 ];
 
 /// The wasm32 target machine compiled code is built with.
-pub(crate) fn wasm_target_machine(opt_level: OptimizationLevel) -> Result<TargetMachine, HaversError> {
+pub(crate) fn wasm_target_machine(
+    opt_level: OptimizationLevel,
+) -> Result<TargetMachine, HaversError> {
     Target::initialize_webassembly(&InitializationConfig::default());
     enable_wasm_sjlj();
     let triple = TargetTriple::create(WASM_TRIPLE);
@@ -96,7 +98,9 @@ pub(crate) fn wasm_target_machine(opt_level: OptimizationLevel) -> Result<Target
         .set_code_model(CodeModel::Default);
     target
         .create_target_machine_from_options(&triple, options)
-        .ok_or_else(|| HaversError::CompileError("Failed to create the wasm32 target machine".into()))
+        .ok_or_else(|| {
+            HaversError::CompileError("Failed to create the wasm32 target machine".into())
+        })
 }
 
 /// `hae_a_bash` is setjmp/longjmp. On wasm the backend must rewrite each setjmp site, with
@@ -208,9 +212,12 @@ pub(crate) fn legalize_size_t(module: &Module<'_>) -> Result<(), HaversError> {
             builder.position_before(&call);
             let mut args: Vec<BasicMetadataValueEnum> = Vec::with_capacity(n as usize - 1);
             for i in 0..n - 1 {
-                let arg: BasicValueEnum = call.get_operand(i).and_then(|op| op.value()).ok_or_else(
-                    || HaversError::CompileError(format!("wasm32: odd call of {name}")),
-                )?;
+                let arg: BasicValueEnum = call
+                    .get_operand(i)
+                    .and_then(|op| op.value())
+                    .ok_or_else(|| {
+                        HaversError::CompileError(format!("wasm32: odd call of {name}"))
+                    })?;
                 if params.contains(&(i as usize)) {
                     let narrow = builder
                         .build_int_truncate(arg.into_int_value(), i32_type, "size_t")
@@ -254,9 +261,28 @@ pub(crate) fn redirect_mul_overflow(module: &Module<'_>) {
         let Some(old) = module.get_function(intrinsic) else {
             continue;
         };
+        let new = module.get_function(helper).unwrap_or_else(|| {
+            module.add_function(helper, old.get_type(), Some(Linkage::External))
+        });
+        old.replace_all_uses_with(new);
+        unsafe { old.delete() };
+    }
+}
+
+/// `snooze` (nanosleep) goes to the runtime's `__mdh_wasm_nanosleep`
+/// (`runtime/platform/wasm_sleep.c`), which a program with a screen links in its
+/// yielding form: the browser runs while the program sleeps.
+fn redirect_sleep(module: &Module<'_>) {
+    if let Some(old) = module.get_function("nanosleep") {
         let new = module
-            .get_function(helper)
-            .unwrap_or_else(|| module.add_function(helper, old.get_type(), Some(Linkage::External)));
+            .get_function("__mdh_wasm_nanosleep")
+            .unwrap_or_else(|| {
+                module.add_function(
+                    "__mdh_wasm_nanosleep",
+                    old.get_type(),
+                    Some(Linkage::External),
+                )
+            });
         old.replace_all_uses_with(new);
         unsafe { old.delete() };
     }
@@ -266,8 +292,158 @@ pub(crate) fn redirect_mul_overflow(module: &Module<'_>) {
 pub(crate) fn legalize(module: &Module<'_>) -> Result<(), HaversError> {
     legalize_size_t(module)?;
     redirect_mul_overflow(module);
+    redirect_sleep(module);
     Ok(())
 }
+
+/// The stack guard of the browser build (natively: tripwire and probes, see
+/// `CodeGen::emit_stack_probes`), so unbounded recursion raises "Stack's fair puggled!"
+/// rather than trapping. Applied to optimised code. Two stacks can run out:
+///
+/// - **Linear memory's** (`-sSTACK_SIZE`): on entry each function compares its stack
+///   pointer with `__mdh_wasm_stack_floor` (set by `__mdh_stack_guard_init`).
+/// - **The engine's own**, which holds every wasm frame and is far smaller in practice
+///   (V8: ~1 MB, a few thousand small frames, an uncatchable trap). Each function adds
+///   an estimate of its engine frame to `__mdh_wasm_depth` on entry and takes it off
+///   before each return; past `__mdh_wasm_depth_limit` it raises. A raise longjmps over
+///   frames that never return, so the runtime puts back the count its handler saw
+///   (`__mdh_try_push`).
+///
+/// Either way the function calls `__mdh_wasm_stack_overflow`, which raises the error.
+/// The check goes in a new entry block, to which the old entry's static allocas move.
+pub(crate) fn guard_stack(module: &Module<'_>) {
+    use inkwell::values::InstructionOpcode;
+    use inkwell::IntPredicate;
+    let context = module.get_context();
+    let builder = context.create_builder();
+    let i32_type = context.i32_type();
+    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+    let global = |name: &str| match module.get_global(name) {
+        Some(g) => g,
+        None => {
+            let g = module.add_global(i32_type, None, name);
+            g.set_linkage(Linkage::External);
+            g
+        }
+    };
+    let floor = global("__mdh_wasm_stack_floor").as_pointer_value();
+    let depth = global("__mdh_wasm_depth").as_pointer_value();
+    let depth_limit = global("__mdh_wasm_depth_limit").as_pointer_value();
+    let stacksave = module.get_function("llvm.stacksave.p0").unwrap_or_else(|| {
+        module.add_function("llvm.stacksave.p0", ptr_type.fn_type(&[], false), None)
+    });
+    let overflow = module
+        .get_function("__mdh_wasm_stack_overflow")
+        .unwrap_or_else(|| {
+            module.add_function(
+                "__mdh_wasm_stack_overflow",
+                context.void_type().fn_type(&[], false),
+                Some(Linkage::External),
+            )
+        });
+    let noreturn = context.create_enum_attribute(
+        inkwell::attributes::Attribute::get_named_enum_kind_id("noreturn"),
+        0,
+    );
+    overflow.add_attribute(AttributeLoc::Function, noreturn);
+    let functions: Vec<_> = module
+        .get_functions()
+        .filter(|f| f.count_basic_blocks() > 0)
+        .collect();
+    for function in functions {
+        // The engine frame, estimated from the values the function computes.
+        let mut values = 0u64;
+        for block in function.get_basic_block_iter() {
+            let mut instr = block.get_first_instruction();
+            while let Some(current) = instr {
+                instr = current.get_next_instruction();
+                if !current.get_type().is_void_type() {
+                    values += 1;
+                }
+            }
+        }
+        let frame = i32_type.const_int(FRAME_BASE + values / FRAME_VALUES_PER_BYTE, false);
+        let old_entry = function.get_first_basic_block().expect("a body");
+        for block in function.get_basic_block_iter() {
+            let Some(ret) = block.get_terminator() else {
+                continue;
+            };
+            if ret.get_opcode() != InstructionOpcode::Return {
+                continue;
+            }
+            builder.position_before(&ret);
+            let d = builder
+                .build_load(i32_type, depth, "depth")
+                .unwrap()
+                .into_int_value();
+            let d = builder.build_int_sub(d, frame, "depth_out").unwrap();
+            builder.build_store(depth, d).unwrap();
+        }
+        let check = context.prepend_basic_block(old_entry, "stack_check");
+        let overflowed = context.insert_basic_block_after(check, "stack_overflow");
+        let mut allocas = Vec::new();
+        let mut instr = old_entry.get_first_instruction();
+        while let Some(current) = instr {
+            instr = current.get_next_instruction();
+            let static_size = current
+                .get_operand(0)
+                .and_then(|op| op.value())
+                .is_some_and(|size| size.is_int_value() && size.into_int_value().is_const());
+            if current.get_opcode() == InstructionOpcode::Alloca && static_size {
+                allocas.push(current);
+            }
+        }
+        builder.position_at_end(check);
+        for alloca in allocas {
+            alloca.remove_from_basic_block();
+            builder.insert_instruction(&alloca, None);
+        }
+        let sp = builder
+            .build_call(stacksave, &[], "sp")
+            .unwrap()
+            .try_as_basic_value()
+            .basic()
+            .unwrap()
+            .into_pointer_value();
+        let sp = builder.build_ptr_to_int(sp, i32_type, "sp_int").unwrap();
+        let lowest = builder
+            .build_load(i32_type, floor, "stack_floor")
+            .unwrap()
+            .into_int_value();
+        let low = builder
+            .build_int_compare(IntPredicate::ULT, sp, lowest, "stack_low")
+            .unwrap();
+        let d = builder
+            .build_load(i32_type, depth, "depth")
+            .unwrap()
+            .into_int_value();
+        let d = builder.build_int_add(d, frame, "depth_in").unwrap();
+        builder.build_store(depth, d).unwrap();
+        let max = builder
+            .build_load(i32_type, depth_limit, "depth_limit")
+            .unwrap()
+            .into_int_value();
+        let deep = builder
+            .build_int_compare(IntPredicate::UGT, d, max, "too_deep")
+            .unwrap();
+        let out = builder.build_or(low, deep, "stack_out").unwrap();
+        builder
+            .build_conditional_branch(out, overflowed, old_entry)
+            .unwrap();
+        builder.position_at_end(overflowed);
+        builder.build_call(overflow, &[], "").unwrap();
+        builder.build_unreachable().unwrap();
+    }
+}
+
+/// The estimate of a function's V8 frame (`guard_stack`), in bytes: a fixed part plus
+/// a byte per two values. Most values are never live together (refcounting's cold
+/// paths), so this tracks measured frames better than a slot per value: measured under
+/// node 26 at 984 KiB, functions of 68, 967 and 2425 values overflowed at about 4000,
+/// 2900 and 1000 frames (some 250, 340 and 980 bytes each); this estimate stops them at
+/// about 2360, 880 and 450 with `__mdh_wasm_depth_limit`'s 640 KiB.
+const FRAME_BASE: u64 = 256;
+const FRAME_VALUES_PER_BYTE: u64 = 2;
 
 fn user_instruction(user: AnyValueEnum<'_>) -> Option<InstructionValue<'_>> {
     match user {
@@ -316,7 +492,10 @@ fn runtime_cache_dir() -> PathBuf {
 
 fn run(command: &mut Command, what: &str) -> Result<(), HaversError> {
     let output = command.output().map_err(|e| {
-        HaversError::CompileError(format!("Cannae run {what} ({:?}): {e}", command.get_program()))
+        HaversError::CompileError(format!(
+            "Cannae run {what} ({:?}): {e}",
+            command.get_program()
+        ))
     })?;
     // wasm-ld only warns of a call whose signature differs from the callee's, and makes
     // it a trap: here that is a broken ABI bridge, so it fails the build.
@@ -344,8 +523,13 @@ const C_ARCHIVES: &[(&str, &[&str])] = &[
         ],
     ),
     ("libgc_stub.a", &["gc_stub.c"]),
-    ("libmdh_screen.a", &["mdh_screen.c", "platform/screen_none.c"]),
+    (
+        "libmdh_screen.a",
+        &["mdh_screen.c", "platform/screen_emscripten.c"],
+    ),
     ("libmdh_sound.a", &["mdh_sound.c"]),
+    ("libmdh_sleep.a", &["platform/wasm_sleep.c"]),
+    ("libmdh_sleep_yield.a", &["platform/wasm_sleep.c"]),
 ];
 
 /// Everything the C archives are built from, for the cache stamp.
@@ -388,9 +572,8 @@ pub(crate) struct WasmRuntime {
 pub(crate) fn ensure_wasm_runtime() -> Result<WasmRuntime, HaversError> {
     let src = runtime_source_dir();
     let dir = runtime_cache_dir();
-    std::fs::create_dir_all(&dir).map_err(|e| {
-        HaversError::CompileError(format!("Cannae make {}: {e}", dir.display()))
-    })?;
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| HaversError::CompileError(format!("Cannae make {}: {e}", dir.display())))?;
 
     let stamp_path = dir.join("c.stamp");
     let stamp = c_runtime_stamp(&src)?;
@@ -403,7 +586,10 @@ pub(crate) fn ensure_wasm_runtime() -> Result<WasmRuntime, HaversError> {
         for (lib, sources) in C_ARCHIVES {
             let mut objects = Vec::new();
             for source in *sources {
-                let stem = source.replace('/', "_").replace(".c", ".o");
+                let yields = *lib == "libmdh_sleep_yield.a";
+                let stem = source
+                    .replace('/', "_")
+                    .replace(".c", if yields { "_yield.o" } else { ".o" });
                 let object = obj_dir.join(stem);
                 let mut cc = Command::new(emcc());
                 cc.args(["-O2", "-c", "-sSUPPORT_LONGJMP=wasm"]);
@@ -411,8 +597,10 @@ pub(crate) fn ensure_wasm_runtime() -> Result<WasmRuntime, HaversError> {
                 if !source.ends_with("wasm_mul.c") {
                     cc.args(EMCC_ABI_FLAGS);
                 }
-                cc
-                    .arg("-I")
+                if yields {
+                    cc.arg("-DMDH_WEB_YIELD");
+                }
+                cc.arg("-I")
                     .arg(src.join("platform"))
                     .arg("-I")
                     .arg(&src)
@@ -444,7 +632,9 @@ pub(crate) fn ensure_wasm_runtime() -> Result<WasmRuntime, HaversError> {
             .arg(&rust_target),
         "cargo build of the Rust runtime for wasm32",
     )?;
-    let rust = rust_target.join(WASM_TRIPLE).join("release/libmdh_runtime_rs.a");
+    let rust = rust_target
+        .join(WASM_TRIPLE)
+        .join("release/libmdh_runtime_rs.a");
     Ok(WasmRuntime { dir, rust })
 }
 
@@ -479,6 +669,13 @@ pub(crate) fn link_wasm(
         .arg(runtime.dir.join("libgc_stub.a"));
     if uses_screen {
         link.arg(runtime.dir.join("libmdh_screen.a"));
+        // A screen means a browser page: snooze yields to it (see wasm_sleep.c), its
+        // stack suspended by JS Promise Integration. (ASYNCIFY cannot: it supports
+        // neither wasm exceptions nor the multivalue ABI.)
+        link.arg(runtime.dir.join("libmdh_sleep_yield.a"))
+            .arg("-sJSPI=1");
+    } else {
+        link.arg(runtime.dir.join("libmdh_sleep.a"));
     }
     if uses_sound {
         link.arg(runtime.dir.join("libmdh_sound.a"));
