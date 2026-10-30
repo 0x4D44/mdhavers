@@ -70,7 +70,7 @@ dae bogle_assets() {
 }
 
 # Poses with eight-way views. Opt a pose in by baking <pose>_a2.._a5 and listing it.
-ken BOGLE_ROTATING_SPRITES = ["spr_gamekeeper_idle", "spr_gamekeeper_walk1", "spr_gamekeeper_walk2", "spr_gamekeeper_charge"]
+ken BOGLE_ROTATING_SPRITES = ["spr_gamekeeper_idle", "spr_gamekeeper_walk1", "spr_gamekeeper_walk2", "spr_gamekeeper_charge", "spr_haggis_idle", "spr_haggis_walk1", "spr_haggis_walk2", "spr_tartan_ghost_idle", "spr_tartan_ghost_float2"]
 
 # Octant 0 is the front (A1); 1-3 are A2-A4 as drawn, turning the body to the
 # viewer's right; 4 is the back (A5); 5-7 mirror A4-A2. Answers [name, mirror].
@@ -84,13 +84,22 @@ dae bogle_sprite_view(art, name, octant) {
     gie [name + "_a" + tae_string(9 - octant), aye]
 }
 
+# Brazier flame frame 0..3: five tics a frame, each thing seven tics out of step
+# with the one before it, so neighbouring braziers never flicker in lockstep.
+# Render-only: a pure function of the tic count and the map thing index.
+dae bogle_brazier_frame(tics, index) {
+    gie (tics + index * 7) / 5 % 4
+}
+
 # Stage 4 assets are lazy so geometry fixtures need only the original art set.
 dae bogle_gameplay_assets() {
     gin nae contains(bogle_asset_cache, "gameplay") {
         ken art = {}
         art["dec_armour"] = bogle_asset("dec_armour", 64, 96)
         art["dec_banner"] = bogle_asset("dec_banner", 64, 96)
-        art["dec_brazier"] = bogle_asset("dec_brazier", 64, 96)
+        fer name in ["dec_brazier", "dec_brazier_f2", "dec_brazier_f3", "dec_brazier_f4"] {
+            art[name] = bogle_asset(name, 64, 96)
+        }
         art["dec_cow_portrait"] = bogle_asset("dec_cow_portrait", 64, 96)
         art["dec_curling_stone"] = bogle_asset("dec_curling_stone", 64, 96)
         art["dec_stag_head"] = bogle_asset("dec_stag_head", 64, 96)
@@ -221,6 +230,12 @@ dae bogle_actor_art(g, actor) {
         name = ["pick_oatcake", "pick_haggis_plate", "pick_girder_juice", "pick_girder_bottle", "pick_shortbread", "pick_mars_box", "pick_powder_shot", "pick_blunderbuss", "pick_bagpipes", "pick_key_tartan", "pick_key_silver", "dec_banner"][kind - 10]
     } ither gin kind >= 30 an kind <= 36 {
         name = ["dec_stag_head", "dec_armour", "dec_brazier", "dec_thistle_pot", "dec_cow_portrait", "dec_banner", "dec_curling_stone"][kind - 30]
+        gin kind == 32 an contains(actor, "thing") {
+            ken frame = bogle_brazier_frame(g["tics"], actor["thing"])
+            gin frame > 0 {
+                name = "dec_brazier_f" + tae_string(frame + 1)
+            }
+        }
     }
     gie name
 }

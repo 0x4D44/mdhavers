@@ -44,6 +44,7 @@ dae init_things(g) {
                 "facing": m["thing_angle"][i],
                 "kind": kind,
                 "flags": m["thing_flags"][i],
+                "thing": i,
                 "health": hp,
                 "state": state,
                 "timer": 0,

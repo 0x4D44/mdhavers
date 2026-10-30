@@ -7,8 +7,17 @@ screen-right walker is right of centre showing A3 unmirrored: aye
 fists face player 2048, turns as player moves 3072
 charge faces its steered dx/dy: aye
 patrol faces its angle: aye
-pain from behind [160, 161], haggis from behind [170, 171], side [170, 171]
+pain from behind [160, 161], midges from behind [170, 171], side [170, 171]
+haggis views by octant: [[170, 171], [40, 41], [50, 51], [60, 61], [70, 71], [61, 60], [51, 50], [41, 40]]
+ghost views by octant: [[180, 181], [80, 81], [90, 91], [100, 101], [110, 111], [101, 100], [91, 90], [81, 80]]
+haggis chase facing 2382 moved 2382, ghost facing 1926 moved 1926
+brazier frames over 20 tics: [dec_brazier_f2, dec_brazier_f3, dec_brazier_f4, dec_brazier, dec_brazier_f2], tics in lockstep with its neighbour 0
+fryer floor changes over tics: aye, plain floor still: aye
 selection ok: aye
 mirror ok: aye
 facing ok: aye
 fixed views ok: aye
+haggis and ghost turn ok: aye
+haggis and ghost facing ok: aye
+brazier fire ok: aye
+fryer shimmer ok: aye

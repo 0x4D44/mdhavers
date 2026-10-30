@@ -10,10 +10,12 @@ light maps with sector and distance shading. Sprites face the player, sort far
 to near, and clip against the screen and portal drawsegs; index 255 is transparent.
 The tartan ghost and the cylindrical sky are full bright. Wall pictures use baked wall composites and follow wall perspective; only actors and free-standing dressing face the player.
 
-Gamekeepers have Doom-style eight-way views. Each actor carries a render-only
+Gamekeepers, haggis and tartan ghosts have Doom-style eight-way views. Each actor carries a render-only
 `facing` angle (it never feeds back into play): a patrolling keeper faces his patrol
 angle, a charging one his steered `dx`/`dy`, and one shaking his fists, winding up or
-stunned faces the player. `bogle_atan2` in `engine/trig.braw` is an integer atan2: a
+stunned faces the player. A chasing keeper or haggis faces each chase step it takes
+(`actor_chase`); a dormant haggis keeps its spawn angle; a ghost faces each drift
+step towards the player. `bogle_atan2` in `engine/trig.braw` is an integer atan2: a
 10-step search of the sine table's first octant, then octant folding. The renderer
 takes the angle from the actor to the viewer, `towards`, and picks octant
 `((facing - towards + 256) mod 4096) / 512`: 0 is the front (`<pose>`), 1 to 3 are
@@ -21,10 +23,19 @@ takes the angle from the actor to the viewer, `towards`, and picks octant
 walking to screen right shows `_a3`, his profile facing right), 4 is the back
 (`_a5`), and 5 to 7 are `_a4` to `_a2` mirrored by flipping the texture column. The
 keeper's idle, walk1, walk2 and charge poses rotate; fists, pain and death stay
-front-only, as in Doom. Another pose opts in by baking `<pose>_a2.._a5` (listed in
+front-only, as in Doom. The haggis rotates idle, walk1 and walk2 (not its boom
+frames); the ghost rotates idle and float2 (not pain, wail or death). Another pose opts in by baking `<pose>_a2.._a5` (listed in
 `tools/bake.braw`) and adding the pose to `BOGLE_ROTATING_SPRITES` in
 `engine/assets.braw`. `tests/rotations.braw` pins the selection, mirroring and
 facing; `tools/rotation_shots.braw` writes review captures to `.scratch/rotshots/`.
+
+Two render-only animations use the tic count and nothing else (no random draws).
+Braziers (thing type 32) cycle `dec_brazier`, `dec_brazier_f2`, `_f3`, `_f4` at five
+tics a frame, `bogle_brazier_frame(tics, index) = (tics + index * 7) / 5 % 4` with the map thing index, so
+consecutive map things run 1.4 frames apart and never flicker in lockstep. The floor
+of a fryer sector (kind 2) shimmers: `bogle_flat` shifts the texel column by a
+ripple `[0, 1, 1, 1, 0, -1, -1, -1]` indexed by `v / 4 + tics / 3` and drifts the row
+by `tics / 12`. Fryer-oil walls and every other flat stay still.
 
 Run from the repository root with `MDHAVERS_HOME` pointing there:
 

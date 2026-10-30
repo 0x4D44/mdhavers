@@ -1,4 +1,5 @@
-# Doom-style eight-way sprite rotations, piloted on the gamekeeper.
+# Doom-style eight-way sprite rotations (keeper, haggis, ghost) and render-only
+# animation: brazier flames and the fryer floor shimmer.
 fetch "games/bogle/engine/game"
 fetch "games/bogle/engine/map"
 fetch "games/bogle/tools/render_fixtures"
@@ -118,18 +119,109 @@ face_ok = face_ok an patrol_ok
 keeper["state"] = "pain"
 ken pain_back = probe(rg, fb, 0)
 keeper["state"] = "idle"
+keeper["kind"] = 5
+art["spr_midges_idle"] = two_tone(170, 171)
+ken midges_back = probe(rg, fb, 0, 22, 38, 41)
+ken midges_side = probe(rg, fb, 1024, 22, 38, 41)
+blether "pain from behind " + tae_string(pain_back) + ", midges from behind " + tae_string(midges_back) + ", side " + tae_string(midges_side)
+ken fixed_ok = pain_back == [160, 161] an midges_back == [170, 171] an midges_side == midges_back
+fixed_ok = fixed_ok an bogle_sprite_view(art, "spr_gamekeeper_pain", 3) == ["spr_gamekeeper_pain", nae] an bogle_sprite_view(art, "spr_haggis_boom1", 5) == ["spr_haggis_boom1", nae] an bogle_sprite_view(art, "spr_gamekeeper_death2", 4) == ["spr_gamekeeper_death2", nae] an bogle_sprite_view(art, "spr_tartan_ghost_wail", 3) == ["spr_tartan_ghost_wail", nae]
+
+# 5. The haggis and the ghost turn too: circling viewers see five distinct views
+# and the mirrored three. Ghosts draw even columns only, so probe even columns.
+art["spr_haggis_idle"] = two_tone(170, 171)
+fer pose in [["spr_haggis_idle", 20], ["spr_tartan_ghost_idle", 60]] {
+    fer view in 2..6 {
+        art[pose[0] + "_a" + tae_string(view)] = two_tone(pose[1] + view * 10, pose[1] + view * 10 + 1)
+    }
+}
+art["spr_tartan_ghost_idle"] = two_tone(180, 181)
 keeper["kind"] = 3
-ken haggis_back = probe(rg, fb, 0, 22, 38, 41)
-ken haggis_side = probe(rg, fb, 1024, 22, 38, 41)
-blether "pain from behind " + tae_string(pain_back) + ", haggis from behind " + tae_string(haggis_back) + ", side " + tae_string(haggis_side)
-ken fixed_ok = pain_back == [160, 161] an haggis_back == [170, 171] an haggis_side == haggis_back
-fixed_ok = fixed_ok an bogle_sprite_view(art, "spr_gamekeeper_pain", 3) == ["spr_gamekeeper_pain", nae] an bogle_sprite_view(art, "spr_haggis_walk1", 5) == ["spr_haggis_walk1", nae] an bogle_sprite_view(art, "spr_gamekeeper_death2", 4) == ["spr_gamekeeper_death2", nae]
+ken haggis_seen = []
+fer k in 0..8 {
+    shove(haggis_seen, probe(rg, fb, 2048 + k * 512, 22, 38, 41))
+}
+keeper["kind"] = 4
+ken ghost_seen = []
+fer k in 0..8 {
+    shove(ghost_seen, probe(rg, fb, 2048 + k * 512, 15, 36, 42))
+}
+keeper["kind"] = 2
+blether "haggis views by octant: " + tae_string(haggis_seen)
+blether "ghost views by octant: " + tae_string(ghost_seen)
+ken turn_ok = haggis_seen == [[170, 171], [40, 41], [50, 51], [60, 61], [70, 71], [61, 60], [51, 50], [41, 40]]
+turn_ok = turn_ok an ghost_seen == [[180, 181], [80, 81], [90, 91], [100, 101], [110, 111], [101, 100], [91, 90], [81, 80]]
+fer pose in ["spr_haggis_walk1", "spr_haggis_walk2", "spr_tartan_ghost_float2"] {
+    turn_ok = turn_ok an bogle_sprite_view(art, pose, 6) == [pose + "_a3", aye]
+}
+
+# 6. Haggis and ghost facing follows their movement, not their spawn angle.
+ken hg = new_game(map_parse(rot_room + "t 3 192 200 0 0\nt 4 400 64 0 0\n"), aye)
+ken haggis = hg["actors"][0]
+ken ghost = hg["actors"][1]
+ken hx = haggis["x"]
+ken hy = haggis["y"]
+ken gx = ghost["x"]
+ken gy = ghost["y"]
+ai_tick(hg)
+ken haggis_dir = bogle_atan2(hg["sin"], haggis["x"] - hx, haggis["y"] - hy)
+ken ghost_dir = bogle_atan2(hg["sin"], ghost["x"] - gx, ghost["y"] - gy)
+blether "haggis " + haggis["state"] + " facing " + tae_string(haggis["facing"]) + " moved " + tae_string(haggis_dir) + ", ghost facing " + tae_string(ghost["facing"]) + " moved " + tae_string(ghost_dir)
+ken follow_ok = haggis["state"] == "chase" an haggis["x"] != hx an haggis["facing"] != 0 an abs(haggis["facing"] - haggis_dir) <= 8
+follow_ok = follow_ok an ghost["x"] != gx an ghost["facing"] != 0 an abs(ghost["facing"] - ghost_dir) <= 8
+
+# 7. Brazier flames cycle with tics, out of step between neighbouring braziers.
+ken bg = new_game(map_parse(rot_room + "t 32 128 64 0 0\nt 32 160 64 0 0\n"), aye)
+ken first_fire = bg["actors"][0]
+ken second_fire = bg["actors"][1]
+ken fires = []
+ken lockstep = 0
+fer t in 0..20 {
+    bg["tics"] = t
+    ken one = bogle_actor_art(bg, first_fire)
+    gin one == bogle_actor_art(bg, second_fire) {
+        lockstep = lockstep + 1
+    }
+    gin len(fires) == 0 or fires[len(fires) - 1] != one {
+        shove(fires, one)
+    }
+}
+blether "brazier frames over 20 tics: " + tae_string(fires) + ", tics in lockstep with its neighbour " + tae_string(lockstep)
+ken fire_ok = fires == ["dec_brazier_f2", "dec_brazier_f3", "dec_brazier_f4", "dec_brazier", "dec_brazier_f2"] an lockstep == 0 an first_fire["thing"] != second_fire["thing"]
+fer frame in fires {
+    fire_ok = fire_ok an contains(art, frame)
+}
+
+# 8. The fryer floor (sector kind 2) shimmers with tics; an ordinary floor is still.
+dae floor_rows(kind, tics) {
+    ken fg = new_game(map_parse("BOGMAP 1\nv 0 0\nv 512 0\nv 512 256\nv 0 256\ns 0 128 12 2 192 " + tae_string(kind) + " 0 0 1 2 3\nt 1 64 128 0 0\n"), aye)
+    fg["tics"] = tics
+    ken out = bytes(4000)
+    bogle_render(fg, out, 80, 50)
+    ken sum = 0
+    fer i in 30 * 80..50 * 80 {
+        sum = (sum * 31 + bytes_get(out, i)) % 1000000007
+    }
+    gie sum
+}
+ken fryer = [floor_rows(2, 0), floor_rows(2, 3), floor_rows(2, 12)]
+ken still = [floor_rows(0, 0), floor_rows(0, 3), floor_rows(0, 12)]
+ken fryer_ok = fryer[0] != fryer[1] an fryer[1] != fryer[2] an fryer[0] != fryer[2] an still[0] == still[1] an still[1] == still[2]
+blether "fryer floor changes over tics: " + tae_string(fryer[0] != fryer[1] an fryer[1] != fryer[2]) + ", plain floor still: " + tae_string(still[0] == still[1] an still[1] == still[2])
 
 blether "selection ok: " + tae_string(select_ok)
 blether "mirror ok: " + tae_string(mirror_ok)
 blether "facing ok: " + tae_string(face_ok)
 blether "fixed views ok: " + tae_string(fixed_ok)
+blether "haggis and ghost turn ok: " + tae_string(turn_ok)
+blether "haggis and ghost facing ok: " + tae_string(follow_ok)
+blether "brazier fire ok: " + tae_string(fire_ok)
+blether "fryer shimmer ok: " + tae_string(fryer_ok)
 mak_siccar select_ok
 mak_siccar mirror_ok
 mak_siccar face_ok
 mak_siccar fixed_ok
+mak_siccar turn_ok
+mak_siccar follow_ok
+mak_siccar fire_ok
+mak_siccar fryer_ok

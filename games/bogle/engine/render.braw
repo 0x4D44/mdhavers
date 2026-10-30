@@ -106,7 +106,12 @@ dae bogle_sky(fb, w, h, x, top, bottom, texture, column) {
 }
 
 # Each row intersects its plane at a distance along this column's world ray.
-dae bogle_flat(g, fb, w, h, x, top, bottom, texture, light, delta, scales, ray_x, ray_y, sky, sky_column) {
+# Fryer oil shimmer: a texel ripple across u, phase-stepped by rows of v.
+ken BOGLE_OIL_RIPPLE = [0, 1, 1, 1, 0, -1, -1, -1]
+
+# Shimmer is -1 for a still flat, else the tic count: the fryer floor's ripple
+# travels one step every three tics and the oil drifts one texel every twelve.
+dae bogle_flat(g, fb, w, h, x, top, bottom, texture, light, delta, scales, ray_x, ray_y, sky, sky_column, shimmer = -1) {
     gin sky {
         bogle_sky(fb, w, h, x, top, bottom, g["sky"], sky_column)
         gie naething
@@ -115,6 +120,10 @@ dae bogle_flat(g, fb, w, h, x, top, bottom, texture, light, delta, scales, ray_x
         ken distance = abs(delta) * scales[top] / 65536
         ken u = bogle_wrap(g["x"] + distance * ray_x / 65536, 4194304) / 65536
         ken v = bogle_wrap(g["y"] + distance * ray_y / 65536, 4194304) / 65536
+        gin shimmer >= 0 {
+            u = u + BOGLE_OIL_RIPPLE[(v / 4 + shimmer / 3) % 8]
+            v = v + shimmer / 12
+        }
         ken colour = bytes_get(texture, bogle_wrap(u, 64) * 64 + bogle_wrap(v, 64))
         ken level = bogle_level(light, distance)
         bytes_set(fb, top * w + x, bytes_get(g["cmap"], level * 256 + colour))
@@ -362,6 +371,10 @@ dae bogle_render(g, fb, w, h) {
         ken first = m["wall_first"][s]
         ken light = m["light"][s]
         ken floor_texture = bogle_texture(g, m["floor_tex"][s])
+        ken floor_shimmer = -1
+        gin m["kind"][s] == 2 an contains(g, "tics") {
+            floor_shimmer = g["tics"]
+        }
         ken sky = m["ceil_tex"][s] == -1
         ken ceil_texture = bogle_texture(g, 0)
         gin nae sky {
@@ -500,7 +513,7 @@ dae bogle_render(g, fb, w, h) {
                 ken old_bot = ybot[x]
                 gin old_top <= old_bot {
                     bogle_flat(g, fb, w, h, x, old_top, min(old_bot, top - 1), ceil_texture, light, ceil_h[s] * 65536 - eye, scales, ray_x, ray_y, sky, sky_column)
-                    bogle_flat(g, fb, w, h, x, max(old_top, bottom + 1), old_bot, floor_texture, light, eye - floor_h[s] * 65536, scales, ray_x, ray_y, nae, sky_column)
+                    bogle_flat(g, fb, w, h, x, max(old_top, bottom + 1), old_bot, floor_texture, light, eye - floor_h[s] * 65536, scales, ray_x, ray_y, nae, sky_column, floor_shimmer)
                     ken level = bogle_level(light, z)
                     gin neighbour < 0 or nae can_queue {
                         bogle_wall(fb, w, x, max(old_top, top), min(old_bot, bottom), top, bottom, bogle_texture(g, m["mid_tex"][wall]), u, m["y_off"][wall], level, cmap)

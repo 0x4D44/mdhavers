@@ -15,6 +15,12 @@ ken visual_art = bogle_gameplay_assets()
 visual_art["pick_oatcake"] = fixture_fill(6144, 177)
 visual_art["spr_tartan_ghost_idle"] = fixture_fill(6144, 188)
 visual_art["spr_tartan_ghost_float2"] = fixture_fill(6144, 188)
+# Ghosts turn: fill every view, so the probe holds whichever way it faces.
+fer pose in ["spr_tartan_ghost_idle", "spr_tartan_ghost_float2"] {
+    fer view in 2..6 {
+        visual_art[pose + "_a" + tae_string(view)] = fixture_fill(6144, 188)
+    }
+}
 ken visual_actor = {"kind": 10, "x": 192 * 65536, "y": 128 * 65536, "z": 0, "sector": 0, "state": "idle", "active": aye}
 shove(visual_g["actors"], visual_actor)
 ken visual_fb = bytes(4000)
