@@ -173,8 +173,8 @@ dae lift_lower(g, lift) {
     }
 }
 
-# A lift never rises onto a walker whose centre is off it but whose body
-# overlaps its edge; bodies standing on it ride up instead.
+# A lift never rises onto a walker or curling stone whose centre is off it but
+# whose body overlaps its edge; bodies standing on it ride up instead.
 dae lift_occupied(g, sector) {
     ken m = g["map"]
     fer w in m["wall_first"][sector]..m["wall_first"][sector] + m["wall_count"][sector] {
@@ -183,7 +183,7 @@ dae lift_occupied(g, sector) {
                 gie aye
             }
             fer a in g["actors"] {
-                gin a["active"] an (a["kind"] == 2 or a["kind"] == 3) an a["sector"] != sector an body_wall(m, w, a["x"], a["y"])[0] {
+                gin a["active"] an (a["kind"] == 2 or a["kind"] == 3 or a["kind"] == 36) an a["sector"] != sector an body_wall(m, w, a["x"], a["y"])[0] {
                     gie aye
                 }
             }
@@ -192,7 +192,8 @@ dae lift_occupied(g, sector) {
     gie nae
 }
 
-# Move a lift floor; whoever stands on it keeps their feet on it.
+# Move a lift floor; whoever stands on it, curling stones included, keeps
+# their feet on it.
 dae lift_set(g, sector, height) {
     ken m = g["map"]
     ken old = m["floor_h"][sector] * 65536
@@ -202,7 +203,7 @@ dae lift_set(g, sector, height) {
         g["vz"] = 0
     }
     fer a in g["actors"] {
-        gin a["active"] an a["kind"] >= 2 an a["kind"] <= 5 an a["sector"] == sector an a["z"] <= old {
+        gin a["active"] an ((a["kind"] >= 2 an a["kind"] <= 5) or a["kind"] == 36) an a["sector"] == sector an a["z"] <= old {
             a["z"] = height * 65536
         }
     }

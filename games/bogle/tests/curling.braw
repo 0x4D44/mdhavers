@@ -198,3 +198,117 @@ fer i in 0..14 {
 }
 mak_siccar s["svx"] == 0 an other["svx"] > 0 an other["x"] > 240 * 65536
 blether "ok a stone passes its speed to another"
+
+# Low room | lift (top 64, kind 5) | high room, as in tests/mechanics.braw.
+ken lift_row = "BOGMAP 1\nv 0 0\nv 128 0\nv 128 128\nv 0 128\nv 256 0\nv 256 128\nv 384 0\nv 384 128\ns 0 192 1 2 192 0 0 0 1 2 3\ns 64 192 4 2 192 5 0 1 4 5 2\ns 64 192 1 2 192 0 0 4 6 7 5\nt 1 96 64 0 0\n"
+
+# A stone on a lift rides it down and back up, sitting on its floor each tic.
+g = new_game(map_parse(lift_row + "t 36 192 64 0 0\n"), aye)
+s = stone_of(g)
+mak_siccar s["sector"] == 1 an s["z"] == 64 * 65536
+tic(g, press)
+mak_siccar g["lifts"][0]["state"] == "lowering"
+ken on_floor = aye
+ken lowest = 64
+fer i in 0..160 {
+    tic(g, idle)
+    gin s["z"] != g["map"]["floor_h"][1] * 65536 {
+        on_floor = nae
+    }
+    lowest = min(lowest, g["map"]["floor_h"][1])
+}
+mak_siccar on_floor an lowest == 0
+mak_siccar g["lifts"][0]["state"] == "up" an s["z"] == 64 * 65536 an s["sector"] == 1
+mak_siccar s["svx"] == 0 an s["svy"] == 0 an s["x"] == 192 * 65536
+blether "ok a stone rides a lift down and up"
+
+# A stone straddling the edge from the low room holds the lift down.
+g = new_game(map_parse(lift_row + "t 36 192 64 0 0\n"), aye)
+s = stone_of(g)
+tic(g, press)
+fer i in 0..20 {
+    tic(g, idle)
+}
+s["x"] = 120 * 65536
+s["sector"] = 0
+s["z"] = 0
+fer i in 0..300 {
+    tic(g, idle)
+}
+mak_siccar g["lifts"][0]["state"] == "down" an g["map"]["floor_h"][1] == 0
+blether "ok a straddling stone holds a lift down"
+
+# The sgian dubh nudges a still stone along the shot line: 20 damage, 2.5
+# units a tic.
+g = new_game(map_parse(hall + "t 1 64 256 0 0\nt 36 110 256 0 0\n"), aye)
+s = stone_of(g)
+weapons_tick(g, aye)
+mak_siccar s["svx"] == 163840 an s["svy"] == 0
+fer i in 0..40 {
+    tic(g, idle)
+}
+ken nudged = s["x"] - 110 * 65536
+mak_siccar s["svx"] == 0 an nudged > 10 * 65536 an nudged < 32 * 65536 an s["y"] == 256 * 65536
+blether "ok a knife nudges a stone along the shot"
+
+# The blunderbuss shoves it much further.
+g = new_game(map_parse(hall + "t 1 64 256 0 0\nt 36 110 256 0 0\n"), aye)
+s = stone_of(g)
+g["owned"][2] = aye
+g["weapon"] = 3
+g["powder"] = 1
+weapons_tick(g, aye)
+mak_siccar s["svx"] > 4 * 65536
+fer i in 0..80 {
+    tic(g, idle)
+}
+mak_siccar s["svx"] == 0 an s["x"] - 110 * 65536 > 3 * nudged
+blether "ok a blunderbuss shoves a stone further"
+
+# A stone stops a shot: the keeper behind it is untouched.
+g = new_game(map_parse(hall + "t 1 64 256 0 0\nt 36 100 256 0 0\nt 2 140 256 2048 0\n"), aye)
+s = stone_of(g)
+keeper = kind_of(g, 2)
+weapon_hitscan(g, g["angle"], 768, 8)
+mak_siccar keeper["health"] == 80 an s["svx"] == 65536
+blether "ok a stone stops a hitscan shot"
+
+# A Mars bar bursts on the stone, pushing it along its flight; the keeper
+# beyond the splash is spared.
+g = new_game(map_parse(hall + "t 1 64 256 0 0\nt 36 200 256 0 0\nt 2 400 256 2048 0\n"), aye)
+s = stone_of(g)
+keeper = kind_of(g, 2)
+g["owned"][1] = aye
+g["weapon"] = 2
+g["mars"] = 1
+weapons_tick(g, aye)
+ken p = g["projectiles"][0]
+ken burst_at = -1
+fer i in 0..40 {
+    projectiles_tick(g)
+    gin burst_at < 0 an p["kind"] == "sizzle" {
+        burst_at = p["x"]
+    }
+}
+mak_siccar burst_at > 150 * 65536 an burst_at < 200 * 65536
+mak_siccar s["svx"] == 45 * 65536 / 8 an s["svy"] == 0
+mak_siccar keeper["health"] == 80
+blether "ok a Mars bar stops on a stone and shoves it"
+
+# Splash shoves stones away from its centre, less with distance, none outside.
+g = new_game(map_parse(hall + "t 1 64 64 0 0\nt 36 500 256 0 0\nt 36 468 304 0 0\nt 36 468 156 0 0\n"), aye)
+ken east = g["stones"][1]
+ken north = g["stones"][2]
+ken far = g["stones"][3]
+splash_damage(g, 468 * 65536, 256 * 65536, 0, 0, 64, 45, naething)
+mak_siccar east["svx"] > 0 an east["svy"] == 0
+mak_siccar north["svy"] > 0 an north["svx"] == 0 an north["svy"] < east["svx"]
+mak_siccar far["svx"] == 0 an far["svy"] == 0
+blether "ok splash shoves stones away from its centre"
+
+# The bagpipes' blast shoves a stone in the cone away from the piper.
+g = new_game(map_parse(hall + "t 1 64 256 0 0\nt 36 200 256 0 0\n"), aye)
+s = stone_of(g)
+bagpipe_blast(g)
+mak_siccar s["svx"] > 4 * 65536 an s["svy"] == 0
+blether "ok the bagpipes shove a stone"

@@ -23,7 +23,26 @@ dae weapon_hitscan(g, angle, range, damage) {
             }
         }
     }
-    gin target != naething {
+    # Curling stones are solid: the nearest one on the line stops the shot
+    # and takes its push instead.
+    ken stone = naething
+    fer s in g["stones"] {
+        gin s != naething {
+            ken dx = (s["x"] - g["x"]) / 65536
+            ken dy = (s["y"] - g["y"]) / 65536
+            ken along = (dx * cosine + dy * sine) / 65536
+            ken across = (dy * cosine - dx * sine) / 65536
+            gin along >= 0 an along <= range an along < best an across >= -16 an across <= 16 {
+                gin bogle_sight(g, g["x"], g["y"], g["view_z"], g["sector"], s["x"], s["y"], s["z"] + 16 * 65536, s["sector"]) {
+                    best = along
+                    stone = s
+                }
+            }
+        }
+    }
+    gin stone != naething {
+        stone_shove(g, stone, cosine, sine, damage)
+    } ither gin target != naething {
         damage_actor(g, target, damage)
     }
 }
@@ -65,6 +84,22 @@ dae bagpipe_blast(g) {
             }
         }
     }
+    # The blast shoves curling stones in the same cone straight away from the
+    # piper, scaled by the damage it would deal there.
+    fer s in g["stones"] {
+        gin s != naething {
+            ken dx = (s["x"] - g["x"]) / 65536
+            ken dy = (s["y"] - g["y"]) / 65536
+            ken distance2 = dx * dx + dy * dy
+            ken dot = dx * cosine + dy * sine
+            gin distance2 > 0 an distance2 <= 102400 an dot >= 0 an dot * dot * 4 >= distance2 * 3 * 4294967296 {
+                gin bogle_sight(g, g["x"], g["y"], g["view_z"], g["sector"], s["x"], s["y"], s["z"] + 16 * 65536, s["sector"]) {
+                    ken distance = isqrt(distance2)
+                    stone_shove(g, s, dx * 65536 / distance, dy * 65536 / distance, max(1, 60 - distance * 50 / 320))
+                }
+            }
+        }
+    }
 }
 
 dae spawn_projectile(g, kind, x, y, z, sector, vx, vy, vz, owner) {
@@ -74,7 +109,11 @@ dae spawn_projectile(g, kind, x, y, z, sector, vx, vy, vz, owner) {
 dae projectile_burst(g, p) {
     gin p["kind"] == "mars" {
         bogle_emit_sound(g, "mars_splat")
-        splash_damage(g, p["x"], p["y"], p["z"], p["sector"], 64, 45, p["owner"])
+        ken struck = -1
+        gin contains(p, "struck") {
+            struck = p["struck"]
+        }
+        splash_damage(g, p["x"], p["y"], p["z"], p["sector"], 64, 45, p["owner"], struck)
         p["kind"] = "sizzle"
         p["timer"] = 35
         p["vx"] = 0
@@ -135,6 +174,34 @@ dae projectiles_tick(g) {
                                 ken dy = (a["y"] - ny) / 65536
                                 gin dx * dx + dy * dy <= 400 an nz >= a["z"] an nz <= a["z"] + 56 * 65536 {
                                     projectile_burst(g, p)
+                                    brak
+                                }
+                            }
+                        }
+                    }
+                    # Curling stones stop both kinds, and take a push along
+                    # the flight: a Mars bar its 45 burst damage (its splash
+                    # then spares that stone), a wail its 10.
+                    gin p["active"] an (p["kind"] == "mars" or p["kind"] == "wail") {
+                        fer s in g["stones"] {
+                            gin s != naething {
+                                ken dx = (s["x"] - nx) / 65536
+                                ken dy = (s["y"] - ny) / 65536
+                                gin abs(dx) <= 20 an abs(dy) <= 20 an dx * dx + dy * dy <= 400 an nz >= s["z"] an nz <= s["z"] + 56 * 65536 {
+                                    ken speed = isqrt(p["vx"] * p["vx"] + p["vy"] * p["vy"])
+                                    ken damage = 10
+                                    gin p["kind"] == "mars" {
+                                        damage = 45
+                                    }
+                                    gin speed > 0 {
+                                        stone_shove(g, s, p["vx"] * 65536 / speed, p["vy"] * 65536 / speed, damage)
+                                    }
+                                    gin p["kind"] == "mars" {
+                                        p["struck"] = s["thing"]
+                                        projectile_burst(g, p)
+                                    } ither {
+                                        p["active"] = nae
+                                    }
                                     brak
                                 }
                             }

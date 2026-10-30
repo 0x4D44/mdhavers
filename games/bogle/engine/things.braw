@@ -124,7 +124,19 @@ dae damage_actor(g, actor, damage) {
     gie aye
 }
 
-dae splash_damage(g, x, y, z, sector, radius, damage, source) {
+# A shot shoves a curling stone along the 16.16 unit direction (ux, uy) by
+# damage/8 units a tic: a 20-damage sgian dubh nudges it 2.5, a full
+# blunderbuss (seven 8-damage pellets) 7, against a kick's 10.
+dae stone_shove(g, s, ux, uy, damage) {
+    s["svx"] = s["svx"] + ux * damage / 8
+    s["svy"] = s["svy"] + uy * damage / 8
+    bogle_emit_sound(g, "stone_clack")
+}
+
+# Splash also pushes curling stones in sight away from its centre, falling off
+# like the damage. skip_stone is the thing index of a stone the blast's
+# projectile already struck directly.
+dae splash_damage(g, x, y, z, sector, radius, damage, source, skip_stone = -1) {
     gin radius <= 0 or damage <= 0 {
         gie naething
     }
@@ -137,6 +149,18 @@ dae splash_damage(g, x, y, z, sector, radius, damage, source) {
             distance = actor_distance(x, y, a["x"], a["y"])
             gin distance < radius an bogle_sight(g, x, y, z + 24 * 65536, sector, a["x"], a["y"], a["z"] + 24 * 65536, a["sector"]) {
                 damage_actor(g, a, damage * (radius - distance) / radius)
+            }
+        }
+    }
+    fer s in g["stones"] {
+        gin s != naething an s["thing"] != skip_stone {
+            ken dx = (s["x"] - x) / 65536
+            ken dy = (s["y"] - y) / 65536
+            gin abs(dx) < radius an abs(dy) < radius {
+                distance = isqrt(dx * dx + dy * dy)
+                gin distance > 0 an distance < radius an bogle_sight(g, x, y, z + 24 * 65536, sector, s["x"], s["y"], s["z"] + 16 * 65536, s["sector"]) {
+                    stone_shove(g, s, dx * 65536 / distance, dy * 65536 / distance, damage * (radius - distance) / radius)
+                }
             }
         }
     }

@@ -460,10 +460,27 @@ way the stone rebounds with a quarter of its speed. The ghost phases through it
 and midges are a cloud. A stone sliding into the player at 4 units a tic or more
 hurts 4, and it always stops dead against the player. Live stone positions sit in
 the game state (`g["stones"]`, by thing index): the player, walkers and other
-stones collide with them there, and a door will not close on one. A sliding
-stone plays a low rumble at most every seven tics (shorter than the retrigger,
-like the midge buzz) and a clack on each kick and impact. `tests/curling.braw`
-covers kicks, glide, bounce, ledges and each enemy.
+stones collide with them there, and a door will not close on one. A stone on a
+lift rides it both ways like a walker, its feet on the floor every tic, and a
+stone straddling a lowered lift's edge holds it down. Like walkers, a rising
+lift does not check its ceiling: it always returns to its authored top.
+
+Stones are solid to shots. A hitscan shot (sgian dubh, each blunderbuss pellet)
+stops at the nearest stone on its line instead of an enemy beyond, and shoves it
+along the shot by damage/8 units a tic: the 20-damage sgian dubh nudges it 2.5
+(about 20 units of glide), a full seven-pellet blunderbuss blast up to 7. A Mars
+bar or a ghost's wail within 20 units of a stone (and within its 56-unit height)
+stops there and shoves it along the flight, 45/8 and 10/8 units a tic; the Mars
+bar then bursts, its splash sparing that stone. Splash (a Mars bar burst, an
+exploding haggis) shoves every stone in sight within its radius straight away
+from the centre, by its damage at that distance over 8. The bagpipes' blast
+shoves stones in its cone away from the piper by the same damage/8 rule. None
+of this draws `game_random`.
+
+A sliding stone plays a low rumble at most every seven tics (shorter than the
+retrigger, like the midge buzz) and a clack on each kick, impact and shot.
+`tests/curling.braw` covers kicks, glide, bounce, ledges, each enemy, lift rides
+and shots, splash and the bagpipes.
 
 ## Level progression
 
