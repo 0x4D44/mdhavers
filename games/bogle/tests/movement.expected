@@ -4,5 +4,6 @@ ok thin sector chain tracking
 ok step clearance and blocking flag
 ok overlapping neighbour collision
 ok collinear portals pick the crossed segment
+ok walkers refuse high drops
 ok tic input and seeded state
 ok gravity floor snap and view ease

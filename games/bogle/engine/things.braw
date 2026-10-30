@@ -141,6 +141,7 @@ dae actor_move(g, a, dx, dy) {
         "vz": 0,
         "sector": a["sector"],
         "ignore_steps": a["kind"] == 5,
+        "no_drop": a["kind"] == 2 or a["kind"] == 3,
     }
     move_body(body, dx, dy)
     # Walking actors remain grounded when a portal leads to a lower floor.

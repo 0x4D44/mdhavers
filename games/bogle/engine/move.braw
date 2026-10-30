@@ -75,6 +75,11 @@ dae body_portal_open(g, sector, wall) {
     gin contains(g, "ignore_steps") an g["ignore_steps"] {
         gie min(m["ceil_h"][sector], m["ceil_h"][next]) > max(m["floor_h"][sector], m["floor_h"][next])
     }
+    # Walking monsters refuse a drop of more than 24 units, as in Doom: the
+    # ledge edge acts as a wall, so they never land inside the riser below.
+    gin contains(g, "no_drop") an g["no_drop"] an g["z"] - m["floor_h"][next] * 65536 > 1572864 {
+        gie nae
+    }
     ken floor = m["floor_h"][sector]
     gin m["floor_h"][next] > floor {
         floor = m["floor_h"][next]

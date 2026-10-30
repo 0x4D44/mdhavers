@@ -137,6 +137,32 @@ mak_siccar split_hit[0] == 2
 mak_siccar split_hit[1] == 10
 blether "ok collinear portals pick the crossed segment"
 
+# Walking monsters refuse a ledge more than 24 units high; flyers and the
+# player still drop. A keeper that dropped used to land with its body inside
+# the riser below and could then move in no direction at all.
+m = movement_map(-25, 128, 256)
+ken ledge = {"map": m}
+fer kind in [2, 3] {
+    ken walker = {"kind": kind, "x": 108 * 65536, "y": 64 * 65536, "z": 0, "sector": 0}
+    mak_siccar nae actor_move(ledge, walker, 8 * 65536, 0)
+    mak_siccar walker["sector"] == 0
+    mak_siccar walker["x"] == 112 * 65536
+    mak_siccar walker["z"] == 0
+    mak_siccar actor_move(ledge, walker, -8 * 65536, 0)
+}
+ken flyer = {"kind": 4, "x": 124 * 65536, "y": 64 * 65536, "z": 0, "sector": 0}
+actor_move(ledge, flyer, 8 * 65536, 0)
+mak_siccar flyer["sector"] == 1
+g = movement_body(m, 124, 64)
+move_body(g, 8 * 65536, 0)
+mak_siccar g["sector"] == 1
+m = movement_map(-24, 128, 256)
+ken stepper = {"kind": 2, "x": 124 * 65536, "y": 64 * 65536, "z": 0, "sector": 0}
+mak_siccar actor_move({"map": m}, stepper, 8 * 65536, 0)
+mak_siccar stepper["sector"] == 1
+mak_siccar stepper["z"] == -24 * 65536
+blether "ok walkers refuse high drops"
+
 m = movement_map(0, 128, 256)
 g = new_game(m)
 tic(g, {"keys": 1, "dx": 0})
