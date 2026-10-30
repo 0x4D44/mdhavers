@@ -1,0 +1,16 @@
+ok lift lowers to its lowest neighbour
+ok lift refuses to rise onto a straddling body
+ok lift waits then rises carrying the player
+ok lift carries the player down
+ok switch opens its tagged remote door, which stays open
+ok one-shot switch stays pressed and spent
+ok remote door ignores E
+ok repeatable switch pops back and works again
+ok switch panel found on a split wall
+ok switch lowers its tagged lift
+ok secret door opens with the message and counts once
+ok closet keeper stays dormant behind its closed door
+ok trigger opens the closet and the keeper wakes
+ok trigger fires once
+ok old maps parse with no lifts, switches, triggers or secrets
+ok loader rejects bad switches and lifts

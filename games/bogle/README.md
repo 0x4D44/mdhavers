@@ -32,7 +32,7 @@ automatically. Controls are also available from the title and pause menus.
 Each new level or restart shows its map-authored briefing; press any fresh key or mouse button to begin. The HUD objective advances from finding the airn key to finding the siller key, then reaching the gate. **M** toggles music on every screen.
 Death offers **Restart** and **Back to Title**. Completing the Gatehouse offers
 the same choices: there is no next level yet. Both screens show elapsed level
-time from the existing 35 Hz tic count; kills and secrets are not tracked.
+time from the existing 35 Hz tic count; kills are not tracked, and secrets are counted in game state only.
 
 E1M1 starts in the courtyard facing a visible gamekeeper. Follow the courtyard
 east to the gate; face the door within 64 units and **E: open** appears. Locked
@@ -70,7 +70,7 @@ truncates the recording so it always contains one uninterrupted level attempt;
 menu frames never enter the gameplay recording.
 
 `tools/mapbuild.braw` provides `new_map`, `room`, `split_convex`, `door`, `stairs`,
-`map_thing`, `validate`, and `write`. The design's `thing(...)` spelling cannot
+`lift`, `secret_door`, `switch_wall`, `map_thing`, `validate`, and `write`. The design's `thing(...)` spelling cannot
 be a function name: `thing` is a reserved struct keyword. `map_thing` performs
 that operation without changing the language. `tools/testmap.braw` rebuilds
 `data/test.map`; run `mdhavers run games/bogle/tools/replaybuild.braw` from the
@@ -83,12 +83,15 @@ flagstone moss, slate underside, dungeon brick, oak panel, thistle tapestry,
 Celtic lintel, cell door, portcullis and peat straw. IDs 10..14 add bog, chapel
 stone, fryer oil, exit lever and loch water. IDs 15..18 are granite with the cow portrait, stag head, banner, and the marked exit gate. Other accepted IDs use granite.
 Ceiling texture -1 means sky. Sector kinds are normal 0, door 1, fryer 2,
-bog 3 and cold water 4. Door tags 0/1/2 mean unlocked/iron/silver. Thing type 1
+bog 3, cold water 4, lift 5 and hidden door 6. A sector tag's low byte is the
+door lock: 0/1/2 mean unlocked/iron/silver; `tag / 256` is a remote link tag. Thing type 1
 is the player start; 2..5 select gamekeeper, haggis, tartan ghost and midges.
 Types 10..20 are oatcake, haggis plate, juice can, juice bottle, shortbread, Mars
 box, powder, blunderbuss, bagpipes, iron key and silver key. Type 21 is the exit;
 30..36 are stag head, armour, brazier, thistle, cow portrait, banner and curling
-stone. Exit thing flag bit 2 hides its sprite when a painted gate supplies the picture; the use trigger remains. Wall flag bit 1 blocks. Doors move their ceilings and wait for bodies
+stone. Exit thing flag bit 2 hides its sprite when a painted gate supplies the picture; the use trigger remains. Wall flag bit 1 blocks.
+Wall flag bit 2 makes a solid wall a switch for link tag `flags / 256`; bit 4
+makes it repeatable. Texture ids 19 and 20 are the switch's off and on faces. Doors move their ceilings and wait for bodies
 to clear before closing. Loader
 validation pairs exact geometric reversed edges, rejects partial or repeated
 edges, enforces convex CCW polygons and reachability, and locates the player.
@@ -330,24 +333,26 @@ recorded in the stage 5c journal.
 ## E1M2: The Distillery
 
 `maps/e1m2.braw` builds `data/e1m2.map` (`mdhavers run games/bogle/maps/e1m2.braw`):
-157 convex sectors (E1M1 has 43) and 54 things. The builder collects axis-aligned
+155 convex sectors (E1M1 has 43) and 55 things. The builder collects axis-aligned
 rectangles first and inserts every other rectangle corner that lies on an edge, so
 cells of different sizes share exact portal edges. It also rejects a sector with two
 portal walls on one line: the engine's crossing test uses each wall's whole line, so
 such a sector would send the player into the wrong neighbour.
 
 The start is a bright loch-side yard under open sky, with cold shallows, midges and
-a boathouse alcove. Its gate opens on the mash-tun hall hub, a ring of cells round a
+a boathouse alcove behind a secret door in the east wall. Its gate opens on the mash-tun hall hub, a ring of cells round a
 solid oak tun with a raised balcony to the north. Three wings branch from the hub:
 
 - **West (open):** a stair down to the dim, sunken malting floor and kiln. The airn
-  key sits on the kiln gallery, a ledge seen from below and reached by a stair from
+  key sits on the kiln gallery, a ledge seen from below and reached by a lift from
   the kiln column. The peat store is an optional alcove.
 - **East (airn door):** a stair up to the dark bonded warehouse, where cask stacks
   form aisles. The blunderbuss lies under the lamp by the entrance, and the cooperage
-  is an optional alcove. The siller key is on the lit plinth of the tasting room,
-  with keepers waiting in the dark bays (the ambush). The loading dock drops back
-  into the hall: the airn shortcut.
+  is an optional alcove behind a secret panel. Walking into the middle aisle
+  opens a closet in the cask stack beside it and lets a keeper out. The siller
+  key is on the lit plinth of the tasting room, with keepers waiting in the dark
+  bays (the ambush). A switch on the loading dock's south wall raises the shutter
+  onto the hall: the airn shortcut.
 - **North (siller door):** the wash back and the still house, with two copper stills,
   hot wash floors between them and the bagpipes on the worm-tub platform. A stair
   climbs to the spirit safe and the exit chamber. The painted gate's use trigger is
@@ -355,17 +360,47 @@ solid oak tun with a raised balcony to the north. Three wings branch from the hu
   (juice bottle and shortbread), which drops into the hub: the siller shortcut.
 
 It follows E1M1 in a new game, or play it directly with `BOGLE_MAP=games/bogle/data/e1m2.map`. `replays/e1m2.txt` is a
-5538-tic completion generated by `tools/route_e1m2.braw`, an autopilot that drives `tic()`,
-follows waypoints, opens doors and fights whatever it sees. After a gameplay change,
+5295-tic completion generated by `tools/route_e1m2.braw`, an autopilot that drives `tic()`,
+follows waypoints, opens doors and both secrets, presses the dock switch, rides the
+gallery lift and fights whatever it sees, including the closet keeper. After a gameplay change,
 regenerate it natively (`mdhavers build -O0 games/bogle/tools/route_e1m2.braw -o .scratch/route`,
 then `BOGLE_ROUTE_OUT=games/bogle/replays/e1m2.txt .scratch/route`; `BOGLE_MAP` selects the
-map). It prints milestones and the lowest health, and fails on death or a stuck leg. Check it with the native headless build and `BOGLE_MAP=games/bogle/data/e1m2.map
+map). It prints milestones, the secrets, switches, closets and lift rides used, and the
+lowest health; it fails on death, a stuck leg or an unused mechanic. Check it with the native headless build and `BOGLE_MAP=games/bogle/data/e1m2.map
 BOGLE_REPLAY=games/bogle/replays/e1m2.txt BOGLE_W=80 BOGLE_H=50 BOGLE_EVERY=140
 BOGLE_REQUIRE_EXIT=1` under `MDH_RC=0` and `MDH_RC=1`; both print `replays/e1m2.hashes`.
 The interpreter's first 140 tics print its first line. `tests/e1m2.braw` asserts the
 structural facts, and `tools/e1m2_shots.braw` writes 320x200 review PPMs to
 `.scratch/e1m2shots/`. The engine's fixed strings still name the Gatehouse
 (the level-complete message and the key pickup messages).
+
+## Lifts, switches, secret doors and closets
+
+These Doom-style mechanics live in `engine/doors.braw` beside the doors, use the
+same 64-unit use trace, and add nothing to old maps (`tests/mechanics.braw`).
+
+- **Lift (kind 5).** It rests at its authored floor. E on its face from below,
+  or a switch with its link tag, lowers it 4 units a tic to its lowest
+  neighbour's floor. It waits 105 tics, then rises 4 units a tic. Whoever
+  stands on it rides it both ways: their feet follow the floor every tic. It
+  will not rise onto a walker whose centre is off it but whose body overlaps
+  its edge; that holds its timer, and a rising lift drops again. The prompt
+  is **E: lift**.
+- **Switch (wall flag 2).** E on the switch wall opens every door and lowers
+  every lift whose link tag matches, plays the door sound and swaps the face
+  to texture 20. One-shot switches stay pressed; repeatable ones (flag 4)
+  pop back after 35 tics. Doors opened this way stay open. A door with a link
+  tag ignores E ("It's shut fast. There must be a switch."), with no prompt.
+  The prompt is **E: switch**. `tools/bake_decals.braw` bakes the two faces.
+- **Secret door (kind 6, link 0).** A door that keeps the surrounding wall
+  texture: it gets no gate face and shows no prompt. The first opening
+  shows "Ye found a secret!" and counts `g["secrets"]` against
+  `g["secret_total"]`; after that it is an ordinary door.
+- **Monster closet (kind 6 with a link tag).** A hidden door opened, once,
+  when the player's centre enters any other sector carrying that link tag (a
+  walk-over trigger). It does not count as a secret and shows no message.
+  Keepers behind it act on sight, which the closed door blocks, so they
+  stay in the closet until it opens.
 
 ## Level progression
 

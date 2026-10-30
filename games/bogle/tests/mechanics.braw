@@ -1,0 +1,189 @@
+fetch "games/bogle/shell/onboarding"
+fetch "games/bogle/engine/game"
+fetch "games/bogle/engine/map"
+
+# Lifts, wall switches, secret doors and walk-over monster closets.
+ken idle = {"keys": 0, "dx": 0}
+ken press = {"keys": 128, "dx": 0}
+ken row = "BOGMAP 1\nv 0 0\nv 128 0\nv 128 128\nv 0 128\nv 256 0\nv 256 128\nv 384 0\nv 384 128\n"
+
+# Low room | lift (top 64, kind 5) | high room. E on the lift face lowers it.
+ken lift_text = row + "s 0 192 1 2 192 0 0 0 1 2 3\ns 64 192 4 2 192 5 0 1 4 5 2\ns 64 192 1 2 192 0 0 4 6 7 5\nt 1 96 64 0 0\n"
+ken g = new_game(map_parse(lift_text), aye)
+mak_siccar len(g["lifts"]) == 1 an g["lifts"][0]["bottom"] == 0 an g["lifts"][0]["top"] == 64
+mak_siccar bogle_door_prompt(g) == "E: lift"
+tic(g, press)
+mak_siccar g["lifts"][0]["state"] == "lowering"
+fer i in 0..20 {
+    tic(g, idle)
+}
+mak_siccar g["lifts"][0]["state"] == "down" an g["map"]["floor_h"][1] == 0
+blether "ok lift lowers to its lowest neighbour"
+# A body straddling the edge from the low room holds the lift down.
+g["x"] = 120 * 65536
+fer i in 0..300 {
+    tic(g, idle)
+}
+mak_siccar g["lifts"][0]["state"] == "down" an g["map"]["floor_h"][1] == 0
+blether "ok lift refuses to rise onto a straddling body"
+# Standing on it, the player rides it up, feet on the floor every tic.
+g["x"] = 192 * 65536
+g["sector"] = 1
+ken rode = aye
+ken risen = nae
+fer i in 0..140 {
+    tic(g, idle)
+    gin g["z"] != g["map"]["floor_h"][1] * 65536 {
+        rode = nae
+    }
+    gin g["map"]["floor_h"][1] > 0 an g["map"]["floor_h"][1] < 64 {
+        risen = aye
+    }
+}
+mak_siccar rode an risen
+mak_siccar g["lifts"][0]["state"] == "up" an g["map"]["floor_h"][1] == 64 an g["z"] == 64 * 65536
+blether "ok lift waits then rises carrying the player"
+# Riding down: the player's z follows the lowering floor without falling.
+tic(g, idle)
+g["lifts"][0]["state"] = "lowering"
+fer i in 0..16 {
+    tic(g, idle)
+    mak_siccar g["z"] == g["map"]["floor_h"][1] * 65536
+}
+mak_siccar g["map"]["floor_h"][1] == 0
+blether "ok lift carries the player down"
+
+# Room with a switch on its west wall | remote door (link 1) | far room.
+ken switch_text = "BOGMAP 1\nv 0 0\nv 128 0\nv 128 128\nv 0 128\nv 160 0\nv 160 128\nv 288 0\nv 288 128\ns 0 128 1 2 192 0 0 0 1 2 3\ns 0 128 1 2 160 1 256 1 4 5 2\ns 0 128 1 2 192 0 0 4 6 7 5\nw 0 3 0 0 19 0 0 FLAGS\nt 1 40 64 2048 0\n"
+g = new_game(map_parse(replace(switch_text, "FLAGS", "258")), aye)
+mak_siccar len(g["switches"]) == 1 an bogle_door_prompt(g) == "E: switch"
+tic(g, press)
+mak_siccar g["doors"][0]["state"] == "opening" an g["map"]["mid_tex"][3] == 20 an contains(g["sounds"], "door")
+fer i in 0..400 {
+    tic(g, idle)
+}
+mak_siccar g["doors"][0]["state"] == "open" an g["map"]["ceil_h"][1] == 124
+blether "ok switch opens its tagged remote door, which stays open"
+g["doors"][0]["state"] = "closed"
+g["map"]["ceil_h"][1] = 0
+tic(g, idle)
+tic(g, press)
+mak_siccar g["doors"][0]["state"] == "closed" an g["map"]["mid_tex"][3] == 20 an bogle_door_prompt(g) == ""
+blether "ok one-shot switch stays pressed and spent"
+# The remote door itself refuses E and shows no prompt.
+g["x"] = 100 * 65536
+g["angle"] = 0
+mak_siccar bogle_door_prompt(g) == ""
+tic(g, idle)
+tic(g, press)
+mak_siccar g["doors"][0]["state"] == "closed" an g["message"] == "It's shut fast. There must be a switch."
+blether "ok remote door ignores E"
+g = new_game(map_parse(replace(switch_text, "FLAGS", "262")), aye)
+tic(g, press)
+mak_siccar g["doors"][0]["state"] == "opening" an g["map"]["mid_tex"][3] == 20
+fer i in 0..40 {
+    tic(g, idle)
+}
+mak_siccar g["map"]["mid_tex"][3] == 19 an bogle_door_prompt(g) == "E: switch"
+g["doors"][0]["state"] = "closed"
+g["map"]["ceil_h"][1] = 0
+tic(g, press)
+mak_siccar g["doors"][0]["state"] == "opening" an g["map"]["mid_tex"][3] == 20
+blether "ok repeatable switch pops back and works again"
+# A switch panel in the middle of a wall split into collinear pieces.
+ken panel_text = replace(replace(switch_text, "v 288 128\n", "v 288 128\nv 0 96\nv 0 32\n"), "0 1 2 3\n", "0 1 2 3 8 9\n")
+g = new_game(map_parse(replace(panel_text, "w 0 3 0 0 19 0 0 FLAGS", "w 0 4 0 0 19 0 0 258")), aye)
+mak_siccar bogle_door_prompt(g) == "E: switch"
+tic(g, press)
+mak_siccar g["doors"][0]["state"] == "opening" an g["map"]["mid_tex"][4] == 20
+blether "ok switch panel found on a split wall"
+# A switch also lowers a lift carrying its tag.
+ken tagged_lift = replace(lift_text, "s 64 192 4 2 192 5 0", "s 64 192 4 2 192 5 768")
+g = new_game(map_parse(replace(tagged_lift, "t 1 96", "w 0 3 0 0 19 0 0 770\nt 1 96")), aye)
+g["angle"] = 2048
+g["x"] = 40 * 65536
+tic(g, press)
+mak_siccar g["lifts"][0]["state"] == "lowering"
+blether "ok switch lowers its tagged lift"
+
+# Secret door: kind 6, untagged, faced like the wall. E opens it once found.
+ken secret_text = "BOGMAP 1\nv 0 0\nv 128 0\nv 128 128\nv 0 128\nv 160 0\nv 160 128\nv 288 0\nv 288 128\ns 0 128 1 2 192 0 0 0 1 2 3\ns 0 128 1 2 160 6 0 1 4 5 2\ns 0 128 1 2 192 0 0 4 6 7 5\nt 1 96 64 0 0\n"
+g = new_game(map_parse(secret_text), aye)
+mak_siccar g["secret_total"] == 1 an g["secrets"] == 0 an g["map"]["upper_tex"][1] == 0
+mak_siccar bogle_door_prompt(g) == ""
+tic(g, press)
+mak_siccar g["doors"][0]["state"] == "opening" an g["message"] == "Ye found a secret!" an g["secrets"] == 1
+fer i in 0..300 {
+    tic(g, idle)
+}
+mak_siccar g["doors"][0]["state"] == "closed"
+g["message"] = ""
+mak_siccar bogle_door_prompt(g) == "E: open"
+tic(g, press)
+mak_siccar g["doors"][0]["state"] == "opening" an g["message"] == "" an g["secrets"] == 1
+blether "ok secret door opens with the message and counts once"
+
+# Monster closet: start | trigger (link 2) | hidden door (kind 6, link 2) | keeper.
+ken closet_text = row + "v 288 0\nv 288 128\nv 416 0\nv 416 128\ns 0 192 1 2 192 0 0 0 1 2 3\ns 0 192 1 2 192 0 512 1 4 5 2\ns 0 192 1 2 160 6 512 4 8 9 5\ns 0 192 1 2 192 0 0 8 10 11 9\nt 1 32 64 0 0\nt 2 352 64 2048 0\n"
+g = new_game(map_parse(closet_text), aye)
+mak_siccar g["secret_total"] == 0 an g["triggers"] == [1]
+ken keeper = naething
+fer a in g["actors"] {
+    gin a["kind"] == 2 {
+        keeper = a
+    }
+}
+fer i in 0..120 {
+    tic(g, idle)
+}
+mak_siccar keeper["state"] != "fists" an keeper["state"] != "windup" an keeper["state"] != "charge" an keeper["sector"] == 3
+mak_siccar g["doors"][0]["state"] == "closed"
+blether "ok closet keeper stays dormant behind its closed door"
+g["x"] = 192 * 65536
+g["sector"] = 1
+tic(g, idle)
+mak_siccar g["doors"][0]["state"] == "opening" an g["triggers"] == [-1] an g["message"] == "" an g["secrets"] == 0
+ken woke = -1
+fer i in 0..60 {
+    tic(g, idle)
+    gin woke < 0 an keeper["state"] == "fists" {
+        woke = i
+    }
+}
+mak_siccar woke >= 0
+blether "ok trigger opens the closet and the keeper wakes"
+g["doors"][0]["state"] = "closed"
+g["map"]["ceil_h"][2] = 0
+g["x"] = 32 * 65536
+g["sector"] = 0
+tic(g, idle)
+g["x"] = 192 * 65536
+g["sector"] = 1
+tic(g, idle)
+mak_siccar g["doors"][0]["state"] == "closed"
+blether "ok trigger fires once"
+
+# Old maps parse unchanged; the new records are inert there.
+fer path in ["games/bogle/data/test.map", "games/bogle/data/stage3.map", "games/bogle/data/e1m1.map"] {
+    ken m = load_map(path)
+    fer s in 0..len(m["kind"]) {
+        mak_siccar m["kind"][s] <= 4 an m["tag"][s] < 256
+    }
+    ken old = new_game(m, aye)
+    mak_siccar len(old["lifts"]) == 0 an len(old["switches"]) == 0 an len(old["triggers"]) == 0 an old["secret_total"] == 0
+}
+blether "ok old maps parse with no lifts, switches, triggers or secrets"
+
+dae mech_rejects(text, expected) {
+    ken rejected = nae
+    hae_a_bash {
+        map_parse(text)
+    } gin_it_gangs_wrang err {
+        rejected = contains(tae_string(err), expected)
+    }
+    gie rejected
+}
+mak_siccar mech_rejects(replace(switch_text, "w 0 3 0 0 19 0 0 FLAGS", "w 0 1 0 0 19 0 0 258"), "switch needs a solid wall")
+mak_siccar mech_rejects(replace(switch_text, "FLAGS", "2"), "switch needs a solid wall")
+mak_siccar mech_rejects(replace(lift_text, "s 0 192 1 2 192 0 0 0 1 2 3", "s 64 192 1 2 192 0 0 0 1 2 3"), "lift needs a lower neighbour")
+blether "ok loader rejects bad switches and lifts"

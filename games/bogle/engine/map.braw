@@ -1,6 +1,6 @@
 # BOGMAP geometry stays in integer map units; game coordinates are fixed point.
 # File bounds: coordinates/heights/offsets -32767..32767; textures 0..255
-# (ceiling -1 means sky), light 0..255, kind 0..4, tags/flags 0..65535.
+# (ceiling -1 means sky), light 0..255, kind 0..6, tags/flags 0..65535.
 dae map_need(ok, message) {
     gin nae ok {
         hurl "BOGMAP: " + message
@@ -133,7 +133,7 @@ dae validate_map(m) {
     ken next = 0
     fer s in 0..ns {
         map_need(map_range(m["floor_h"][s], -32767, 32767) an map_range(m["ceil_h"][s], -32767, 32767) an m["floor_h"][s] < m["ceil_h"][s], "height range")
-        map_need(map_range(m["floor_tex"][s], 0, 255) an map_range(m["ceil_tex"][s], -1, 255) an map_range(m["light"][s], 0, 255) an map_range(m["kind"][s], 0, 4) an map_range(m["tag"][s], 0, 65535), "sector value")
+        map_need(map_range(m["floor_tex"][s], 0, 255) an map_range(m["ceil_tex"][s], -1, 255) an map_range(m["light"][s], 0, 255) an map_range(m["kind"][s], 0, 6) an map_range(m["tag"][s], 0, 65535), "sector value")
         ken first = m["wall_first"][s]
         ken count = m["wall_count"][s]
         map_need(first == next an count >= 3 an first + count <= nw, "wall run")
@@ -194,6 +194,23 @@ dae validate_map(m) {
                 ken cd_b = map_cross(m["vx"][c], m["vy"][c], m["vx"][d], m["vy"][d], m["vx"][b], m["vy"][b])
                 map_need(nae (((ab_c < 0 an ab_d > 0) or (ab_c > 0 an ab_d < 0)) an ((cd_a < 0 an cd_b > 0) or (cd_a > 0 an cd_b < 0))), "crossed edges")
             }
+        }
+    }
+    # Switches sit on solid walls and name a remote tag; lifts need a lower floor.
+    fer w in 0..nw {
+        gin bit_an(m["flags"][w], 2) != 0 {
+            map_need(m["portal"][w] == -1 an m["flags"][w] / 256 > 0, "switch needs a solid wall and a tag")
+        }
+    }
+    fer s in 0..ns {
+        gin m["kind"][s] == 5 {
+            ken lower = nae
+            fer w in m["wall_first"][s]..m["wall_first"][s] + m["wall_count"][s] {
+                gin m["portal"][w] >= 0 an m["floor_h"][m["portal"][w]] < m["floor_h"][s] {
+                    lower = aye
+                }
+            }
+            map_need(lower, "lift needs a lower neighbour")
         }
     }
     ken reached = [0]

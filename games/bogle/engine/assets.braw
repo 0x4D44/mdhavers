@@ -55,7 +55,7 @@ dae make_cmap() {
 dae bogle_assets() {
     gin nae contains(bogle_asset_cache, "textures") {
         ken textures = []
-        fer name in ["tex_granite", "tex_flagstone_moss", "tex_slate_under", "tex_dungeon_brick", "tex_oak_panel", "tex_tapestry_thistle", "tex_celtic_lintel", "tex_cell_door", "tex_portcullis", "tex_peat_straw", "tex_bog", "tex_chapel_stone", "tex_fryer_oil", "tex_lever_wall", "tex_loch_water", "tex_cow_wall", "tex_stag_wall", "tex_banner_wall", "tex_exit_gate"] {
+        fer name in ["tex_granite", "tex_flagstone_moss", "tex_slate_under", "tex_dungeon_brick", "tex_oak_panel", "tex_tapestry_thistle", "tex_celtic_lintel", "tex_cell_door", "tex_portcullis", "tex_peat_straw", "tex_bog", "tex_chapel_stone", "tex_fryer_oil", "tex_lever_wall", "tex_loch_water", "tex_cow_wall", "tex_stag_wall", "tex_banner_wall", "tex_exit_gate", "tex_switch_off", "tex_switch_on"] {
             shove(textures, bogle_asset(name, 64, 64))
         }
         ken sprites = []

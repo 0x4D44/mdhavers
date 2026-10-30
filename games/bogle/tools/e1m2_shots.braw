@@ -1,7 +1,9 @@
 # E1M2 review captures at 320x200. Create .scratch/e1m2shots before running.
 fetch "games/bogle/shell/frontend"
 
-dae e1m2_shot(name, x, y, angle) {
+# prep "open" raises every hidden door, the shutter and the switch plate;
+# "lift" lowers the lift to its foot.
+dae e1m2_shot(name, x, y, angle, prep = "") {
     ken ui = bogle_front_new("games/bogle/data/e1m2.map")
     bogle_front_start(ui)
     bogle_front_screen(ui, "play")
@@ -20,6 +22,21 @@ dae e1m2_shot(name, x, y, angle) {
     g["view_z"] = g["z"] + 2686976
     g["angle"] = angle
     g["message"] = ""
+    gin prep == "open" {
+        fer d in g["doors"] {
+            gin m["kind"][d["sector"]] == 6 or m["tag"][d["sector"]] >= 256 {
+                m["ceil_h"][d["sector"]] = d["target"]
+            }
+        }
+        fer sw in g["switches"] {
+            m["mid_tex"][sw["wall"]] = 20
+        }
+    }
+    gin prep == "lift" {
+        fer lift in g["lifts"] {
+            m["floor_h"][lift["sector"]] = lift["bottom"]
+        }
+    }
     ken fb = bytes(64000)
     bogle_front_render(ui, fb, 320, 200)
     ken palette = make_palette()
@@ -43,3 +60,13 @@ e1m2_shot("warehouse", 992, 448, 1024)
 e1m2_shot("tasting_key", 1600, 192, 0)
 e1m2_shot("still_house", -224, 864, 200)
 e1m2_shot("exit_gate", 784, 992, 0)
+e1m2_shot("lift_up", -780, 464, 0)
+e1m2_shot("lift_down", -780, 464, 0, "lift")
+e1m2_shot("switch_off", 800, 100, 3072)
+e1m2_shot("switch_on", 800, 100, 3072, "open")
+e1m2_shot("shutter_hub", 448, 64, 0)
+e1m2_shot("shutter_hub_open", 448, 64, 0, "open")
+e1m2_shot("secret_yard", 540, -224, 0)
+e1m2_shot("secret_yard_open", 540, -224, 0, "open")
+e1m2_shot("closet_shut", 1280, 576, 2048)
+e1m2_shot("closet_open", 1280, 576, 2048, "open")

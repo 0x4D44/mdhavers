@@ -1,10 +1,38 @@
 fetch "games/bogle/engine/weapons"
+fetch "games/bogle/engine/map"
+
+# Sector tag: low byte is the key lock (0/1/2), tag / 256 the remote link
+# tag shared with switches and walk-over triggers. Kind 6 is a hidden door
+# faced like its wall; untagged it is a secret, tagged it is a monster closet.
+dae bogle_link(m, s) {
+    gie m["tag"][s] / 256
+}
 
 dae init_doors(g) {
     ken m = g["map"]
     g["doors"] = []
+    g["lifts"] = []
+    g["switches"] = []
+    g["triggers"] = []
+    g["secrets"] = 0
+    g["secret_total"] = 0
     fer s in 0..len(m["floor_h"]) {
-        gin m["kind"][s] == 1 {
+        ken kind = m["kind"][s]
+        gin kind == 5 {
+            ken bottom = m["floor_h"][s]
+            fer w in m["wall_first"][s]..m["wall_first"][s] + m["wall_count"][s] {
+                gin m["portal"][w] >= 0 {
+                    bottom = min(bottom, m["floor_h"][m["portal"][w]])
+                }
+            }
+            shove(g["lifts"], {"sector": s, "top": m["floor_h"][s], "bottom": bottom, "state": "up", "timer": 0})
+        } ither gin kind != 1 an kind != 6 an bogle_link(m, s) > 0 {
+            shove(g["triggers"], s)
+        }
+        gin kind == 6 an bogle_link(m, s) == 0 {
+            g["secret_total"] = g["secret_total"] + 1
+        }
+        gin kind == 1 or kind == 6 {
             ken target = m["ceil_h"][s]
             ken found = nae
             fer w in m["wall_first"][s]..m["wall_first"][s] + m["wall_count"][s] {
@@ -16,7 +44,13 @@ dae init_doors(g) {
                     found = aye
                 }
             }
-            shove(g["doors"], {"sector": s, "target": max(m["floor_h"][s], target), "state": "closed", "timer": 0})
+            shove(g["doors"], {"sector": s, "target": max(m["floor_h"][s], target), "state": "closed", "timer": 0, "stay": nae, "secret": kind == 6 an bogle_link(m, s) == 0})
+        }
+    }
+    # Wall flag 2 is a switch, 4 makes it repeatable; flags / 256 is its tag.
+    fer wall in 0..len(m["flags"]) {
+        gin bit_an(m["flags"][wall], 2) != 0 {
+            shove(g["switches"], {"wall": wall, "off": m["mid_tex"][wall], "used": nae, "timer": 0})
         }
     }
     # A closed door is the upper wall band on the room side of its portal.
@@ -26,7 +60,7 @@ dae init_doors(g) {
         ken next = m["portal"][wall]
         gin next >= 0 an m["kind"][next] == 1 an m["upper_tex"][wall] == 0 {
             ken face = 8
-            gin m["tag"][next] == 1 {
+            gin m["tag"][next] % 256 == 1 {
                 face = 7
             }
             m["upper_tex"][wall] = face
@@ -66,32 +100,192 @@ dae door_occupied(g, sector) {
 
 # The use target is shared with the shell hint, including the 64-unit endpoint.
 # This trace reads game state without opening a door or changing its message.
-dae bogle_use_sector(g) {
-    ken m = g["map"]
+dae bogle_use_hit(g) {
     ken tx = g["x"] + 64 * bogle_cos(g["sin"], g["angle"])
     ken ty = g["y"] + 64 * bogle_sin(g["sin"], g["angle"])
-    ken hit = bogle_trace(g, g["x"], g["y"], g["view_z"], g["sector"], tx, ty, g["view_z"], aye)
+    gie bogle_trace(g, g["x"], g["y"], g["view_z"], g["sector"], tx, ty, g["view_z"], aye)
+}
+
+dae bogle_use_sector(g) {
+    ken hit = bogle_use_hit(g)
     ken selected = hit[0]
     gin hit[1] >= 0 {
-        selected = m["portal"][hit[1]]
+        selected = g["map"]["portal"][hit[1]]
     }
     gie selected
 }
 
+# The switch record whose solid wall the use trace stops on, or naething.
+# The trace tests whole wall lines, so on a wall split into collinear panels
+# it may name a neighbouring panel: find the panel holding the hit point.
+dae bogle_use_switch(g) {
+    ken m = g["map"]
+    ken hit = bogle_use_hit(g)
+    gin hit[1] < 0 or m["portal"][hit[1]] >= 0 {
+        gie naething
+    }
+    ken px = g["x"] + 64 * bogle_cos(g["sin"], g["angle"]) * hit[2] / 65536
+    ken py = g["y"] + 64 * bogle_sin(g["sin"], g["angle"]) * hit[2] / 65536
+    ken h1 = m["wall_v1"][hit[1]]
+    ken h2 = m["wall_v2"][hit[1]]
+    ken first = m["wall_first"][hit[0]]
+    fer sw in g["switches"] {
+        ken w = sw["wall"]
+        gin w >= first an w < first + m["wall_count"][hit[0]] {
+            ken a = m["wall_v1"][w]
+            ken b = m["wall_v2"][w]
+            ken wx = m["vx"][b] - m["vx"][a]
+            ken wy = m["vy"][b] - m["vy"][a]
+            ken along = (px / 256 - m["vx"][a] * 256) * wx + (py / 256 - m["vy"][a] * 256) * wy
+            gin map_cross(m["vx"][h1], m["vy"][h1], m["vx"][h2], m["vy"][h2], m["vx"][a], m["vy"][a]) == 0 an map_cross(m["vx"][h1], m["vy"][h1], m["vx"][h2], m["vy"][h2], m["vx"][b], m["vy"][b]) == 0 an along >= 0 an along <= (wx * wx + wy * wy) * 256 {
+                gie sw
+            }
+        }
+    }
+    gie naething
+}
+
+# Open tagged doors (they stay open) and lower tagged lifts.
+dae bogle_activate(g, tag) {
+    ken m = g["map"]
+    fer d in g["doors"] {
+        gin bogle_link(m, d["sector"]) == tag {
+            gin d["state"] != "opening" an d["state"] != "open" { bogle_emit_sound(g, "door") }
+            gin d["state"] != "open" {
+                d["state"] = "opening"
+            }
+            d["stay"] = aye
+        }
+    }
+    fer lift in g["lifts"] {
+        gin bogle_link(m, lift["sector"]) == tag {
+            lift_lower(g, lift)
+        }
+    }
+}
+
+dae lift_lower(g, lift) {
+    gin lift["state"] == "up" or lift["state"] == "rising" {
+        bogle_emit_sound(g, "door")
+        lift["state"] = "lowering"
+    } ither gin lift["state"] == "down" {
+        lift["timer"] = 105
+    }
+}
+
+# A lift never rises onto a walker whose centre is off it but whose body
+# overlaps its edge; bodies standing on it ride up instead.
+dae lift_occupied(g, sector) {
+    ken m = g["map"]
+    fer w in m["wall_first"][sector]..m["wall_first"][sector] + m["wall_count"][sector] {
+        gin m["portal"][w] >= 0 {
+            gin g["sector"] != sector an body_wall(m, w, g["x"], g["y"])[0] {
+                gie aye
+            }
+            fer a in g["actors"] {
+                gin a["active"] an (a["kind"] == 2 or a["kind"] == 3) an a["sector"] != sector an body_wall(m, w, a["x"], a["y"])[0] {
+                    gie aye
+                }
+            }
+        }
+    }
+    gie nae
+}
+
+# Move a lift floor; whoever stands on it keeps their feet on it.
+dae lift_set(g, sector, height) {
+    ken m = g["map"]
+    ken old = m["floor_h"][sector] * 65536
+    m["floor_h"][sector] = height
+    gin g["sector"] == sector an g["z"] <= old {
+        g["z"] = height * 65536
+        g["vz"] = 0
+    }
+    fer a in g["actors"] {
+        gin a["active"] an a["kind"] >= 2 an a["kind"] <= 5 an a["sector"] == sector an a["z"] <= old {
+            a["z"] = height * 65536
+        }
+    }
+}
+
+dae lifts_tick(g) {
+    fer lift in g["lifts"] {
+        ken sector = lift["sector"]
+        ken floor = g["map"]["floor_h"][sector]
+        gin lift["state"] == "lowering" {
+            lift_set(g, sector, max(lift["bottom"], floor - 4))
+            gin floor - 4 <= lift["bottom"] {
+                lift["state"] = "down"
+                lift["timer"] = 105
+            }
+        } ither gin lift["state"] == "down" {
+            gin lift_occupied(g, sector) {
+                lift["timer"] = 105
+            } ither {
+                lift["timer"] = lift["timer"] - 1
+                gin lift["timer"] <= 0 {
+                    bogle_emit_sound(g, "door")
+                    lift["state"] = "rising"
+                }
+            }
+        } ither gin lift["state"] == "rising" {
+            gin lift_occupied(g, sector) {
+                lift["state"] = "lowering"
+            } ither {
+                lift_set(g, sector, min(lift["top"], floor + 4))
+                gin floor + 4 >= lift["top"] {
+                    lift["state"] = "up"
+                }
+            }
+        }
+    }
+}
+
 dae doors_tick(g, use) {
     ken m = g["map"]
+    # Walk-over triggers fire once, when the player's centre enters them.
+    fer i in 0..len(g["triggers"]) {
+        gin g["triggers"][i] == g["sector"] {
+            bogle_activate(g, bogle_link(m, g["sector"]))
+            g["triggers"][i] = -1
+        }
+    }
     gin use {
         ken selected = bogle_use_sector(g)
+        ken sw = bogle_use_switch(g)
+        gin sw != naething an (nae sw["used"] or bit_an(m["flags"][sw["wall"]], 4) != 0) an sw["timer"] == 0 {
+            sw["used"] = aye
+            m["mid_tex"][sw["wall"]] = 20
+            gin bit_an(m["flags"][sw["wall"]], 4) != 0 {
+                sw["timer"] = 35
+            }
+            bogle_emit_sound(g, "door")
+            bogle_activate(g, m["flags"][sw["wall"]] / 256)
+        }
+        fer lift in g["lifts"] {
+            gin lift["sector"] == selected {
+                lift_lower(g, lift)
+            }
+        }
         fer d in g["doors"] {
             gin d["sector"] == selected {
-                ken lock = m["tag"][selected]
-                gin lock == 1 an bit_an(g["keys"], 1) == 0 {
+                ken lock = m["tag"][selected] % 256
+                gin bogle_link(m, selected) > 0 {
+                    gin m["kind"][selected] == 1 {
+                        g["message"] = "It's shut fast. There must be a switch."
+                    }
+                } ither gin lock == 1 an bit_an(g["keys"], 1) == 0 {
                     g["message"] = "It's lockit. Ye'll be needin' the airn key."
                 } ither gin lock == 2 an bit_an(g["keys"], 2) == 0 {
                     g["message"] = "It's lockit. Ye'll be needin' the siller key."
                 } ither {
                     gin d["state"] != "opening" { bogle_emit_sound(g, "door") }
                     d["state"] = "opening"
+                    gin d["secret"] {
+                        d["secret"] = nae
+                        g["secrets"] = g["secrets"] + 1
+                        g["message"] = "Ye found a secret!"
+                    }
                 }
             }
         }
@@ -107,6 +301,15 @@ dae doors_tick(g, use) {
             }
         }
     }
+    fer sw in g["switches"] {
+        gin sw["timer"] > 0 {
+            sw["timer"] = sw["timer"] - 1
+            gin sw["timer"] == 0 {
+                m["mid_tex"][sw["wall"]] = sw["off"]
+            }
+        }
+    }
+    lifts_tick(g)
     fer d in g["doors"] {
         ken sector = d["sector"]
         gin d["state"] == "opening" {
@@ -116,7 +319,7 @@ dae doors_tick(g, use) {
                 d["timer"] = 105
             }
         } ither gin d["state"] == "open" {
-            gin door_occupied(g, sector) {
+            gin d["stay"] or door_occupied(g, sector) {
                 d["timer"] = 105
             } ither {
                 d["timer"] = d["timer"] - 1

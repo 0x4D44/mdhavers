@@ -21,16 +21,36 @@ ken specs = []
 ken extra_points = []
 
 dae cell(x0, y0, x1, y1, floor_h, ceil_h, floor_tex, ceil_tex, light, wall_tex, kind = 0) {
-    shove(specs, {"r": [x0, y0, x1, y1], "f": floor_h, "c": ceil_h, "ft": floor_tex, "ct": ceil_tex, "l": light, "wt": wall_tex, "k": kind, "door": nae, "tag": 0, "stairs": naething})
+    shove(specs, {"r": [x0, y0, x1, y1], "f": floor_h, "c": ceil_h, "ft": floor_tex, "ct": ceil_tex, "l": light, "wt": wall_tex, "k": kind, "door": nae, "tag": 0, "link": 0, "stairs": naething})
 }
 
-dae door_cell(x0, y0, x1, y1, floor_h, ceil_h, tag = 0) {
-    shove(specs, {"r": [x0, y0, x1, y1], "f": floor_h, "c": ceil_h, "ft": 1, "ct": 2, "l": 160, "wt": 0, "k": 1, "door": aye, "tag": tag, "stairs": naething})
+dae door_cell(x0, y0, x1, y1, floor_h, ceil_h, tag = 0, link = 0) {
+    shove(specs, {"r": [x0, y0, x1, y1], "f": floor_h, "c": ceil_h, "ft": 1, "ct": 2, "l": 160, "wt": 0, "k": 1, "door": aye, "tag": tag, "link": link, "stairs": naething})
+}
+
+# A hidden door faced with wall_tex, the texture of the walls around it.
+# link 0 is a secret found with E; link > 0 is a closet opened by a trigger.
+dae secret_cell(x0, y0, x1, y1, floor_h, ceil_h, wall_tex, link = 0) {
+    shove(specs, {"r": [x0, y0, x1, y1], "f": floor_h, "c": ceil_h, "ft": 1, "ct": 2, "l": 160, "wt": wall_tex, "k": 6, "door": aye, "tag": 0, "link": link, "stairs": naething})
+}
+
+# A lift resting at top_h that lowers to its lowest neighbour when used.
+dae lift_cell(x0, y0, x1, y1, top_h, ceil_h, light, wall_tex, link = 0) {
+    shove(specs, {"r": [x0, y0, x1, y1], "f": top_h, "c": ceil_h, "ft": 4, "ct": 2, "l": light, "wt": wall_tex, "k": 5, "door": nae, "tag": 0, "link": link, "stairs": naething})
+}
+
+# Mark an already collected cell as a walk-over trigger for `link`.
+dae trigger_cell(r, link) {
+    fer spec in specs {
+        gin spec["r"] == r {
+            spec["link"] = link
+        }
+    }
 }
 
 # A staircase rising east, emitted through the shared stairs helper.
 dae stair_run(x, y, width, depth, count, floor_h, rise, ceil_h, floor_tex, light, wall_tex) {
-    shove(specs, {"r": [x, y, x + width * count, y + depth], "f": floor_h, "c": ceil_h, "ft": floor_tex, "ct": 2, "l": light, "wt": wall_tex, "k": 0, "door": nae, "tag": 0, "stairs": [x, y, width, depth, count, floor_h, rise, ceil_h]})
+    shove(specs, {"r": [x, y, x + width * count, y + depth], "f": floor_h, "c": ceil_h, "ft": floor_tex, "ct": 2, "l": light, "wt": wall_tex, "k": 0, "door": nae, "tag": 0, "link": 0, "stairs": [x, y, width, depth, count, floor_h, rise, ceil_h]})
 }
 
 # A grid of cells; holes lists [column, row] cells left solid (pillars, casks, stills).
@@ -136,11 +156,17 @@ dae emit(b) {
                 map_need(len(polygon) == 4, "stair step edge has a T junction at " + tae_string(x))
                 shove(owners, spec)
             }
+        } ither gin spec["k"] == 6 {
+            secret_door(b, rect_polygon(all_points, spec["r"]), spec["f"], spec["c"], spec["link"])
+            shove(owners, spec)
+        } ither gin spec["k"] == 5 {
+            lift(b, rect_polygon(all_points, spec["r"]), spec["f"], spec["c"], spec["link"], spec["ft"], spec["l"])
+            shove(owners, spec)
         } ither gin spec["door"] {
-            door(b, rect_polygon(all_points, spec["r"]), spec["f"], spec["c"], spec["tag"])
+            door(b, rect_polygon(all_points, spec["r"]), spec["f"], spec["c"], spec["tag"], spec["link"])
             shove(owners, spec)
         } ither {
-            room(b, rect_polygon(all_points, spec["r"]), spec["f"], spec["c"], spec["ft"], spec["ct"], spec["l"], spec["k"])
+            room(b, rect_polygon(all_points, spec["r"]), spec["f"], spec["c"], spec["ft"], spec["ct"], spec["l"], spec["k"], spec["link"] * 256)
             shove(owners, spec)
         }
     }
@@ -168,8 +194,9 @@ fer row in 0..3 {
         }
     }
 }
-# Boathouse alcove (optional supplies), dim under a low roof.
-cell(640, -288, 768, -160, 0, 128, 4, 4, 112, 4)
+# Boathouse alcove (optional supplies) behind a secret door in the yard wall.
+secret_cell(640, -288, 672, -160, 0, 128, 0)
+cell(672, -288, 768, -160, 0, 128, 4, 4, 112, 4)
 cell(768, -288, 896, -160, 0, 128, 4, 4, 88, 4)
 door_cell(256, -32, 384, 0, 0, 160)
 
@@ -214,7 +241,9 @@ cell(-928, 0, -800, 128, -48, 112, 9, 2, 184, 3)
 cell(-928, 128, -800, 256, -48, 112, 9, 2, 184, 3)
 cell(-928, 256, -800, 384, -48, 112, 9, 2, 144, 3)
 cell(-928, 384, -800, 512, -48, 112, 9, 2, 128, 3)
-stair_run(-800, 416, 32, 96, 8, -48, 8, 112, 4, 120, 4)
+# The gallery lift: E on its face from the kiln column lowers it to the floor.
+cell(-800, 416, -672, 512, -48, 112, 9, 2, 128, 4)
+lift_cell(-672, 416, -544, 512, 16, 112, 152, 4)
 cell(-544, 384, -416, 512, 16, 112, 4, 2, 136, 4)
 cell(-416, 384, -288, 512, 16, 112, 4, 2, 160, 4)
 
@@ -238,8 +267,14 @@ fer row in 0..6 {
         }
     }
 }
-# Cooperage alcove off the north-east aisle.
-cell(1440, 768, 1568, 896, 48, 160, 9, 4, 176, 4)
+# Cooperage alcove off the north-east aisle, behind a secret panel.
+secret_cell(1440, 768, 1568, 800, 48, 160, 4)
+cell(1440, 800, 1568, 896, 48, 160, 9, 4, 176, 4)
+# Ambush closet in the cask stack west of the middle aisle: walking into the
+# aisle cell opens it (link 2) and lets the keeper out.
+cell(1072, 528, 1152, 624, 48, 224, 2, 4, 56, 4)
+secret_cell(1152, 528, 1184, 624, 48, 224, 4, 2)
+trigger_cell([1184, 512, 1312, 640], 2)
 # Tasting room: lit plinth with the siller key, dark flanking bays.
 fer row in 0..3 {
     cell(1568, row * 128, 1696, row * 128 + 128, 48, 192, 1, 4, 160, 6)
@@ -249,9 +284,12 @@ fer row in 0..3 {
         cell(1696, row * 128, 1824, row * 128 + 128, 48, 192, 2, 4, 64, 6)
     }
 }
-# Loading dock: the warehouse's south-west aisle drops back into the hall.
+# Loading dock: a switch on its south wall raises the shutter (link 1) onto
+# the hall, the airn shortcut.
 cell(672, 0, 928, 128, 48, 192, 2, 4, 144, 4)
-cell(640, 0, 672, 128, 48, 192, 2, 4, 144, 4)
+door_cell(640, 0, 672, 128, 48, 192, 0, 1)
+shove(extra_points, [768, 0])
+shove(extra_points, [832, 0])
 
 # North wing: silver door, wash back, still house, stair up to the spirit safe.
 door_cell(-32, 512, 0, 640, 0, 192, 2)
@@ -339,7 +377,8 @@ map_thing(distillery, 10, 1248, 576)
 # Cooperage alcove (optional).
 map_thing(distillery, 16, 1504, 832)
 map_thing(distillery, 12, 1472, 864)
-map_thing(distillery, 32, 1536, 800)
+map_thing(distillery, 32, 1536, 864)
+map_thing(distillery, 2, 1112, 576, 0)
 # Tasting room ambush: keepers wait in the dark bays either side of the key.
 map_thing(distillery, 20, 1760, 192)
 map_thing(distillery, 2, 1760, 64, 1024)
@@ -428,5 +467,15 @@ fer s in 0..len(owners) {
     }
 }
 distillery["walls"] = walls
+# The dock switch: the 64-unit panel of the dock's south wall.
+fer s in 0..len(owners) {
+    ken first = parsed["wall_first"][s]
+    fer i in 0..parsed["wall_count"][s] {
+        ken w = first + i
+        gin parsed["vx"][parsed["wall_v1"][w]] == 768 an parsed["vy"][parsed["wall_v1"][w]] == 0 an parsed["vx"][parsed["wall_v2"][w]] == 832 an parsed["vy"][parsed["wall_v2"][w]] == 0 {
+            switch_wall(distillery, s, i, 1)
+        }
+    }
+}
 write(distillery, "games/bogle/data/e1m2.map")
 blether "e1m2 sectors " + tae_string(len(distillery["sectors"])) + " things " + tae_string(len(distillery["things"])) + " walls " + tae_string(len(walls))

@@ -6,9 +6,25 @@ dae bogle_door_prompt(g) {
         gie ""
     }
     ken selected = bogle_use_sector(g)
+    ken sw = bogle_use_switch(g)
+    gin sw != naething {
+        gin nae sw["used"] or bit_an(g["map"]["flags"][sw["wall"]], 4) != 0 {
+            gie "E: switch"
+        }
+        gie ""
+    }
+    fer lift in g["lifts"] {
+        gin lift["sector"] == selected an lift["state"] == "up" {
+            gie "E: lift"
+        }
+    }
     fer d in g["doors"] {
+        # Secrets and remote doors give nothing away.
+        gin d["sector"] == selected an (d["secret"] or bogle_link(g["map"], selected) > 0) {
+            gie ""
+        }
         gin d["sector"] == selected {
-            ken lock = g["map"]["tag"][selected]
+            ken lock = g["map"]["tag"][selected] % 256
             gin lock == 1 an bit_an(g["keys"], 1) == 0 {
                 gie "Ye need the iron key"
             }

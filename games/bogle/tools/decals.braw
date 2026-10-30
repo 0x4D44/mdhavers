@@ -51,6 +51,53 @@ dae bogle_exit_wall() {
     gie bake_column_major(64, 64, canvas)
 }
 
+# A wall switch on oak panelling: an iron plate with a lever and a lamp.
+# Off: red lamp, lever down. On: green lamp, lever up. Rows 24..47 straddle
+# eye height in the 144-unit warehouse walls.
+dae bogle_switch_wall(on) {
+    ken wall = bogle_asset("tex_oak_panel", 64, 64)
+    ken canvas = bytes(4096)
+    fer x in 0..64 {
+        fer y in 0..64 {
+            ken ink = bytes_get(wall, x * 64 + y)
+            gin x >= 18 an x < 46 an y >= 20 an y < 52 {
+                ink = 198
+                gin x == 18 or x == 45 or y == 20 or y == 51 {
+                    ink = 0
+                }
+            }
+            bytes_set(canvas, y * 64 + x, ink)
+        }
+    }
+    ken lamp = 90
+    gin on {
+        lamp = 47
+    }
+    fer x in 28..36 {
+        fer y in 23..29 {
+            bytes_set(canvas, y * 64 + x, lamp)
+        }
+    }
+    # Lever: a pivot at row 40 and a handle reaching up or down.
+    fer x in 29..35 {
+        fer y in 38..42 {
+            bytes_set(canvas, y * 64 + x, 15)
+        }
+    }
+    ken top = 41
+    ken bottom = 50
+    gin on {
+        top = 30
+        bottom = 39
+    }
+    fer x in 30..34 {
+        fer y in top..bottom {
+            bytes_set(canvas, y * 64 + x, 120)
+        }
+    }
+    gie bake_column_major(64, 64, canvas)
+}
+
 dae bogle_decal_assets() {
     ken stone = bogle_asset("tex_granite", 64, 64)
     gie [
@@ -58,5 +105,13 @@ dae bogle_decal_assets() {
         ["tex_stag_wall", bogle_decal_wall(stone, bogle_asset("dec_stag_head", 64, 96))],
         ["tex_banner_wall", bogle_decal_wall(stone, bogle_asset("dec_banner", 64, 96))],
         ["tex_exit_gate", bogle_exit_wall()],
+    ]
+}
+
+# Texture ids 19 and 20: the off and on faces of a wall switch.
+dae bogle_switch_assets() {
+    gie [
+        ["tex_switch_off", bogle_switch_wall(nae)],
+        ["tex_switch_on", bogle_switch_wall(aye)],
     ]
 }

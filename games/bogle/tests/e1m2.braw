@@ -89,3 +89,38 @@ fer s in 0..len(e1m2["floor_h"]) {
     }
 }
 blether "ok no sector has two portals on one line"
+
+# Doom-style mechanics: the gallery lift, the dock switch and its shutter,
+# two secret alcoves and a warehouse ambush closet with its trigger.
+ken lifts = 0
+ken secrets = 0
+ken closets = 0
+ken shutters = 0
+ken triggers = 0
+fer s in 0..len(e1m2["floor_h"]) {
+    ken link = e1m2["tag"][s] / 256
+    gin e1m2["kind"][s] == 5 {
+        lifts = lifts + 1
+    }
+    gin e1m2["kind"][s] == 6 an link == 0 {
+        secrets = secrets + 1
+    }
+    gin e1m2["kind"][s] == 6 an link == 2 {
+        closets = closets + 1
+    }
+    gin e1m2["kind"][s] == 1 an link == 1 {
+        shutters = shutters + 1
+    }
+    gin e1m2["kind"][s] != 1 an e1m2["kind"][s] != 6 an link == 2 {
+        triggers = triggers + 1
+    }
+}
+mak_siccar lifts == 1 an secrets == 2 an closets == 1 an shutters == 1 an triggers == 1
+ken switches = 0
+fer w in 0..len(e1m2["flags"]) {
+    gin bit_an(e1m2["flags"][w], 2) != 0 an e1m2["flags"][w] / 256 == 1 an e1m2["mid_tex"][w] == 19 {
+        switches = switches + 1
+    }
+}
+mak_siccar switches == 1
+blether "ok one lift, one dock switch and shutter, two secrets, one ambush closet"

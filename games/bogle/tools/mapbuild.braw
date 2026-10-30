@@ -3,7 +3,9 @@ fetch "../engine/map.braw"
 # Builder API: new_map(); room(builder, [[x,y],...], floor, ceiling,
 # floor_tex=1, ceil_tex=2, light=192, kind=0, tag=0) -> sector index.
 # split_convex has the same arguments and returns the triangle sector indices.
-# door(builder, points, floor, ceiling, tag=0) -> sector index.
+# door(builder, points, floor, ceiling, tag=0, link=0) -> sector index.
+# secret_door(builder, points, floor, ceiling, link=0), lift(builder, points,
+# top, ceiling, link=0) and switch_wall(builder, sector, wall, tag, repeat=nae).
 # stairs(builder, x,y,width,depth,count,floor,rise,ceiling) grows east.
 # map_thing(builder,type,x,y,angle=0,flags=0); validate(builder); write(builder,path).
 # `thing` is a language keyword for structs, so its builder helper is map_thing.
@@ -83,8 +85,43 @@ dae split_convex(b, points, floor_h, ceil_h, floor_tex = 1, ceil_tex = 2, light 
     gie sectors
 }
 
-dae door(b, points, floor_h, ceil_h, tag = 0) {
-    gie room(b, points, floor_h, ceil_h, 1, 2, 160, 1, tag)
+# Doors: tag is the key lock 0/1/2; link > 0 makes a remote door that only a
+# switch or walk-over trigger with that tag opens (it then stays open).
+dae door(b, points, floor_h, ceil_h, tag = 0, link = 0) {
+    gie room(b, points, floor_h, ceil_h, 1, 2, 160, 1, tag + link * 256)
+}
+
+# A hidden door (kind 6). Untagged it is a secret found with E; with a link
+# tag it is a monster closet opened by a trigger. Face its approach walls
+# with the surrounding wall texture so it reads as solid.
+dae secret_door(b, points, floor_h, ceil_h, link = 0, floor_tex = 1, light = 160) {
+    gie room(b, points, floor_h, ceil_h, floor_tex, 2, light, 6, link * 256)
+}
+
+# A lift (kind 5) resting at top_h; E on its face from below, or a switch
+# with the same tag, lowers it to its lowest neighbour floor for 105 tics.
+dae lift(b, points, top_h, ceil_h, link = 0, floor_tex = 4, light = 160) {
+    gie room(b, points, top_h, ceil_h, floor_tex, 2, light, 5, link * 256)
+}
+
+# Mark wall `index` of `sector` as a switch for `tag`, replacing any texture
+# override already recorded for it. Texture 19 is the off plate, 20 on.
+dae switch_wall(b, sector, index, tag, repeat = nae, texture = 19) {
+    ken flags = 2 + tag * 256
+    gin repeat {
+        flags = flags + 4
+    }
+    gin nae contains(b, "walls") {
+        b["walls"] = []
+    }
+    ken row = [sector, index, texture, texture, texture, 0, 0, flags]
+    fer i in 0..len(b["walls"]) {
+        gin b["walls"][i][0] == sector an b["walls"][i][1] == index {
+            b["walls"][i] = row
+            gie naething
+        }
+    }
+    shove(b["walls"], row)
 }
 
 dae stairs(b, x, y, width, depth, count, floor_h, rise, ceil_h) {

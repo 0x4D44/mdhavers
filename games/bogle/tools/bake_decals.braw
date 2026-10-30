@@ -1,6 +1,11 @@
-# Rebuild the four stage5c wall variants from existing indexed art.
+# Rebuild the four stage5c wall variants and the two switch faces from
+# existing indexed art.
 fetch "games/bogle/tools/decals"
-fer asset in bogle_decal_assets() {
+ken baked = bogle_decal_assets()
+fer asset in bogle_switch_assets() {
+    shove(baked, asset)
+}
+fer asset in baked {
     write_bytes("games/bogle/data/" + asset[0] + ".bog", bake_make_bog(64, 64, asset[1]))
     blether "Baked " + asset[0]
 }
