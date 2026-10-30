@@ -2841,3 +2841,592 @@ Square 1:1 production animation sprite for Bogle Castle. Keep the full figure an
 
 
 
+
+## Rotation views (haggis idle, walk1)
+
+### spr_haggis_idle_a2.png
+
+Attempt 1 — accepted.
+
+Reference used: `games/bogle/art/src/spr_haggis_idle.png` (256×256), supplied through imagegen edit/reference mode.
+
+256×256 review: Right-facing front-three-quarter view with both eyes, broad grin and front sash visible. The planted idle stance, fuse, spark, sporran and four hooves retain the same haggis identity and scale; this is the selected A2 output.
+Matte check: corner RGB values TL/TR/BL/BR: TL (246,9,246), TR (249,11,246), BL (244,17,241), BR (247,17,245); all satisfy the requested key rule. Non-keyed border pixels: none. Opaque RGB PNG; no non-keyed background pixels were visible outside the haggis.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game: chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even, flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border. Affectionate and silly, never gory.
+
+Edit reference image 1, spr_haggis_idle.png, as the exact front frame and authoritative character identity and idle pose. Create exactly one rotation-view sprite of this same haggis. Preserve its round squat peat-brown pudding body, coarse tufty surface and warm ochre painted facets; two big cream eyes with black pupils, heavy curved eyebrows and huge cheeky toothy smile; four short chunky brown legs with charcoal cloven hooves; red tartan sash with loch-blue and muted-gold crossing bands; small central tan tasselled sporran with its green-and-purple thistle badge; and short braided curved fuse with a crisp orange-yellow star spark. Keep the same face, fuse, colours, scale, proportions, bold dark outlines and broad hand-painted batch-1 style. Retain the calm idle stance and planted-leg pose; this remains idle, with no stride or running.
+
+A2 rotation: front three-quarter view. Turn the haggis's whole body and head towards the viewer's RIGHT (image right), with both eyes, its grin and the front of its sash still clearly visible. The face looks diagonally right. Show the near side naturally and make this a real turn, not a horizontal mirror of the source. Keep the pose appropriate to the idle or walk1 reference as specified above.
+
+Square 1:1 production animation sprite for Bogle Castle, composed for the established 256x256 art set. Keep the complete haggis centred at the same chunky scale as the reference, with its fuse and spark fully inside the canvas and its lowest complete hooves meeting the bottom edge without clipping. The backdrop is a visually flat opaque magenta #FF00FF chroma-key matte, with every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps between the legs. Each empty background pixel must satisfy either (|R-255|<=24, G<=24, |B-255|<=24) or (R>=G+64, B>=G+64, R>=128, B>=128). Keep all painted shading and texture inside the haggis. No ground, floor, scenery, cast shadow, gradient, glow, transparency or checkerboard. No lettering, text, numbers, symbols, logos, border, signature, watermark or gore.
+~~~
+
+### spr_haggis_idle_a2.png
+
+Attempt 2 — rejected.
+
+Reference used: `games/bogle/art/src/spr_haggis_idle.png` (256×256), supplied through imagegen edit/reference mode.
+
+256×256 review: Rejected in favour of Attempt 1: the turn is valid, but its narrower facial proportions are a weaker match for the front reference.
+Matte check: corner RGB values TL/TR/BL/BR: TL (244,8,247), TR (249,12,247), BL (243,17,241), BR (246,17,245); all satisfy the requested key rule. Non-keyed border pixels: none. Opaque RGB PNG; no non-keyed background pixels were visible outside the haggis.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game: chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even, flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border. Affectionate and silly, never gory.
+
+Edit reference image 1, spr_haggis_idle.png, as the exact front frame and authoritative character identity and idle pose. Create exactly one rotation-view sprite of this same haggis. Preserve its round squat peat-brown pudding body, coarse tufty surface and warm ochre painted facets; two big cream eyes with black pupils, heavy curved eyebrows and huge cheeky toothy smile; four short chunky brown legs with charcoal cloven hooves; red tartan sash with loch-blue and muted-gold crossing bands; small central tan tasselled sporran with its green-and-purple thistle badge; and short braided curved fuse with a crisp orange-yellow star spark. Keep the same face, fuse, colours, scale, proportions, bold dark outlines and broad hand-painted batch-1 style. Retain the calm idle stance and planted-leg pose; this remains idle, with no stride or running.
+
+A2 rotation: front three-quarter view. Turn the haggis's whole body and head towards the viewer's RIGHT (image right), with both eyes, its grin and the front of its sash still clearly visible. The face looks diagonally right. Show the near side naturally and make this a real turn, not a horizontal mirror of the source. Keep the pose appropriate to the idle or walk1 reference as specified above.
+
+Square 1:1 production animation sprite for Bogle Castle, composed for the established 256x256 art set. Keep the complete haggis centred at the same chunky scale as the reference, with its fuse and spark fully inside the canvas and its lowest complete hooves meeting the bottom edge without clipping. The backdrop is a visually flat opaque magenta #FF00FF chroma-key matte, with every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps between the legs. Each empty background pixel must satisfy either (|R-255|<=24, G<=24, |B-255|<=24) or (R>=G+64, B>=G+64, R>=128, B>=128). Keep all painted shading and texture inside the haggis. No ground, floor, scenery, cast shadow, gradient, glow, transparency or checkerboard. No lettering, text, numbers, symbols, logos, border, signature, watermark or gore.
+~~~
+
+### spr_haggis_idle_a2.png
+
+Attempt 3 — rejected.
+
+Reference used: `games/bogle/art/src/spr_haggis_idle.png` (256×256), supplied through imagegen edit/reference mode.
+
+256×256 review: Rejected in favour of Attempt 1: this is a usable turn, but it reads slightly more front-on and has a fuller body footprint than the closer scale and angle match selected for A2.
+Matte check: corner RGB values TL/TR/BL/BR: TL (245,8,246), TR (250,12,248), BL (244,18,241), BR (247,16,245); all satisfy the requested key rule. Non-keyed border pixels: none. Opaque RGB PNG; no non-keyed background pixels were visible outside the haggis.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game: chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even, flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border. Affectionate and silly, never gory.
+
+Edit reference image 1, spr_haggis_idle.png, as the exact front frame and authoritative character identity and idle pose. Create exactly one rotation-view sprite of this same haggis. Preserve its round squat peat-brown pudding body, coarse tufty surface and warm ochre painted facets; two big cream eyes with black pupils, heavy curved eyebrows and huge cheeky toothy smile; four short chunky brown legs with charcoal cloven hooves; red tartan sash with loch-blue and muted-gold crossing bands; small central tan tasselled sporran with its green-and-purple thistle badge; and short braided curved fuse with a crisp orange-yellow star spark. Keep the same face, fuse, colours, scale, proportions, bold dark outlines and broad hand-painted batch-1 style. Retain the calm idle stance and planted-leg pose; this remains idle, with no stride or running.
+
+A2 rotation: front three-quarter view. Turn the haggis's whole body and head towards the viewer's RIGHT (image right), with both eyes, its grin and the front of its sash still clearly visible. The face looks diagonally right. Show the near side naturally and make this a real turn, not a horizontal mirror of the source. Keep the pose appropriate to the idle or walk1 reference as specified above.
+
+Square 1:1 production animation sprite for Bogle Castle, composed for the established 256x256 art set. Keep the complete haggis centred at the same chunky scale as the reference, with its fuse and spark fully inside the canvas and its lowest complete hooves meeting the bottom edge without clipping. The backdrop is a visually flat opaque magenta #FF00FF chroma-key matte, with every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps between the legs. Each empty background pixel must satisfy either (|R-255|<=24, G<=24, |B-255|<=24) or (R>=G+64, B>=G+64, R>=128, B>=128). Keep all painted shading and texture inside the haggis. No ground, floor, scenery, cast shadow, gradient, glow, transparency or checkerboard. No lettering, text, numbers, symbols, logos, border, signature, watermark or gore.
+~~~
+
+### spr_haggis_idle_a3.png
+
+Attempt 1 — accepted.
+
+Reference used: `games/bogle/art/src/spr_haggis_idle.png` (256×256), supplied through imagegen edit/reference mode.
+
+256×256 review: A true right-facing side profile, with one visible eye and the face pointing right. The rounded body, sash, sporran, fuse, colours and idle leg stance remain recognisable as the same haggis.
+Matte check: corner RGB values TL/TR/BL/BR: TL (244,8,245), TR (249,11,246), BL (243,17,242), BR (246,16,246); all satisfy the requested key rule. Non-keyed border pixels: none. Opaque RGB PNG; no non-keyed background pixels were visible outside the haggis.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game: chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even, flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border. Affectionate and silly, never gory.
+
+Edit reference image 1, spr_haggis_idle.png, as the exact front frame and authoritative character identity and idle pose. Create exactly one rotation-view sprite of this same haggis. Preserve its round squat peat-brown pudding body, coarse tufty surface and warm ochre painted facets; two big cream eyes with black pupils, heavy curved eyebrows and huge cheeky toothy smile; four short chunky brown legs with charcoal cloven hooves; red tartan sash with loch-blue and muted-gold crossing bands; small central tan tasselled sporran with its green-and-purple thistle badge; and short braided curved fuse with a crisp orange-yellow star spark. Keep the same face, fuse, colours, scale, proportions, bold dark outlines and broad hand-painted batch-1 style. Retain the calm idle stance and planted-leg pose; this remains idle, with no stride or running.
+
+A3 rotation: full side profile facing the viewer's RIGHT (image right). Rotate the whole body and head into a true right-facing profile, with the face, gaze and muzzle pointing clearly at the right edge; show a side silhouette, not a front or three-quarter view. Make a correctly rotated view, not a horizontal mirror of the source. Keep the pose appropriate to the idle or walk1 reference as specified above.
+
+Square 1:1 production animation sprite for Bogle Castle, composed for the established 256x256 art set. Keep the complete haggis centred at the same chunky scale as the reference, with its fuse and spark fully inside the canvas and its lowest complete hooves meeting the bottom edge without clipping. The backdrop is a visually flat opaque magenta #FF00FF chroma-key matte, with every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps between the legs. Each empty background pixel must satisfy either (|R-255|<=24, G<=24, |B-255|<=24) or (R>=G+64, B>=G+64, R>=128, B>=128). Keep all painted shading and texture inside the haggis. No ground, floor, scenery, cast shadow, gradient, glow, transparency or checkerboard. No lettering, text, numbers, symbols, logos, border, signature, watermark or gore.
+~~~
+
+### spr_haggis_idle_a4.png
+
+Attempt 1 — accepted.
+
+Reference used: `games/bogle/art/src/spr_haggis_idle.png` (256×256), supplied through imagegen edit/reference mode.
+
+256×256 review: Rear three-quarter view turned away to the viewer's right. No face features show; the rounded back, wrapped tartan, fuse and calm planted stance read as the same haggis.
+Matte check: corner RGB values TL/TR/BL/BR: TL (245,9,246), TR (249,10,245), BL (244,19,243), BR (246,17,246); all satisfy the requested key rule. Non-keyed border pixels: none. Opaque RGB PNG; no non-keyed background pixels were visible outside the haggis.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game: chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even, flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border. Affectionate and silly, never gory.
+
+Edit reference image 1, spr_haggis_idle.png, as the exact front frame and authoritative character identity and idle pose. Create exactly one rotation-view sprite of this same haggis. Preserve its round squat peat-brown pudding body, coarse tufty surface and warm ochre painted facets; two big cream eyes with black pupils, heavy curved eyebrows and huge cheeky toothy smile; four short chunky brown legs with charcoal cloven hooves; red tartan sash with loch-blue and muted-gold crossing bands; small central tan tasselled sporran with its green-and-purple thistle badge; and short braided curved fuse with a crisp orange-yellow star spark. Keep the same face, fuse, colours, scale, proportions, bold dark outlines and broad hand-painted batch-1 style. Retain the calm idle stance and planted-leg pose; this remains idle, with no stride or running.
+
+A4 rotation: back three-quarter view, turned away from the viewer. Show the haggis's rounded back and one side, with its head and face turned away towards the viewer's RIGHT. No eyes, smile or front-facing face features are visible. The tartan sash wraps naturally around the back of the body. Keep the pose appropriate to the idle or walk1 reference as specified above.
+
+Square 1:1 production animation sprite for Bogle Castle, composed for the established 256x256 art set. Keep the complete haggis centred at the same chunky scale as the reference, with its fuse and spark fully inside the canvas and its lowest complete hooves meeting the bottom edge without clipping. The backdrop is a visually flat opaque magenta #FF00FF chroma-key matte, with every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps between the legs. Each empty background pixel must satisfy either (|R-255|<=24, G<=24, |B-255|<=24) or (R>=G+64, B>=G+64, R>=128, B>=128). Keep all painted shading and texture inside the haggis. No ground, floor, scenery, cast shadow, gradient, glow, transparency or checkerboard. No lettering, text, numbers, symbols, logos, border, signature, watermark or gore.
+~~~
+
+### spr_haggis_idle_a5.png
+
+Attempt 1 — accepted.
+
+Reference used: `games/bogle/art/src/spr_haggis_idle.png` (256×256), supplied through imagegen edit/reference mode.
+
+256×256 review: Straight back view with no face or front sporran visible. The tufted back, wrapped tartan sash, fuse, spark and four planted hooves preserve the same character and scale.
+Matte check: corner RGB values TL/TR/BL/BR: TL (244,9,247), TR (249,11,248), BL (243,18,242), BR (246,16,245); all satisfy the requested key rule. Non-keyed border pixels: none. Opaque RGB PNG; no non-keyed background pixels were visible outside the haggis.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game: chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even, flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border. Affectionate and silly, never gory.
+
+Edit reference image 1, spr_haggis_idle.png, as the exact front frame and authoritative character identity and idle pose. Create exactly one rotation-view sprite of this same haggis. Preserve its round squat peat-brown pudding body, coarse tufty surface and warm ochre painted facets; two big cream eyes with black pupils, heavy curved eyebrows and huge cheeky toothy smile; four short chunky brown legs with charcoal cloven hooves; red tartan sash with loch-blue and muted-gold crossing bands; small central tan tasselled sporran with its green-and-purple thistle badge; and short braided curved fuse with a crisp orange-yellow star spark. Keep the same face, fuse, colours, scale, proportions, bold dark outlines and broad hand-painted batch-1 style. Retain the calm idle stance and planted-leg pose; this remains idle, with no stride or running.
+
+A5 rotation: straight back view, centred and directly facing away from the viewer. Show the rounded tufted peat-brown back of the haggis, with no face, eyes, smile or front sporran visible. Show the red tartan sash wrapping across the rear, all four short legs and hooves, and the fuse and crisp spark above the body. Keep the pose appropriate to the idle or walk1 reference as specified above.
+
+Square 1:1 production animation sprite for Bogle Castle, composed for the established 256x256 art set. Keep the complete haggis centred at the same chunky scale as the reference, with its fuse and spark fully inside the canvas and its lowest complete hooves meeting the bottom edge without clipping. The backdrop is a visually flat opaque magenta #FF00FF chroma-key matte, with every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps between the legs. Each empty background pixel must satisfy either (|R-255|<=24, G<=24, |B-255|<=24) or (R>=G+64, B>=G+64, R>=128, B>=128). Keep all painted shading and texture inside the haggis. No ground, floor, scenery, cast shadow, gradient, glow, transparency or checkerboard. No lettering, text, numbers, symbols, logos, border, signature, watermark or gore.
+~~~
+
+### spr_haggis_walk1_a2.png
+
+Attempt 1 — accepted.
+
+Reference used: `games/bogle/art/src/spr_haggis_walk1.png` (256×256), supplied through imagegen edit/reference mode.
+
+256×256 review: Right-facing front-three-quarter view. The face and costume match the idle haggis, while the legs remain in the walk1 scuttle phase rather than settling into the idle stance.
+Matte check: corner RGB values TL/TR/BL/BR: TL (245,8,245), TR (249,12,246), BL (244,19,242), BR (247,16,246); all satisfy the requested key rule. Non-keyed border pixels: none. Opaque RGB PNG; no non-keyed background pixels were visible outside the haggis.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game: chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even, flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border. Affectionate and silly, never gory.
+
+Edit reference image 1, spr_haggis_walk1.png, as the exact front frame and authoritative character identity and walk pose. Create exactly one rotation-view sprite of this same haggis. Preserve its round squat peat-brown pudding body, coarse tufty surface and warm ochre painted facets; two big cream eyes with black pupils, heavy curved eyebrows and huge cheeky toothy smile; four short chunky brown legs with charcoal cloven hooves; red tartan sash with loch-blue and muted-gold crossing bands; small central tan tasselled sporran with its green-and-purple thistle badge; and short braided curved fuse with a crisp orange-yellow star spark and tiny sparks. Keep the same face, fuse, colours, scale, proportions, bold dark outlines and broad hand-painted batch-1 style. Preserve walk frame 1's phase exactly: the anatomical LEFT pair of legs are stepped forward and the RIGHT pair trail. Keep the same jaunty scuttle and do not settle into idle or reverse the stride; adapt the same leg phase naturally to the rotated view.
+
+A2 rotation: front three-quarter view. Turn the haggis's whole body and head towards the viewer's RIGHT (image right), with both eyes, its grin and the front of its sash still clearly visible. The face looks diagonally right. Show the near side naturally and make this a real turn, not a horizontal mirror of the source. Keep the pose appropriate to the idle or walk1 reference as specified above.
+
+Square 1:1 production animation sprite for Bogle Castle, composed for the established 256x256 art set. Keep the complete haggis centred at the same chunky scale as the reference, with its fuse and spark fully inside the canvas and its lowest complete hooves meeting the bottom edge without clipping. The backdrop is a visually flat opaque magenta #FF00FF chroma-key matte, with every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps between the legs. Each empty background pixel must satisfy either (|R-255|<=24, G<=24, |B-255|<=24) or (R>=G+64, B>=G+64, R>=128, B>=128). Keep all painted shading and texture inside the haggis. No ground, floor, scenery, cast shadow, gradient, glow, transparency or checkerboard. No lettering, text, numbers, symbols, logos, border, signature, watermark or gore.
+~~~
+
+### spr_haggis_walk1_a3.png
+
+Attempt 1 — accepted.
+
+Reference used: `games/bogle/art/src/spr_haggis_walk1.png` (256×256), supplied through imagegen edit/reference mode.
+
+256×256 review: Clear right-facing side profile with the same grin, fuse, sash and sporran. The offset legs keep the jaunty walk1 motion visible in profile.
+Matte check: corner RGB values TL/TR/BL/BR: TL (240,9,243), TR (247,11,245), BL (242,20,243), BR (245,17,244); all satisfy the requested key rule. Non-keyed border pixels: none. Opaque RGB PNG; no non-keyed background pixels were visible outside the haggis.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game: chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even, flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border. Affectionate and silly, never gory.
+
+Edit reference image 1, spr_haggis_walk1.png, as the exact front frame and authoritative character identity and walk pose. Create exactly one rotation-view sprite of this same haggis. Preserve its round squat peat-brown pudding body, coarse tufty surface and warm ochre painted facets; two big cream eyes with black pupils, heavy curved eyebrows and huge cheeky toothy smile; four short chunky brown legs with charcoal cloven hooves; red tartan sash with loch-blue and muted-gold crossing bands; small central tan tasselled sporran with its green-and-purple thistle badge; and short braided curved fuse with a crisp orange-yellow star spark and tiny sparks. Keep the same face, fuse, colours, scale, proportions, bold dark outlines and broad hand-painted batch-1 style. Preserve walk frame 1's phase exactly: the anatomical LEFT pair of legs are stepped forward and the RIGHT pair trail. Keep the same jaunty scuttle and do not settle into idle or reverse the stride; adapt the same leg phase naturally to the rotated view.
+
+A3 rotation: full side profile facing the viewer's RIGHT (image right). Rotate the whole body and head into a true right-facing profile, with the face, gaze and muzzle pointing clearly at the right edge; show a side silhouette, not a front or three-quarter view. Make a correctly rotated view, not a horizontal mirror of the source. Keep the pose appropriate to the idle or walk1 reference as specified above.
+
+Square 1:1 production animation sprite for Bogle Castle, composed for the established 256x256 art set. Keep the complete haggis centred at the same chunky scale as the reference, with its fuse and spark fully inside the canvas and its lowest complete hooves meeting the bottom edge without clipping. The backdrop is a visually flat opaque magenta #FF00FF chroma-key matte, with every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps between the legs. Each empty background pixel must satisfy either (|R-255|<=24, G<=24, |B-255|<=24) or (R>=G+64, B>=G+64, R>=128, B>=128). Keep all painted shading and texture inside the haggis. No ground, floor, scenery, cast shadow, gradient, glow, transparency or checkerboard. No lettering, text, numbers, symbols, logos, border, signature, watermark or gore.
+~~~
+
+### spr_haggis_walk1_a4.png
+
+Attempt 1 — accepted.
+
+Reference used: `games/bogle/art/src/spr_haggis_walk1.png` (256×256), supplied through imagegen edit/reference mode.
+
+256×256 review: Rear three-quarter view with the face fully turned away. The legs keep an active staggered scuttle, and the rear sash, fuse and spark match the same haggis.
+Matte check: corner RGB values TL/TR/BL/BR: TL (246,7,248), TR (250,11,247), BL (244,17,243), BR (248,16,246); all satisfy the requested key rule. Non-keyed border pixels: none. Opaque RGB PNG; no non-keyed background pixels were visible outside the haggis.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game: chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even, flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border. Affectionate and silly, never gory.
+
+Edit reference image 1, spr_haggis_walk1.png, as the exact front frame and authoritative character identity and walk pose. Create exactly one rotation-view sprite of this same haggis. Preserve its round squat peat-brown pudding body, coarse tufty surface and warm ochre painted facets; two big cream eyes with black pupils, heavy curved eyebrows and huge cheeky toothy smile; four short chunky brown legs with charcoal cloven hooves; red tartan sash with loch-blue and muted-gold crossing bands; small central tan tasselled sporran with its green-and-purple thistle badge; and short braided curved fuse with a crisp orange-yellow star spark and tiny sparks. Keep the same face, fuse, colours, scale, proportions, bold dark outlines and broad hand-painted batch-1 style. Preserve walk frame 1's phase exactly: the anatomical LEFT pair of legs are stepped forward and the RIGHT pair trail. Keep the same jaunty scuttle and do not settle into idle or reverse the stride; adapt the same leg phase naturally to the rotated view.
+
+A4 rotation: back three-quarter view, turned away from the viewer. Show the haggis's rounded back and one side, with its head and face turned away towards the viewer's RIGHT. No eyes, smile or front-facing face features are visible. The tartan sash wraps naturally around the back of the body. Keep the pose appropriate to the idle or walk1 reference as specified above.
+
+Square 1:1 production animation sprite for Bogle Castle, composed for the established 256x256 art set. Keep the complete haggis centred at the same chunky scale as the reference, with its fuse and spark fully inside the canvas and its lowest complete hooves meeting the bottom edge without clipping. The backdrop is a visually flat opaque magenta #FF00FF chroma-key matte, with every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps between the legs. Each empty background pixel must satisfy either (|R-255|<=24, G<=24, |B-255|<=24) or (R>=G+64, B>=G+64, R>=128, B>=128). Keep all painted shading and texture inside the haggis. No ground, floor, scenery, cast shadow, gradient, glow, transparency or checkerboard. No lettering, text, numbers, symbols, logos, border, signature, watermark or gore.
+~~~
+
+### spr_haggis_walk1_a5.png
+
+Attempt 1 — accepted.
+
+Reference used: `games/bogle/art/src/spr_haggis_walk1.png` (256×256), supplied through imagegen edit/reference mode.
+
+256×256 review: Straight back view with the face hidden, the sash across the rear, and the offset hooves showing the walk1 waddle. The same fuse and body colours remain clear.
+Matte check: corner RGB values TL/TR/BL/BR: TL (244,8,245), TR (249,10,248), BL (244,17,242), BR (247,16,245); all satisfy the requested key rule. Non-keyed border pixels: none. Opaque RGB PNG; no non-keyed background pixels were visible outside the haggis.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game: chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even, flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border. Affectionate and silly, never gory.
+
+Edit reference image 1, spr_haggis_walk1.png, as the exact front frame and authoritative character identity and walk pose. Create exactly one rotation-view sprite of this same haggis. Preserve its round squat peat-brown pudding body, coarse tufty surface and warm ochre painted facets; two big cream eyes with black pupils, heavy curved eyebrows and huge cheeky toothy smile; four short chunky brown legs with charcoal cloven hooves; red tartan sash with loch-blue and muted-gold crossing bands; small central tan tasselled sporran with its green-and-purple thistle badge; and short braided curved fuse with a crisp orange-yellow star spark and tiny sparks. Keep the same face, fuse, colours, scale, proportions, bold dark outlines and broad hand-painted batch-1 style. Preserve walk frame 1's phase exactly: the anatomical LEFT pair of legs are stepped forward and the RIGHT pair trail. Keep the same jaunty scuttle and do not settle into idle or reverse the stride; adapt the same leg phase naturally to the rotated view.
+
+A5 rotation: straight back view, centred and directly facing away from the viewer. Show the rounded tufted peat-brown back of the haggis, with no face, eyes, smile or front sporran visible. Show the red tartan sash wrapping across the rear, all four short legs and hooves, and the fuse and crisp spark above the body. Keep the pose appropriate to the idle or walk1 reference as specified above.
+
+Square 1:1 production animation sprite for Bogle Castle, composed for the established 256x256 art set. Keep the complete haggis centred at the same chunky scale as the reference, with its fuse and spark fully inside the canvas and its lowest complete hooves meeting the bottom edge without clipping. The backdrop is a visually flat opaque magenta #FF00FF chroma-key matte, with every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps between the legs. Each empty background pixel must satisfy either (|R-255|<=24, G<=24, |B-255|<=24) or (R>=G+64, B>=G+64, R>=128, B>=128). Keep all painted shading and texture inside the haggis. No ground, floor, scenery, cast shadow, gradient, glow, transparency or checkerboard. No lettering, text, numbers, symbols, logos, border, signature, watermark or gore.
+~~~
+
+
+## Rotation views (haggis walk2)
+
+### spr_haggis_walk2_a2.png
+
+Attempt 1 — accepted.
+
+Reference used: `games/bogle/art/src/spr_haggis_walk2.png` and `games/bogle/art/src/spr_haggis_walk1_a3.png` (both 256×256), supplied through imagegen edit/reference mode; the profile reference was used only for rotation and painted-view guidance.
+
+256×256 review: A2 front-three-quarter view turned to the viewer’s right. Both eyes and grin remain clear, and the walk2 right-pair-forward scuttle is preserved.
+Matte check: corner RGB values TL/TR/BL/BR: (242,9,243), (249,11,246), (243,18,240), (246,16,244); all satisfy the requested key rule. Non-keyed pixels in the outer 4px border: 0. Opaque RGB PNG.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game: chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even, flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border. Affectionate and silly, never gory.
+
+Edit reference image 1, spr_haggis_walk2.png, as the exact front frame and authoritative character identity and walk pose. Create exactly one rotation-view sprite of this same haggis. Preserve its round squat peat-brown pudding body, coarse tufty surface and warm ochre painted facets; two big cream eyes with black pupils, heavy curved eyebrows and huge cheeky toothy smile; four short chunky brown legs with charcoal cloven hooves; red tartan sash with loch-blue and muted-gold crossing bands; small central tan tasselled sporran with its green-and-purple thistle badge; and short braided curved fuse with a crisp orange-yellow star spark and tiny sparks. Keep the same face, fuse, colours, scale, proportions, bold dark outlines and broad hand-painted batch-1 style. Preserve walk frame 2's phase exactly: its anatomical RIGHT pair of legs (on the viewer's left in the front frame) are stepped forward and the LEFT pair trail, the opposite stride to walk1. Keep the same jaunty scuttle; adapt this same leg phase naturally to the rotated view.
+
+A2 rotation: front three-quarter view. Turn the haggis's whole body and head towards the viewer's RIGHT (image right), with both eyes, its grin and the front of its sash still clearly visible. The face looks diagonally right. Show the near side naturally and make this a real turn, not a horizontal mirror of the source.
+
+Use reference image 2, spr_haggis_walk1_a3.png, only as the accepted right-facing profile rotation and painted-view reference; keep the walk2 character, stride, pose, outfit and scale from image 1.
+
+Square 1:1 production animation sprite for Bogle Castle, composed for the established 256x256 art set. Keep the complete haggis centred at the same chunky scale as the reference, with its fuse and spark fully inside the canvas and its lowest complete hooves meeting the bottom edge without clipping. The backdrop is a visually flat opaque magenta #FF00FF chroma-key matte, with every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps between the legs. Each empty background pixel must satisfy either (|R-255|<=24, G<=24, |B-255|<=24) or (R>=G+64, B>=G+64, R>=128, B>=128). Keep all painted shading and texture inside the haggis. No ground, floor, scenery, cast shadow, gradient, glow, transparency or checkerboard. No lettering, text, numbers, symbols, logos, border, signature, watermark or gore.
+~~~
+
+### spr_haggis_walk2_a3.png
+
+Attempt 1 — accepted.
+
+Reference used: `games/bogle/art/src/spr_haggis_walk2.png` and `games/bogle/art/src/spr_haggis_walk1_a3.png` (both 256×256), supplied through imagegen edit/reference mode; the profile reference was used only for rotation and painted-view guidance.
+
+256×256 review: A3 true right-facing side profile with one eye, the same sash, sporran, fuse, and alternate walk2 stride.
+Matte check: corner RGB values TL/TR/BL/BR: (243,9,245), (248,10,245), (242,17,240), (245,16,243); all satisfy the requested key rule. Non-keyed pixels in the outer 4px border: 0. Opaque RGB PNG.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game: chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even, flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border. Affectionate and silly, never gory.
+
+Edit reference image 1, spr_haggis_walk2.png, as the exact front frame and authoritative character identity and walk pose. Create exactly one rotation-view sprite of this same haggis. Preserve its round squat peat-brown pudding body, coarse tufty surface and warm ochre painted facets; two big cream eyes with black pupils, heavy curved eyebrows and huge cheeky toothy smile; four short chunky brown legs with charcoal cloven hooves; red tartan sash with loch-blue and muted-gold crossing bands; small central tan tasselled sporran with its green-and-purple thistle badge; and short braided curved fuse with a crisp orange-yellow star spark and tiny sparks. Keep the same face, fuse, colours, scale, proportions, bold dark outlines and broad hand-painted batch-1 style. Preserve walk frame 2's phase exactly: its anatomical RIGHT pair of legs (on the viewer's left in the front frame) are stepped forward and the LEFT pair trail, the opposite stride to walk1. Keep the same jaunty scuttle; adapt this same leg phase naturally to the rotated view.
+
+A3 rotation: full side profile facing the viewer's RIGHT (image right). Rotate the whole body and head into a true right-facing profile, with the face, gaze and muzzle pointing clearly at the right edge; show a side silhouette, not a front or three-quarter view. Make a correctly rotated view, not a horizontal mirror of the source.
+
+Use reference image 2, spr_haggis_walk1_a3.png, only as the accepted right-facing profile rotation and painted-view reference; keep the walk2 character, stride, pose, outfit and scale from image 1.
+
+Square 1:1 production animation sprite for Bogle Castle, composed for the established 256x256 art set. Keep the complete haggis centred at the same chunky scale as the reference, with its fuse and spark fully inside the canvas and its lowest complete hooves meeting the bottom edge without clipping. The backdrop is a visually flat opaque magenta #FF00FF chroma-key matte, with every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps between the legs. Each empty background pixel must satisfy either (|R-255|<=24, G<=24, |B-255|<=24) or (R>=G+64, B>=G+64, R>=128, B>=128). Keep all painted shading and texture inside the haggis. No ground, floor, scenery, cast shadow, gradient, glow, transparency or checkerboard. No lettering, text, numbers, symbols, logos, border, signature, watermark or gore.
+~~~
+
+### spr_haggis_walk2_a4.png
+
+Attempt 1 — accepted.
+
+Reference used: `games/bogle/art/src/spr_haggis_walk2.png` and `games/bogle/art/src/spr_haggis_walk1_a3.png` (both 256×256), supplied through imagegen edit/reference mode; the profile reference was used only for rotation and painted-view guidance.
+
+256×256 review: A4 back-three-quarter view turned away to the viewer’s right. No face is visible; the rear sash and walk2 gait read clearly.
+Matte check: corner RGB values TL/TR/BL/BR: (243,8,246), (249,10,246), (242,17,242), (245,16,245); all satisfy the requested key rule. Non-keyed pixels in the outer 4px border: 0. Opaque RGB PNG.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game: chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even, flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border. Affectionate and silly, never gory.
+
+Edit reference image 1, spr_haggis_walk2.png, as the exact front frame and authoritative character identity and walk pose. Create exactly one rotation-view sprite of this same haggis. Preserve its round squat peat-brown pudding body, coarse tufty surface and warm ochre painted facets; two big cream eyes with black pupils, heavy curved eyebrows and huge cheeky toothy smile; four short chunky brown legs with charcoal cloven hooves; red tartan sash with loch-blue and muted-gold crossing bands; small central tan tasselled sporran with its green-and-purple thistle badge; and short braided curved fuse with a crisp orange-yellow star spark and tiny sparks. Keep the same face, fuse, colours, scale, proportions, bold dark outlines and broad hand-painted batch-1 style. Preserve walk frame 2's phase exactly: its anatomical RIGHT pair of legs (on the viewer's left in the front frame) are stepped forward and the LEFT pair trail, the opposite stride to walk1. Keep the same jaunty scuttle; adapt this same leg phase naturally to the rotated view.
+
+A4 rotation: back three-quarter view, between side profile and straight back. Turn the haggis's body away from the viewer while showing its rounded back and one side; the head and face are turned away towards the viewer's RIGHT. No eyes, smile or front-facing face features are visible. Show the red tartan sash wrapping naturally around the rear; hide the front sporran. Keep the walk2 stride and fuse/spark.
+
+Use reference image 2, spr_haggis_walk1_a3.png, only as the accepted right-facing profile rotation and painted-view reference; keep the walk2 character, stride, pose, outfit and scale from image 1.
+
+Square 1:1 production animation sprite for Bogle Castle, composed for the established 256x256 art set. Keep the complete haggis centred at the same chunky scale as the reference, with its fuse and spark fully inside the canvas and its lowest complete hooves meeting the bottom edge without clipping. The backdrop is a visually flat opaque magenta #FF00FF chroma-key matte, with every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps between the legs. Each empty background pixel must satisfy either (|R-255|<=24, G<=24, |B-255|<=24) or (R>=G+64, B>=G+64, R>=128, B>=128). Keep all painted shading and texture inside the haggis. No ground, floor, scenery, cast shadow, gradient, glow, transparency or checkerboard. No lettering, text, numbers, symbols, logos, border, signature, watermark or gore.
+~~~
+
+### spr_haggis_walk2_a5.png
+
+Attempt 1 — accepted.
+
+Reference used: `games/bogle/art/src/spr_haggis_walk2.png` and `games/bogle/art/src/spr_haggis_walk1_a3.png` (both 256×256), supplied through imagegen edit/reference mode; the profile reference was used only for rotation and painted-view guidance.
+
+256×256 review: A5 square-on back view with no face or front sporran, the rear sash, four hooves, fuse, and spark visible.
+Matte check: corner RGB values TL/TR/BL/BR: (243,8,243), (248,11,245), (242,18,240), (245,15,244); all satisfy the requested key rule. Non-keyed pixels in the outer 4px border: 0. Opaque RGB PNG.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game: chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even, flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border. Affectionate and silly, never gory.
+
+Edit reference image 1, spr_haggis_walk2.png, as the exact front frame and authoritative character identity and walk pose. Create exactly one rotation-view sprite of this same haggis. Preserve its round squat peat-brown pudding body, coarse tufty surface and warm ochre painted facets; two big cream eyes with black pupils, heavy curved eyebrows and huge cheeky toothy smile; four short chunky brown legs with charcoal cloven hooves; red tartan sash with loch-blue and muted-gold crossing bands; small central tan tasselled sporran with its green-and-purple thistle badge; and short braided curved fuse with a crisp orange-yellow star spark and tiny sparks. Keep the same face, fuse, colours, scale, proportions, bold dark outlines and broad hand-painted batch-1 style. Preserve walk frame 2's phase exactly: its anatomical RIGHT pair of legs (on the viewer's left in the front frame) are stepped forward and the LEFT pair trail, the opposite stride to walk1. Keep the same jaunty scuttle; adapt this same leg phase naturally to the rotated view.
+
+A5 rotation: straight back view, centred and directly facing away from the viewer. Make the rear view square-on and symmetrical, with the fuse centred above the body. Show the rounded tufted peat-brown back and red tartan sash wrapping horizontally across the rear; show no face, eyes, smile or front sporran. Show all four short legs and complete hooves, preserving walk2's same alternating leg phase.
+
+Use reference image 2, spr_haggis_walk1_a3.png, only as the accepted right-facing profile rotation and painted-view reference; keep the walk2 character, stride, pose, outfit and scale from image 1.
+
+Square 1:1 production animation sprite for Bogle Castle, composed for the established 256x256 art set. Keep the complete haggis centred at the same chunky scale as the reference, with its fuse and spark fully inside the canvas and its lowest complete hooves meeting the bottom edge without clipping. The backdrop is a visually flat opaque magenta #FF00FF chroma-key matte, with every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps between the legs. Each empty background pixel must satisfy either (|R-255|<=24, G<=24, |B-255|<=24) or (R>=G+64, B>=G+64, R>=128, B>=128). Keep all painted shading and texture inside the haggis. No ground, floor, scenery, cast shadow, gradient, glow, transparency or checkerboard. No lettering, text, numbers, symbols, logos, border, signature, watermark or gore.
+~~~
+
+## Brazier flame frames
+
+### dec_brazier_f2.png
+
+Attempt 1 — accepted.
+
+Reference used: `games/bogle/art/src/dec_brazier.png` (256×256), supplied through imagegen edit/reference mode.
+
+256×256 review: A taller, narrow central lick rises above shorter tongues; the entire fire remains inside the frame. The bowl, iron stand, coals, colours, and framing retain the same outer alignment as the reference.
+Non-flame lower bowl/stand footprint bbox (inclusive 0-based pixels, x0,y0,x1,y1): original `(29,90,226,250)`; frame `(29,90,226,250)`.
+Matte check: corner RGB values TL/TR/BL/BR: (247,11,247), (250,14,246), (245,18,242), (246,16,244); all satisfy the requested key rule. Non-keyed pixels in the outer 4px border: 0. Opaque RGB PNG.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game: chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even, flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border. Affectionate and silly, never gory.
+
+Edit reference image 1, dec_brazier.png, as the exact 256x256 brazier sprite and authoritative source for the object. Create exactly one alternate flame animation frame of this same brazier. Change only the flames. Preserve the bowl, circular iron rim, charcoal bands, rivets, chunky black coals, all three splayed iron legs and broad feet exactly in shape, position, scale, colour, outline and framing. Keep the brazier pixel-aligned with the source: do not shift, resize, crop, redraw, recolour or add details to any non-flame part. The flame bases stay anchored in the same coal bed.
+
+Frame f2 — taller lick: make the fire flicker distinctly higher with one narrow, tall central orange flame tongue rising above the surrounding tongues, plus a few shorter golden-orange tongues. Keep crisp dark outlines and simple pale-yellow inner cores; use the same bright orange and golden-yellow palette. The entire flame stays inside the square with the highest tip just below the top edge. No smoke, sparks, embers, diffuse glow or light spill.
+
+Square 1:1 production sprite for Bogle Castle. Keep the complete brazier at exactly the same scale and location as reference image 1, with the same highest-flame area, full bowl and all three feet visible. The backdrop is a visually flat opaque magenta #FF00FF chroma-key matte, with every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps between the legs. Each empty background pixel must satisfy either (|R-255|<=24, G<=24, |B-255|<=24) or (R>=G+64, B>=G+64, R>=128, B>=128). Keep painted shading and texture inside the outlined brazier and flames. No floor, ground, scenery, shadow, gradient, vignette, glow, transparency, checkerboard, text, lettering, numbers, symbols, logos, border, signature, watermark or gore.
+~~~
+
+### dec_brazier_f3.png
+
+Attempt 1 — accepted.
+
+Reference used: `games/bogle/art/src/dec_brazier.png` (256×256), supplied through imagegen edit/reference mode.
+
+256×256 review: The flames sweep distinctly left, with the tallest tip left of centre and the bases anchored in the coals. The bowl, iron stand, coals, colours, and framing retain the same outer alignment as the reference.
+Non-flame lower bowl/stand footprint bbox (inclusive 0-based pixels, x0,y0,x1,y1): original `(29,90,226,250)`; frame `(29,90,226,250)`.
+Matte check: corner RGB values TL/TR/BL/BR: (244,9,244), (248,12,245), (241,18,240), (245,18,243); all satisfy the requested key rule. Non-keyed pixels in the outer 4px border: 0. Opaque RGB PNG.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game: chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even, flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border. Affectionate and silly, never gory.
+
+Edit reference image 1, dec_brazier.png, as the exact 256x256 brazier sprite and authoritative source for the object. Create exactly one alternate flame animation frame of this same brazier. Change only the flames. Preserve the bowl, circular iron rim, charcoal bands, rivets, chunky black coals, all three splayed iron legs and broad feet exactly in shape, position, scale, colour, outline and framing. Keep the brazier pixel-aligned with the source: do not shift, resize, crop, redraw, recolour or add details to any non-flame part. The flame bases stay anchored in the same coal bed.
+
+Frame f3 — leaning left: replace only the flame silhouette with a clearly different lively flicker swept strongly towards the viewer's LEFT (image left), as if a draft bends the fire. The main flame tip leans left of the bowl centre and the smaller tongues trail diagonally left. Keep the fire orange and golden yellow with crisp dark outlines and pale-yellow cores, anchored at the same coal bed height. Keep all flame tips below the top edge. No smoke, sparks, embers, diffuse glow or light spill.
+
+Square 1:1 production sprite for Bogle Castle. Keep the complete brazier at exactly the same scale and location as reference image 1, with the same highest-flame area, full bowl and all three feet visible. The backdrop is a visually flat opaque magenta #FF00FF chroma-key matte, with every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps between the legs. Each empty background pixel must satisfy either (|R-255|<=24, G<=24, |B-255|<=24) or (R>=G+64, B>=G+64, R>=128, B>=128). Keep painted shading and texture inside the outlined brazier and flames. No floor, ground, scenery, shadow, gradient, vignette, glow, transparency, checkerboard, text, lettering, numbers, symbols, logos, border, signature, watermark or gore.
+~~~
+
+### dec_brazier_f4.png
+
+Attempt 1 — accepted.
+
+Reference used: `games/bogle/art/src/dec_brazier.png` (256×256), supplied through imagegen edit/reference mode.
+
+256×256 review: The flame sits lower and leans right, leaving a visible keyed gap above it. The bowl, iron stand, coals, colours, and framing retain the same outer alignment as the reference.
+Non-flame lower bowl/stand footprint bbox (inclusive 0-based pixels, x0,y0,x1,y1): original `(29,90,226,250)`; frame `(29,90,226,250)`.
+Matte check: corner RGB values TL/TR/BL/BR: (246,9,245), (249,13,245), (244,17,240), (246,19,243); all satisfy the requested key rule. Non-keyed pixels in the outer 4px border: 0. Opaque RGB PNG.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game: chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even, flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border. Affectionate and silly, never gory.
+
+Edit reference image 1, dec_brazier.png, as the exact 256x256 brazier sprite and authoritative source for the object. Create exactly one alternate flame animation frame of this same brazier. Change only the flames. Preserve the bowl, circular iron rim, charcoal bands, rivets, chunky black coals, all three splayed iron legs and broad feet exactly in shape, position, scale, colour, outline and framing. Keep the brazier pixel-aligned with the source: do not shift, resize, crop, redraw, recolour or add details to any non-flame part. The flame bases stay anchored in the same coal bed.
+
+Frame f4 — lower and leaning right: make a clearly different compact flicker with shorter flame tongues than the original, leaving a visible clear-magenta gap above the fire. Sweep the strongest tongue and the flame tips towards the viewer's RIGHT (image right), as if a draft bends the fire. The fire remains bright orange and golden yellow with crisp dark outlines and a few pale-yellow cores, rooted at the same coal bed height. Do not lower, move or change the brazier. No smoke, sparks, embers, diffuse glow or light spill.
+
+Square 1:1 production sprite for Bogle Castle. Keep the complete brazier at exactly the same scale and location as reference image 1, with all flame tips, the full bowl and all three feet visible. The backdrop is a visually flat opaque magenta #FF00FF chroma-key matte, with every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps between the legs. Each empty background pixel must satisfy either (|R-255|<=24, G<=24, |B-255|<=24) or (R>=G+64, B>=G+64, R>=128, B>=128). Keep painted shading and texture inside the outlined brazier and flames. No floor, ground, scenery, shadow, gradient, vignette, glow, transparency, checkerboard, text, lettering, numbers, symbols, logos, border, signature, watermark or gore.
+~~~
+
+## Rotation views (tartan ghost idle, float2)
+
+### Idle rotation views
+
+#### spr_tartan_ghost_idle_a2.png
+
+Attempt 1 — accepted.
+
+Reference used: `games/bogle/art/src/spr_tartan_ghost_idle.png` (256×256), supplied as edit/reference image 1; `games/bogle/art/src/spr_gamekeeper_walk1_a3.png` supplied only as the right-facing rotation guide.
+
+256×256 RGB review: Right front-three-quarter turn reads clearly; both hollow eyes remain visible, with the far eye narrower. The tartan robe, cyan inner hems and billowing sleeves match the same ghost; the lower edge remains ragged cloth with no feet or legs.
+Matte check: corner RGB values TL/TR/BL/BR: (245,10,246), (248,12,245), (242,20,241), (245,16,244); all four corners satisfy the requested key rule. Background pixels outside the figure: 0 non-keyed of 33008 candidates. Non-keyed border pixels: 0. Opaque RGB PNG.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game: chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even, flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border. Affectionate and silly, never gory.
+
+Edit reference image 1, spr_tartan_ghost_idle.png, as the exact front frame and authoritative character identity, idle pose, colours, scale and canvas placement. Use reference image 2 only as the orientation guide for a right-facing profile; do not borrow its human subject, outfit, palette or proportions. Create exactly one rotation-view sprite of this same ghost. Preserve its rounded hood-like sheet head, two large hollow dark oval eyes with ghost-cyan inner rims, billowing empty sleeves, long draped torso and ragged lower cloth tips; retain broad red-and-peat-brown tartan checks, dark outlines, ghost-cyan translucent highlights, and the same broad hand-painted facets. The ghost floats: it has no feet, shoes, legs or ground contact; its lower forms are ragged fluttering cloth, not feet. Keep the face, tartan pattern, translucency, colours and silhouette recognizable as the same ghost.
+
+A2 rotation: front three-quarter view. Turn the ghost's whole body and hood towards the viewer's RIGHT (image right), with both hollow eyes and the front of the tartan still clearly visible; the face points diagonally right. Show the near side naturally and make this a real three-dimensional turn, not a horizontal mirror of the source. Retain the calm idle pose. Keep the same scale and exact vertical placement as the front frame: the top of the hood and lowest cloth tip stay on the same canvas rows; do not move the ghost up or down, zoom, crop or change the pose.
+
+Square 1:1 production sprite for Bogle Castle, composed for the established 256x256 art set. Keep the complete floating ghost in frame at the same scale and vertical position as reference image 1, with all ragged cloth tips visible and the same clear space around it. The backdrop is a visually flat opaque magenta #FF00FF chroma-key matte, with every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps around the sleeves and cloth. Each empty background pixel must satisfy either (|R-255|<=24, G<=24, |B-255|<=24) or (R>=G+64, B>=G+64, R>=128, B>=128). Keep all painted shading and texture inside the ghost. No floor, ground, scenery, cast shadow, gradient, glow, transparency or checkerboard. No lettering, text, numbers, symbols, logos, border, signature, watermark or gore.
+~~~
+
+#### spr_tartan_ghost_idle_a3.png
+
+Attempt 1 — accepted.
+
+Reference used: `games/bogle/art/src/spr_tartan_ghost_idle.png` (256×256), supplied as edit/reference image 1; `games/bogle/art/src/spr_gamekeeper_walk1_a3.png` supplied only as the right-facing rotation guide.
+
+256×256 RGB review: Clear right-facing profile with one cyan-rimmed hollow eye and the far eye hidden. The head, tartan drape, sleeve and ragged floating hem remain recognizable as the same ghost; no feet or legs appear.
+Matte check: corner RGB values TL/TR/BL/BR: (244,8,247), (249,11,247), (242,18,242), (245,16,245); all four corners satisfy the requested key rule. Background pixels outside the figure: 0 non-keyed of 39118 candidates. Non-keyed border pixels: 0. Opaque RGB PNG.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game: chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even, flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border. Affectionate and silly, never gory.
+
+Edit reference image 1, spr_tartan_ghost_idle.png, as the exact front frame and authoritative character identity, idle pose, colours, scale and canvas placement. Use reference image 2 only as the orientation guide for a right-facing profile; do not borrow its human subject, outfit, palette or proportions. Create exactly one rotation-view sprite of this same ghost. Preserve its rounded hood-like sheet head, two large hollow dark oval eyes with ghost-cyan inner rims, billowing empty sleeves, long draped torso and ragged lower cloth tips; retain broad red-and-peat-brown tartan checks, dark outlines, ghost-cyan translucent highlights, and the same broad hand-painted facets. The ghost floats: it has no feet, shoes, legs or ground contact; its lower forms are ragged fluttering cloth, not feet. Keep the face, tartan pattern, translucency, colours and silhouette recognizable as the same ghost.
+
+A3 rotation: full side profile facing the viewer's RIGHT (image right). Turn the ghost's whole body and hood into a true right-facing profile, with its face pointing clearly at the right edge; show one hollow dark eye in profile and hide the far eye. Show a side silhouette, not a front or three-quarter view. Make a real three-dimensional turn, not a horizontal mirror of the source. Retain the calm idle pose. Keep the same scale and exact vertical placement as the front frame: the top of the hood and lowest cloth tip stay on the same canvas rows; do not move the ghost up or down, zoom, crop or change the pose.
+
+Square 1:1 production sprite for Bogle Castle, composed for the established 256x256 art set. Keep the complete floating ghost in frame at the same scale and vertical position as reference image 1, with all ragged cloth tips visible and the same clear space around it. The backdrop is a visually flat opaque magenta #FF00FF chroma-key matte, with every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps around the sleeves and cloth. Each empty background pixel must satisfy either (|R-255|<=24, G<=24, |B-255|<=24) or (R>=G+64, B>=G+64, R>=128, B>=128). Keep all painted shading and texture inside the ghost. No floor, ground, scenery, cast shadow, gradient, glow, transparency or checkerboard. No lettering, text, numbers, symbols, logos, border, signature, watermark or gore.
+~~~
+
+#### spr_tartan_ghost_idle_a4.png
+
+Attempt 1 — accepted.
+
+Reference used: `games/bogle/art/src/spr_tartan_ghost_idle.png` (256×256), supplied as edit/reference image 1; `games/bogle/art/src/spr_gamekeeper_walk1_a3.png` supplied only as the right-facing rotation guide.
+
+256×256 RGB review: Back-three-quarter view reads away from the viewer; no eyes or front face features show. The rear tartan wrap and asymmetric cloth overlap suggest the turn while retaining the same hovering idle silhouette.
+Matte check: corner RGB values TL/TR/BL/BR: (243,9,245), (249,11,245), (242,19,241), (246,17,245); all four corners satisfy the requested key rule. Background pixels outside the figure: 0 non-keyed of 34981 candidates. Non-keyed border pixels: 0. Opaque RGB PNG.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game: chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even, flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border. Affectionate and silly, never gory.
+
+Edit reference image 1, spr_tartan_ghost_idle.png, as the exact front frame and authoritative character identity, idle pose, colours, scale and canvas placement. Use reference image 2 only as the orientation guide for a right-facing profile; do not borrow its human subject, outfit, palette or proportions. Create exactly one rotation-view sprite of this same ghost. Preserve its rounded hood-like sheet head, two large hollow dark oval eyes with ghost-cyan inner rims, billowing empty sleeves, long draped torso and ragged lower cloth tips; retain broad red-and-peat-brown tartan checks, dark outlines, ghost-cyan translucent highlights, and the same broad hand-painted facets. The ghost floats: it has no feet, shoes, legs or ground contact; its lower forms are ragged fluttering cloth, not feet. Keep the face, tartan pattern, translucency, colours and silhouette recognizable as the same ghost.
+
+A4 rotation: back three-quarter view, turned away from the viewer. Show the ghost's rounded tartan-covered back and one side; its head and face turn away towards the viewer's RIGHT (image right), with no eyes or front-facing face features visible. Let the broad tartan cloth wrap naturally around the back and side of the floating body. Keep the billowing empty sleeves and ragged lower cloth tips in the same calm idle pose. Make a real three-dimensional turn, not a horizontal mirror of the source. Keep the same scale and exact vertical placement as the front frame: the top of the hood and lowest cloth tip stay on the same canvas rows; do not move the ghost up or down, zoom, crop or change the pose.
+
+Square 1:1 production sprite for Bogle Castle, composed for the established 256x256 art set. Keep the complete floating ghost in frame at the same scale and vertical position as reference image 1, with all ragged cloth tips visible and the same clear space around it. The backdrop is a visually flat opaque magenta #FF00FF chroma-key matte, with every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps around the sleeves and cloth. Each empty background pixel must satisfy either (|R-255|<=24, G<=24, |B-255|<=24) or (R>=G+64, B>=G+64, R>=128, B>=128). Keep all painted shading and texture inside the ghost. No floor, ground, scenery, cast shadow, gradient, glow, transparency or checkerboard. No lettering, text, numbers, symbols, logos, border, signature, watermark or gore.
+~~~
+
+#### spr_tartan_ghost_idle_a5.png
+
+Attempt 1 — accepted.
+
+Reference used: `games/bogle/art/src/spr_tartan_ghost_idle.png` (256×256), supplied as edit/reference image 1; `games/bogle/art/src/spr_gamekeeper_walk1_a3.png` supplied only as the right-facing rotation guide.
+
+256×256 RGB review: Straight rear view reads directly away; no eyes or face show. The centered rear tartan, balanced empty sleeves and ragged lower cloth retain the same floating ghost identity.
+Matte check: corner RGB values TL/TR/BL/BR: (240,9,244), (247,12,246), (239,16,239), (243,18,244); all four corners satisfy the requested key rule. Background pixels outside the figure: 0 non-keyed of 30740 candidates. Non-keyed border pixels: 0. Opaque RGB PNG.
+
+Full prompt (verbatim):
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game: chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even, flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border. Affectionate and silly, never gory.
+
+Edit reference image 1, spr_tartan_ghost_idle.png, as the exact front frame and authoritative character identity, idle pose, colours, scale and canvas placement. Use reference image 2 only as the orientation guide for a right-facing profile; do not borrow its human subject, outfit, palette or proportions. Create exactly one rotation-view sprite of this same ghost. Preserve its rounded hood-like sheet head, two large hollow dark oval eyes with ghost-cyan inner rims, billowing empty sleeves, long draped torso and ragged lower cloth tips; retain broad red-and-peat-brown tartan checks, dark outlines, ghost-cyan translucent highlights, and the same broad hand-painted facets. The ghost floats: it has no feet, shoes, legs or ground contact; its lower forms are ragged fluttering cloth, not feet. Keep the face, tartan pattern, translucency, colours and silhouette recognizable as the same ghost.
+
+A5 rotation: straight back view, centred and facing directly away from the viewer. Show the rounded back of the hood and the tartan wrapping continuously across the rear of the floating body; no face, eyes or front details are visible. Keep both empty billowing sleeves and the ragged lower cloth tips in the same calm idle pose. Make this a true back view, not a horizontal mirror of the source. Keep the same scale and exact vertical placement as the front frame: the top of the hood and lowest cloth tip stay on the same canvas rows; do not move the ghost up or down, zoom, crop or change the pose.
+
+Square 1:1 production sprite for Bogle Castle, composed for the established 256x256 art set. Keep the complete floating ghost in frame at the same scale and vertical position as reference image 1, with all ragged cloth tips visible and the same clear space around it. The backdrop is a visually flat opaque magenta #FF00FF chroma-key matte, with every clear background pixel within 24 of RGB(255,0,255) on each channel, including all corners and gaps around the sleeves and cloth. Each empty background pixel must satisfy either (|R-255|<=24, G<=24, |B-255|<=24) or (R>=G+64, B>=G+64, R>=128, B>=128). Keep all painted shading and texture inside the ghost. No floor, ground, scenery, cast shadow, gradient, glow, transparency or checkerboard. No lettering, text, numbers, symbols, logos, border, signature, watermark or gore.
+~~~
+
+### Float2 rotation views
+
+#### spr_tartan_ghost_float2_a2.png
+
+Attempt 1 — accepted.
+
+Reference used: `games/bogle/art/src/spr_tartan_ghost_float2.png` (256×256), supplied as edit/reference image 1.
+
+256×256 RGB review: Acceptable front-three-quarter toward viewer right. The face is slightly turned, both raised cloth arms remain, and there are no feet.
+Vertical placement: figure y bounds 5–252; vertical centre offset from the float2 front frame is +0.5 px.
+Matte check: corner RGB values TL/TR/BL/BR: (244,12,245), (249,12,246), (243,19,241), (246,17,245); 0 non-keyed pixels outside the figure among 31929 background candidates; non-keyed border pixels: 0. Opaque RGB PNG.
+
+Full prompt (verbatim):
+
+~~~text
+Use case: illustration-story
+Asset type: A2 rotation sprite for the Bogle game, square RGB PNG.
+Primary request: Edit reference image 1 into A2, a front-three-quarter view of the same floating tartan ghost, with its whole body turned toward the viewer's RIGHT. Show the face at a clear three-quarter angle. Change orientation only.
+Input images: Image 1 is the exact float2 source sprite and the sole edit target.
+Scene/backdrop: Opaque, visually flat solid magenta #FF00FF matte filling the square canvas.
+Subject: Preserve the same single friendly-spooky tartan-sheet ghost, its raised draped arms, visible face, plaid folds, ragged cloth tips, and float2 drift pose. The ghost has no feet; only ragged cloth tips at the bottom.
+Style/medium: Preserve the reference's cartoonish comic Scottish haunted-castle hand-painted style, chunky shapes, bold dark outlines, friendly-spooky proportions, colors, and translucent-looking cloth.
+Composition/framing: Keep the complete figure at the same scale and exact vertical placement as reference image 1, centered in the same 256x256 square sprite frame. Retain the same drift phase and overall silhouette while turning it. No crop.
+Lighting/mood: Flat frontal lighting, affectionate and silly, never gory; no cast shadows or vignette.
+Color palette: Match the source tartan reds, oranges, browns, dark outlines, face and blue-gray ragged cloth accents. Keep the matte a uniform #FF00FF.
+Materials/textures: Preserve the source's painted tartan pattern and cloth folds.
+Constraints: One ghost only. Preserve the source design and pose; rotate the whole ghost toward viewer RIGHT for A2. No feet. No floor, scenery, shadows, gradients, glow, transparency, checkerboard, lettering, symbols, logos, watermark, border, or signature. Do not use magenta on the figure.
+~~~
+
+#### spr_tartan_ghost_float2_a3.png
+
+Attempt 1 — accepted.
+
+Reference used: `games/bogle/art/src/spr_tartan_ghost_float2.png` (256×256), supplied as edit/reference image 1.
+
+256×256 RGB review: Acceptable true right-facing profile. One eye is visible, the far eye is hidden, and the draped arms are foreshortened in depth.
+Vertical placement: figure y bounds 5–250; vertical centre offset from the float2 front frame is −0.5 px.
+Matte check: corner RGB values TL/TR/BL/BR: (245,9,246), (249,12,246), (245,18,242), (245,16,245); 0 non-keyed pixels outside the figure among 41887 background candidates; non-keyed border pixels: 0. Opaque RGB PNG.
+
+Full prompt (verbatim):
+
+~~~text
+Use case: illustration-story
+Asset type: A3 rotation sprite for the Bogle game, square RGB PNG.
+Primary request: Edit reference image 1 into A3, a full side profile of the same floating tartan ghost facing the viewer's RIGHT (the right edge of the canvas). Rotate the whole ghost, including its head, body sheet, and raised draped arms, into a true right-facing profile. The tartan front plane is edge-on; show one oval eye, with the far eye hidden by the profile. This is an orientation change only.
+Input images: Image 1 is the exact float2 source sprite and the sole edit target.
+Scene/backdrop: Opaque, visually flat solid magenta #FF00FF matte filling the square canvas.
+Subject: Preserve the same single friendly-spooky tartan-sheet ghost, its raised draped arms, face when visible, plaid folds, ragged cloth tips, and float2 drift pose. The ghost has no feet; only ragged cloth tips at the bottom.
+Style/medium: Preserve the reference's cartoonish comic Scottish haunted-castle hand-painted style, chunky shapes, bold dark outlines, friendly-spooky proportions, colors, and translucent-looking cloth.
+Composition/framing: Keep the complete figure at the same scale and exact vertical placement as reference image 1, centered in the same 256x256 square sprite frame. Retain the same drift phase and overall silhouette while turning it; foreshorten the depth for a side view. No crop.
+Lighting/mood: Flat frontal lighting, affectionate and silly, never gory; no cast shadows or vignette.
+Color palette: Match the source tartan reds, oranges, browns, dark outlines, face and blue-gray ragged cloth accents. Keep the matte a uniform #FF00FF.
+Materials/textures: Preserve the source's painted tartan pattern and cloth folds.
+Constraints: One ghost only. Preserve the source design and pose; rotate the entire ghost to a true profile facing viewer RIGHT for A3. No feet. No floor, scenery, shadows, gradients, glow, transparency, checkerboard, lettering, symbols, logos, watermark, border, or signature. Do not use magenta on the figure.
+~~~
+
+#### spr_tartan_ghost_float2_a4.png
+
+Attempt 1 — accepted.
+
+Reference used: `games/bogle/art/src/spr_tartan_ghost_float2.png` (256×256), supplied as edit/reference image 1.
+
+256×256 RGB review: Acceptable back-three-quarter; face and eyes are hidden, with a slight turn visible in the asymmetric back drape and arm overlap.
+Vertical placement: figure y bounds 6–250; vertical centre offset from the float2 front frame is 0.0 px.
+Matte check: corner RGB values TL/TR/BL/BR: (244,10,246), (249,11,245), (243,18,241), (246,16,244); 0 non-keyed pixels outside the figure among 34364 background candidates; non-keyed border pixels: 0. Opaque RGB PNG.
+
+Full prompt (verbatim):
+
+~~~text
+Use case: illustration-story
+Asset type: A4 rotation sprite for the Bogle game, square RGB PNG.
+Primary request: Edit reference image 1 into A4, a back-three-quarter view of the same floating tartan ghost, turned away from the viewer and facing diagonally toward the viewer's RIGHT (the right edge of the canvas). Rotate the whole ghost, including its head, body sheet, and raised draped arms. Show the back and rightward-facing side of the head and body; the face and eyes are fully hidden. This is an orientation change only.
+Input images: Image 1 is the exact float2 source sprite and the sole edit target.
+Scene/backdrop: Opaque, visually flat solid magenta #FF00FF matte filling the square canvas.
+Subject: Preserve the same single friendly-spooky tartan-sheet ghost, its raised draped arms, plaid folds, ragged cloth tips, and float2 drift pose. Show the reverse/back drapery with the same tartan cloth design. The ghost has no feet; only ragged cloth tips at the bottom.
+Style/medium: Preserve the reference's cartoonish comic Scottish haunted-castle hand-painted style, chunky shapes, bold dark outlines, friendly-spooky proportions, colors, and translucent-looking cloth.
+Composition/framing: Keep the complete figure at the same scale and exact vertical placement as reference image 1, centered in the same 256x256 square sprite frame. Retain the same drift phase and overall silhouette while turning it; foreshorten the depth for a back-three-quarter view. No crop.
+Lighting/mood: Flat frontal lighting, affectionate and silly, never gory; no cast shadows or vignette.
+Color palette: Match the source tartan reds, oranges, browns, dark outlines, and blue-gray ragged cloth accents. Keep the matte a uniform #FF00FF.
+Materials/textures: Preserve the source's painted tartan pattern and cloth folds.
+Constraints: One ghost only. Turn the entire ghost away from the viewer, facing diagonally toward viewer RIGHT for A4; show a back-three-quarter view with no face or eyes visible. No feet. No floor, scenery, shadows, gradients, glow, transparency, checkerboard, lettering, symbols, logos, watermark, border, or signature. Do not use magenta on the figure.
+~~~
+
+#### spr_tartan_ghost_float2_a5.png
+
+Attempt 1 — accepted.
+
+Reference used: `games/bogle/art/src/spr_tartan_ghost_float2.png` (256×256), supplied as edit/reference image 1.
+
+256×256 RGB review: Acceptable straight rear view. The back drapery is centered, both arms look balanced, and no face or eyes are visible.
+Vertical placement: figure y bounds 4–250; vertical centre offset from the float2 front frame is −1.0 px.
+Matte check: corner RGB values TL/TR/BL/BR: (238,9,244), (243,13,245), (238,19,242), (238,19,243); 0 non-keyed pixels outside the figure among 30754 background candidates; non-keyed border pixels: 0. Opaque RGB PNG.
+
+Full prompt (verbatim):
+
+~~~text
+Use case: illustration-story
+Asset type: A5 rotation sprite for the Bogle game, square RGB PNG.
+Primary request: Edit reference image 1 into A5, a straight rear view of the same floating tartan ghost, facing directly away from the viewer. Rotate the whole ghost, including its head, body sheet, and raised draped arms, exactly 180 degrees around its vertical axis. Show the broad back of the head and body, centered square to the viewer; no face or eyes are visible. This is an orientation change only.
+Input images: Image 1 is the exact float2 source sprite and the sole edit target.
+Scene/backdrop: Opaque, visually flat solid magenta #FF00FF matte filling the square canvas.
+Subject: Preserve the same single friendly-spooky tartan-sheet ghost, its raised draped arms, plaid folds, ragged cloth tips, and float2 drift pose. Show the reverse/back drapery with the same tartan cloth design. The ghost has no feet; only ragged cloth tips at the bottom.
+Style/medium: Preserve the reference's cartoonish comic Scottish haunted-castle hand-painted style, chunky shapes, bold dark outlines, friendly-spooky proportions, colors, and translucent-looking cloth.
+Composition/framing: Keep the complete figure at the same scale and exact vertical placement as reference image 1, centered in the same 256x256 square sprite frame. Retain the same drift phase and overall silhouette while turning it; this is a centered straight back view, not a three-quarter angle. No crop.
+Lighting/mood: Flat frontal lighting, affectionate and silly, never gory; no cast shadows or vignette.
+Color palette: Match the source tartan reds, oranges, browns, dark outlines, and blue-gray ragged cloth accents. Keep the matte a uniform #FF00FF.
+Materials/textures: Preserve the source's painted tartan pattern and cloth folds.
+Constraints: One ghost only. Turn the entire ghost directly away from the viewer for A5; show a centered straight rear view with no face or eyes visible. No feet. No floor, scenery, shadows, gradients, glow, transparency, checkerboard, lettering, symbols, logos, watermark, border, or signature. Do not use magenta on the figure.
+~~~
+
+### Vertical placement audit
+
+Figure bounds use the largest 8-connected non-key component. The idle front frame spans y=3–254 (centre 128.5); float2 spans y=4–252 (centre 128.0). All eight views stay within 1.5 px of their pose's front-frame vertical centre.
+
+| Sprite | Figure y bounds | Centre offset | Background pixels checked | Non-keyed background | Non-keyed border |
+|---|---:|---:|---:|---:|---:|
+| `spr_tartan_ghost_idle_a2.png` | 4–253 | 0.0 px | 33008 | 0 | 0 |
+| `spr_tartan_ghost_idle_a3.png` | 4–250 | −1.5 px | 39118 | 0 | 0 |
+| `spr_tartan_ghost_idle_a4.png` | 4–251 | −1.0 px | 34981 | 0 | 0 |
+| `spr_tartan_ghost_idle_a5.png` | 3–253 | −0.5 px | 30740 | 0 | 0 |
+| `spr_tartan_ghost_float2_a2.png` | 5–252 | +0.5 px | 31929 | 0 | 0 |
+| `spr_tartan_ghost_float2_a3.png` | 5–250 | −0.5 px | 41887 | 0 | 0 |
+| `spr_tartan_ghost_float2_a4.png` | 6–250 | 0.0 px | 34364 | 0 | 0 |
+| `spr_tartan_ghost_float2_a5.png` | 4–250 | −1.0 px | 30754 | 0 | 0 |
+
