@@ -1,12 +1,14 @@
 # All synthesis is integer and deterministic. PCM is mono signed 16-bit LE,
 # 22050 frames/second. Slot zero belongs to the sustained bagpipe drone;
 # eleven finite voices rotate without allocating anything inside a sample loop.
+# Kind 6 voices play a baked one-shot BMU1 sample from mixer["samples"]; the
+# shell registers them with bogle_audio_sample. An unregistered name is silent.
 dae bogle_audio_new() {
     ken voices = []
     fer i in 0..12 {
         shove(voices, [0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0])
     }
-    gie {"voices": voices, "next": 1, "seed": 12345, "drone_gain": 0, "drone_target": 0, "music": {"track": naething, "old": naething, "pos": 0, "old_pos": 0, "cross": 512, "gain": 0, "target": 0}}
+    gie {"voices": voices, "next": 1, "seed": 12345, "samples": {}, "drone_gain": 0, "drone_target": 0, "music": {"track": naething, "old": naething, "pos": 0, "old_pos": 0, "cross": 512, "gain": 0, "target": 0}}
 }
 
 dae bogle_audio_event(mixer, event) {
@@ -20,6 +22,18 @@ dae bogle_audio_event(mixer, event) {
     }
     # kind, duration, start/end Hz, amplitude, noise hold period, noise mix /256.
     ken profile = []
+    gin event == "keeper_roar" {
+        gin nae contains(mixer["samples"], event) {
+            gie naething
+        }
+        # Sample voice: position in voice[1], length in voice[2], gain /256 in
+        # voice[6], the loaded track in voice[7].
+        ken clip = mixer["samples"][event]
+        ken clip_slot = mixer["next"]
+        mixer["next"] = 1 + clip_slot % 11
+        mixer["voices"][clip_slot] = [6, 0, clip["count"], 0, 0, 0, 160, clip, 0, 0, 0]
+        gie naething
+    }
     gin event == "pipe_fill" {
         profile = [1, 0, 110, 110, 1200, 1, 0]
         mixer["drone_target"] = 256
@@ -124,7 +138,20 @@ dae bogle_audio_mix(mixer, sample_count) {
     }
     fer voice in mixer["voices"] {
         ken kind = voice[0]
-        gin kind != 0 {
+        gin kind == 6 {
+            ken clip = voice[7]
+            ken pos = voice[1]
+            ken at = 0
+            whiles at < sample_count an pos < voice[2] {
+                sums[at] = sums[at] + clip["table"][bytes_get(clip["data"], 16 + pos)] * voice[6] / 256
+                at = at + 1
+                pos = pos + 1
+            }
+            voice[1] = pos
+            gin pos >= voice[2] {
+                voice[0] = 0
+            }
+        } ither gin kind != 0 {
             ken age = voice[1]
             ken duration = voice[2]
             ken phase = voice[3]
@@ -239,7 +266,17 @@ dae bogle_music_pow2(power) {
     gie value
 }
 
-dae bogle_music_load(path) {
+# Register a loaded one-shot sample for an event. A missing or invalid file
+# loads as naething and is never registered, so its event stays silent.
+dae bogle_audio_sample(mixer, name, clip) {
+    gin clip != naething {
+        mixer["samples"][name] = clip
+    }
+}
+
+# Music files loop from L < N. A one-shot effect (`oneshot`) may also use
+# L == N, meaning no loop; its voice simply ends at N.
+dae bogle_music_load(path, oneshot = nae) {
     ken track = naething
     hae_a_bash {
         ken data = read_bytes(path)
@@ -254,7 +291,7 @@ dae bogle_music_load(path) {
             ken rate = bytes_read_u32be(data, 4)
             ken count = bytes_read_u32be(data, 8)
             ken loop = bytes_read_u32be(data, 12)
-            gin valid an rate == 22050 an count > 0 an loop < count an bytes_len(data) == count + 16 {
+            gin valid an rate == 22050 an count > 0 an (loop < count or (oneshot an loop == count)) an bytes_len(data) == count + 16 {
                 ken table = []
                 fer i in 0..256 {
                     shove(table, bogle_mulaw(i))

@@ -1,0 +1,83 @@
+fetch "games/bogle/engine/game"
+fetch "games/bogle/engine/map"
+fetch "games/bogle/audio/mixer"
+
+dae roar_count(sounds) {
+    ken count = 0
+    fer name in sounds {
+        gin name == "keeper_roar" {
+            count = count + 1
+        }
+    }
+    gie count
+}
+
+# Two keepers in plain sight: each roars once, on the tic it first sees you,
+# alongside its usual grunt. Events dedupe within a tic, so the second keeper
+# starts dazed and spots you a tic later.
+ken roar_room = "BOGMAP 1\nv 0 0\nv 1024 0\nv 1024 512\nv 0 512\ns 0 128 1 2 192 0 0 0 1 2 3\nt 1 64 64 0 0\nt 2 300 64 0 0\nt 2 300 300 0 0\n"
+ken rg = new_game(map_parse(roar_room), aye)
+rg["actors"][1]["state"] = "stunned"
+rg["actors"][1]["timer"] = 1
+ken first = tic(rg, {"keys": 0, "dx": 0})
+mak_siccar roar_count(first) == 1
+mak_siccar contains(first, "gamekeeper")
+mak_siccar rg["actors"][0]["seen_player"] an nae rg["actors"][1]["seen_player"]
+ken second = tic(rg, {"keys": 0, "dx": 0})
+mak_siccar roar_count(second) == 1
+mak_siccar roar_count(tic(rg, {"keys": 0, "dx": 0})) == 0
+fer a in rg["actors"] {
+    mak_siccar a["seen_player"] an a["state"] == "fists"
+}
+blether "ok each keeper roars once on first sight"
+
+# A later windup only grunts.
+fer a in rg["actors"] {
+    a["state"] = "patrol"
+}
+ken again = tic(rg, {"keys": 0, "dx": 0})
+mak_siccar roar_count(again) == 0
+mak_siccar contains(again, "gamekeeper")
+fer a in rg["actors"] {
+    mak_siccar a["state"] == "windup"
+}
+blether "ok a second windup grunts without roaring"
+
+dae roar_loud(pcm) {
+    ken loudest = 0
+    fer i in 0..bytes_len(pcm) / 2 {
+        ken value = bytes_get(pcm, i * 2) + bytes_get(pcm, i * 2 + 1) * 256
+        gin value >= 32768 {
+            value = value - 65536
+        }
+        loudest = max(loudest, abs(value))
+    }
+    gie loudest
+}
+
+# With the baked sample registered, the roar is audible, ends at the sample's
+# end, and frees its voice.
+ken roar_clip = bogle_music_load("games/bogle/data/sfx_keeper_roar.bmu", aye)
+mak_siccar roar_clip != naething
+mak_siccar roar_clip["loop"] == roar_clip["count"]
+ken rm = bogle_audio_new()
+bogle_audio_sample(rm, "keeper_roar", roar_clip)
+bogle_audio_event(rm, "keeper_roar")
+mak_siccar roar_loud(bogle_audio_mix(rm, 11025)) > 4000
+bogle_audio_mix(rm, 11025)
+mak_siccar roar_loud(bogle_audio_mix(rm, 64)) == 0
+fer voice in rm["voices"] {
+    mak_siccar voice[0] == 0
+}
+blether "ok loaded roar plays once then frees its voice"
+
+# A one-shot file is not valid music, and a missing file registers nothing:
+# the event is then silent and harmless.
+mak_siccar bogle_music_load("games/bogle/data/sfx_keeper_roar.bmu") == naething
+ken missing = bogle_music_load("games/bogle/data/no_such_roar.bmu", aye)
+mak_siccar missing == naething
+ken quiet = bogle_audio_new()
+bogle_audio_sample(quiet, "keeper_roar", missing)
+bogle_audio_event(quiet, "keeper_roar")
+mak_siccar roar_loud(bogle_audio_mix(quiet, 2048)) == 0
+blether "ok missing roar stays silent"

@@ -10,6 +10,7 @@ ken bogle_record = naething
 ken bogle_sound = naething
 ken bogle_music_title = naething
 ken bogle_music_gatehouse = naething
+ken bogle_sfx_keeper_roar = naething
 
 dae bogle_init(w, h) {
     bogle_width = w
@@ -34,6 +35,7 @@ dae bogle_init(w, h) {
     gin env_get("MDH_SCREEN") != "none" an env_get("MDH_SOUND") != "none" {
         bogle_music_title = bogle_music_load("games/bogle/data/music_title.bmu")
         bogle_music_gatehouse = bogle_music_load("games/bogle/data/music_gatehouse.bmu")
+        bogle_sfx_keeper_roar = bogle_music_load("games/bogle/data/sfx_keeper_roar.bmu", aye)
         bogle_sound = bogle_sound_start(bogle_open_device)
         gin bogle_sound != naething {
             bogle_sound_frame([])
@@ -56,7 +58,7 @@ dae bogle_sound_start(opener) {
         opened = nae
     }
     gin opened {
-        gie bogle_audio_new()
+        gie bogle_sound_mixer()
     }
     gie naething
 }
@@ -139,7 +141,7 @@ dae bogle_frame(dt_ms) {
     gin bogle_sound != naething {
         gin run != bogle_ui["run"] {
             ken music = bogle_sound["music"]
-            bogle_sound = bogle_audio_new()
+            bogle_sound = bogle_sound_mixer()
             bogle_sound["music"] = music
         }
         ken held = nae
@@ -154,6 +156,13 @@ dae bogle_frame(dt_ms) {
         screen_shaw(bogle_fb, bogle_palette)
     }
     gie keep
+}
+
+# A fresh mixer with the baked one-shot effects registered.
+dae bogle_sound_mixer() {
+    ken mixer = bogle_audio_new()
+    bogle_audio_sample(mixer, "keeper_roar", bogle_sfx_keeper_roar)
+    gie mixer
 }
 
 # Keep 60ms of PCM ahead; bound each fill even after a slow frame. The mixer

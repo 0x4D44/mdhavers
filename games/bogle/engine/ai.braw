@@ -87,6 +87,7 @@ dae ai_tick(g) {
                             a["timer"] = 18
                             gin nae a["seen_player"] {
                                 a["seen_player"] = aye
+                                bogle_emit_sound(g, "keeper_roar")
                                 a["state"] = "fists"
                                 a["timer"] = 35
                             }

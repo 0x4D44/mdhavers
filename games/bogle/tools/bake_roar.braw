@@ -1,0 +1,203 @@
+# Offline baker for the gamekeeper's first-sight roar, data/sfx_keeper_roar.bmu.
+# Run from the repo root: mdhavers run games/bogle/tools/bake_roar.braw
+#
+# A small source-filter voice, integer per sample and fully deterministic:
+#   source  Rosenberg glottal-flow derivative pulses (pressed, short closing
+#           phase), pitch 160 -> 180 Hz swell then a fall to 100 Hz, per-period
+#           jitter and shimmer from a fixed-seed LCG, growl from a 31 Hz
+#           amplitude flutter plus period doubling (every other pulse weaker,
+#           a subharmonic at f0/2), and breathy aspiration noise that is
+#           louder while the glottis is open;
+#   filter  four cascaded two-pole formant resonators (Klatt form, Q14), gliding
+#           from an "r" (450/1150/1600/3300 Hz) into an open "aa"
+#           (750/1200/2500/3500 Hz) over the first 150 ms;
+#   shape   60 ms attack, swell to 300 ms, sustain, quadratic decay tail.
+# Float maths only builds the coefficient tables, once per 128-sample block.
+# The result is peak-normalised to 23170 and written as BMU1 with loop start N
+# (a one-shot, no loop).
+
+fetch "games/bogle/tools/bake_music"
+
+ken ROAR_RATE = 22050
+ken ROAR_N = 22050
+ken ROAR_BLOCK = 128
+ken ROAR_PI = 3.141592653589793
+
+dae roar_lerp(a, b, at, length) {
+    gin at <= 0 {
+        gie a
+    }
+    gin at >= length {
+        gie b
+    }
+    gie a + (b - a) * at / length
+}
+
+# Pitch in Hz * 16 at sample n.
+dae roar_pitch16(n) {
+    gin n < 2200 {
+        gie roar_lerp(160 * 16, 175 * 16, n, 2200)
+    }
+    gin n < 6600 {
+        gie roar_lerp(175 * 16, 180 * 16, n - 2200, 4400)
+    }
+    gie roar_lerp(180 * 16, 100 * 16, n - 6600, ROAR_N - 6600)
+}
+
+# Amplitude envelope, 0..1024.
+dae roar_envelope(n) {
+    gin n < 1300 {
+        gie roar_lerp(0, 700, n, 1300)
+    }
+    gin n < 6600 {
+        gie roar_lerp(700, 1024, n - 1300, 5300)
+    }
+    gin n < 14300 {
+        gie roar_lerp(1024, 900, n - 6600, 7700)
+    }
+    ken left = ROAR_N - n
+    ken span = ROAR_N - 14300
+    gie 900 * left / span * left / span
+}
+
+# One period of the Rosenberg flow derivative, 512 steps, peak magnitude 8192.
+dae roar_pulse_table() {
+    ken flow = []
+    ken open = 0.42
+    ken closing = 0.12
+    fer i in 0..513 {
+        ken t = i / 512.0
+        ken value = 0.0
+        gin t < open {
+            value = 0.5 * (1.0 - cos(ROAR_PI * t / open))
+        } ither gin t < open + closing {
+            value = cos(ROAR_PI * 0.5 * (t - open) / closing)
+        }
+        shove(flow, value)
+    }
+    ken peak = 0.0
+    fer i in 0..512 {
+        peak = max(peak, abs(flow[i + 1] - flow[i]))
+    }
+    ken table = []
+    fer i in 0..512 {
+        shove(table, floor((flow[i + 1] - flow[i]) * 8192.0 / peak + 0.5))
+    }
+    gie table
+}
+
+# Klatt resonator coefficients [A, B, C] in Q14 for one formant.
+dae roar_resonator(freq, bandwidth) {
+    ken r = exp(-ROAR_PI * bandwidth / ROAR_RATE)
+    ken b = 2.0 * r * cos(2.0 * ROAR_PI * freq / ROAR_RATE)
+    ken c = -r * r
+    ken bq = floor(b * 16384.0 + 0.5)
+    ken cq = floor(c * 16384.0 + 0.5)
+    gie [16384 - bq - cq, bq, cq]
+}
+
+# Per-block coefficient table: blocks x 4 formants x [A, B, C].
+dae roar_formant_blocks() {
+    ken r_freq = [450, 1150, 1600, 3300]
+    ken a_freq = [750, 1200, 2500, 3500]
+    ken r_band = [110, 120, 150, 250]
+    ken a_band = [130, 140, 190, 300]
+    ken glide = 3300
+    ken blocks = []
+    ken n = 0
+    whiles n < ROAR_N {
+        ken coefficients = []
+        fer f in 0..4 {
+            ken freq = roar_lerp(r_freq[f], a_freq[f], n, glide)
+            ken band = roar_lerp(r_band[f], a_band[f], n, glide)
+            shove(coefficients, roar_resonator(freq * 1.0, band * 1.0))
+        }
+        shove(blocks, coefficients)
+        n = n + ROAR_BLOCK
+    }
+    gie blocks
+}
+
+dae roar_synthesise() {
+    ken pulse = roar_pulse_table()
+    ken blocks = roar_formant_blocks()
+    ken seed = 20261030
+    ken phase = 0
+    ken jitter = 1000
+    ken shimmer = 1024
+    ken parity = 0
+    ken flutter = 0
+    ken flutter_step = 31 * 65536 / ROAR_RATE
+    ken y1 = [0, 0, 0, 0]
+    ken y2 = [0, 0, 0, 0]
+    ken out = []
+    fer n in 0..ROAR_N {
+        # Glottal phase: a period is 512 * 65536 units.
+        ken step = roar_pitch16(n) * 2097152 / ROAR_RATE * jitter / 1000
+        phase = phase + step
+        gin phase >= 33554432 {
+            phase = phase - 33554432
+            seed = seed * 48271 % 2147483647
+            jitter = 970 + seed % 61
+            seed = seed * 48271 % 2147483647
+            shimmer = 900 + seed % 249
+            parity = 1 - parity
+        }
+        ken index = phase / 65536
+        ken source = pulse[index] * shimmer / 1024
+        gin parity == 1 {
+            source = source * 680 / 1024
+        }
+        # Growl: a 31 Hz triangle flutter, 35% deep.
+        flutter = (flutter + flutter_step) % 65536
+        ken tri = flutter / 32
+        gin flutter >= 32768 {
+            tri = 2047 - flutter / 32
+        }
+        source = source * (1024 - tri * 358 / 1024) / 1024
+        # Aspiration: louder during the open phase of each period.
+        seed = seed * 48271 % 2147483647
+        ken noise = seed % 2049 - 1024
+        ken breath = 900
+        gin index < 215 {
+            breath = 1800
+        }
+        source = source + noise * breath / 1024
+        source = source * roar_envelope(n) / 1024
+        ken coefficients = blocks[n / ROAR_BLOCK]
+        ken x = source * 16
+        fer f in 0..4 {
+            ken k = coefficients[f]
+            ken y = (k[0] * x + k[1] * y1[f] + k[2] * y2[f]) / 16384
+            y2[f] = y1[f]
+            y1[f] = y
+            x = y
+        }
+        shove(out, x)
+    }
+    gie out
+}
+
+dae bake_roar(output_path) {
+    ken samples = roar_synthesise()
+    ken peak = 1
+    fer s in samples {
+        peak = max(peak, abs(s))
+    }
+    ken result = bytes(16 + ROAR_N)
+    ken magic = bytes_from_string("BMU1")
+    fer i in 0..4 {
+        bytes_set(result, i, bytes_get(magic, i))
+    }
+    bytes_write_u32be(result, 4, ROAR_RATE)
+    bytes_write_u32be(result, 8, ROAR_N)
+    bytes_write_u32be(result, 12, ROAR_N)
+    fer i in 0..ROAR_N {
+        bytes_set(result, 16 + i, music_mulaw(samples[i] * BMU_PEAK / peak))
+    }
+    write_bytes(output_path, result)
+    gie {"frames": ROAR_N, "peak": peak}
+}
+
+ken roar_result = bake_roar("games/bogle/data/sfx_keeper_roar.bmu")
+blether "baked games/bogle/data/sfx_keeper_roar.bmu: " + tae_string(roar_result["frames"]) + " frames, raw peak " + tae_string(roar_result["peak"])

@@ -191,8 +191,17 @@ little-endian PCM at 22050 Hz, with twelve bounded voices, integer envelopes,
 seeded noise and clipping. Slot zero sustains the bagpipe drone while filling;
 release gives a blast or a sad deflate. The shell reconciles the drone with held fire, the selected pipes, active charge and live play state each frame; it fades away when that cause ends. Other procedural cues cover the sgian-dubh
 swish, Mars throw/splat, blunderbuss, door grind, pickup chime, gamekeeper shout,
-haggis fuse/explosion, ghost wail, midge buzz, player oof and menu blips. There
-are no effect sample files or new dependencies. Optional music is streamed from indexed mu-law files described below. Effects are mono, without
+haggis fuse/explosion, ghost wail, midge buzz, player oof and menu blips. The
+one baked effect is the gamekeeper's first-sight roar: `tools/bake_roar.braw`
+synthesises `data/sfx_keeper_roar.bmu` offline (an integer source-filter voice:
+jittered, growling glottal pulses falling from about 175 to 100 Hz through four
+"r"-to-"aa" formant resonators, with breath noise). Run it from the repo root to
+rebake; output is byte-identical each run. It is BMU1 with loop start N (no
+loop). The shell loads it at startup like the music and the mixer plays it once
+on the `keeper_roar` event, emitted alongside the usual grunt only on the tic a
+keeper first sees you; later windups only grunt. A missing or invalid file
+means no roar. `tests/keeper_roar.braw` covers the event and playback. There
+are no other effect sample files or new dependencies. Optional music is streamed from indexed mu-law files described below. Effects are mono, without
 positional panning or distance attenuation.
 
 `tic` returns a fresh list of sound event names; the pure front end collects
