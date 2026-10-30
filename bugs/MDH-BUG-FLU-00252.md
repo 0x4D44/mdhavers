@@ -6,15 +6,16 @@
 - **Area:** bogle
 - **Raised:** 2026-10-30T15:47:56Z
 - **Discovery source:** Human
-- **Owner:** -
-- **Owner role:** -
-- **Owner run:** -
-- **Owner host:** -
-- **Owner branch:** -
-- **Owner base:** -
+- **Owner:** deltic:manual
+- **Owner role:** fix
+- **Owner run:** fix-20261030T154851Z-ee286075
+- **Owner host:** flux
+- **Owner branch:** task/bug-MDH-BUG-FLU-00252-run-fix-20261030T154851Z-ee286075
+- **Owner base:** ffd8fc29ccaaa6f250cbb6c3d40bd4aa2a96a212
 - **Owner fingerprint:** -
-- **Owner since:** -
-- **Owner until:** -
+- **Owner since:** 2026-10-30T15:48:51Z
+- **Owner until:** 2026-10-30T19:48:51Z
+- **Owner session:** flux/2a9090d7-08f7-48c7-bee8-7b7d1d963ab2 (run fix-20261030T154851Z-ee286075)
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
