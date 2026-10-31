@@ -469,15 +469,6 @@ fn emar() -> String {
     std::env::var("EMAR").unwrap_or_else(|_| "emar".to_string())
 }
 
-/// Whether `emcc` can be run (the browser build needs it).
-pub fn emcc_available() -> bool {
-    Command::new(emcc())
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-}
-
 fn runtime_source_dir() -> PathBuf {
     std::env::var_os("MDH_RUNTIME_DIR")
         .map(PathBuf::from)
@@ -532,15 +523,49 @@ const C_ARCHIVES: &[(&str, &[&str])] = &[
     ("libmdh_sleep_yield.a", &["platform/wasm_sleep.c"]),
 ];
 
+/// Whether an archive's sources are built to yield to the page (see wasm_sleep.c).
+fn yields(lib: &str) -> bool {
+    lib == "libmdh_sleep_yield.a"
+}
+
+/// emcc's arguments for one runtime source, bar its include paths, input and output.
+fn c_compile_args(source: &str, yields: bool) -> Vec<&'static str> {
+    let mut args = vec!["-O2", "-c", "-sSUPPORT_LONGJMP=wasm"];
+    // wasm_mul.c alone keeps the standard ABI (see the file).
+    if !source.ends_with("wasm_mul.c") {
+        args.extend_from_slice(EMCC_ABI_FLAGS);
+    }
+    if yields {
+        args.push("-DMDH_WEB_YIELD");
+    }
+    args
+}
+
 /// Everything the C archives are built from, for the cache stamp.
 fn c_runtime_stamp(src: &Path) -> Result<String, HaversError> {
-    let mut hasher = DefaultHasher::new();
     let version = Command::new(emcc())
         .arg("--version")
         .output()
         .map_err(|e| HaversError::CompileError(format!("Cannae run emcc: {e}")))?;
-    version.stdout.hash(&mut hasher);
-    EMCC_ABI_FLAGS.hash(&mut hasher);
+    c_sources_stamp(&version.stdout, src, C_ARCHIVES)
+}
+
+/// The stamp of `archives` built from `src` by this emcc: its version, each archive's
+/// sources and their flags, and every runtime `.c` and `.h`.
+fn c_sources_stamp(
+    emcc_version: &[u8],
+    src: &Path,
+    archives: &[(&str, &[&str])],
+) -> Result<String, HaversError> {
+    let mut hasher = DefaultHasher::new();
+    emcc_version.hash(&mut hasher);
+    for (lib, sources) in archives {
+        lib.hash(&mut hasher);
+        for source in *sources {
+            source.hash(&mut hasher);
+            c_compile_args(source, yields(lib)).hash(&mut hasher);
+        }
+    }
     let mut files: Vec<PathBuf> = Vec::new();
     for dir in [src.to_path_buf(), src.join("platform")] {
         let entries = std::fs::read_dir(&dir).map_err(|e| {
@@ -592,20 +617,13 @@ pub(crate) fn ensure_wasm_runtime() -> Result<WasmRuntime, HaversError> {
         for (lib, sources) in C_ARCHIVES {
             let mut objects = Vec::new();
             for source in *sources {
-                let yields = *lib == "libmdh_sleep_yield.a";
+                let yields = yields(lib);
                 let stem = source
                     .replace('/', "_")
                     .replace(".c", if yields { "_yield.o" } else { ".o" });
                 let object = obj_dir.join(stem);
                 let mut cc = Command::new(emcc());
-                cc.args(["-O2", "-c", "-sSUPPORT_LONGJMP=wasm"]);
-                // wasm_mul.c alone keeps the standard ABI (see the file).
-                if !source.ends_with("wasm_mul.c") {
-                    cc.args(EMCC_ABI_FLAGS);
-                }
-                if yields {
-                    cc.arg("-DMDH_WEB_YIELD");
-                }
+                cc.args(c_compile_args(source, yields));
                 cc.arg("-I")
                     .arg(src.join("platform"))
                     .arg("-I")
@@ -634,18 +652,45 @@ pub(crate) fn ensure_wasm_runtime() -> Result<WasmRuntime, HaversError> {
     // The Rust runtime: cargo knows when it is stale.
     let rust_target = dir.join("rs");
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
-    run(
-        Command::new(cargo)
-            .args(["build", "--release", "--quiet", "--manifest-path"])
-            .arg(src.join("mdh_runtime_rs/Cargo.toml"))
-            .args(["--target", WASM_TRIPLE, "--target-dir"])
-            .arg(&rust_target),
-        "cargo build of the Rust runtime for wasm32",
-    )?;
+    let mut build = Command::new(cargo);
+    build
+        .args(["build", "--release", "--quiet", "--manifest-path"])
+        .arg(src.join("mdh_runtime_rs/Cargo.toml"))
+        .args(["--target", WASM_TRIPLE, "--target-dir"])
+        .arg(&rust_target);
+    for (name, _) in std::env::vars_os() {
+        if name.to_str().is_some_and(is_parent_build_setting) {
+            build.env_remove(&name);
+        }
+    }
+    run(&mut build, "cargo build of the Rust runtime for wasm32")?;
     let rust = rust_target
         .join(WASM_TRIPLE)
         .join("release/libmdh_runtime_rs.a");
     Ok(WasmRuntime { dir, rust })
+}
+
+/// Whether an environment variable is a build setting of a cargo this one runs under
+/// (cargo-llvm-cov's instrumenting flags and profile file, a compiler wrapper, flags
+/// meant for the host): the wasm32 runtime's build must not inherit it.
+fn is_parent_build_setting(name: &str) -> bool {
+    matches!(
+        name,
+        "RUSTFLAGS"
+            | "CARGO_ENCODED_RUSTFLAGS"
+            | "CARGO_BUILD_RUSTFLAGS"
+            | "RUSTDOCFLAGS"
+            | "CARGO_ENCODED_RUSTDOCFLAGS"
+            | "CARGO_BUILD_RUSTDOCFLAGS"
+            | "RUSTC_WRAPPER"
+            | "RUSTC_WORKSPACE_WRAPPER"
+            | "CARGO_BUILD_RUSTC_WRAPPER"
+            | "CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER"
+            | "CARGO_TARGET_DIR"
+            | "CARGO_BUILD_TARGET_DIR"
+            | "LLVM_PROFILE_FILE"
+    ) || name.starts_with("CARGO_LLVM_COV")
+        || name.starts_with("__CARGO_LLVM_COV")
 }
 
 /// Read in node, the environment reaches the program as it does natively (Emscripten
@@ -659,22 +704,65 @@ Module.preRun.push(function () {
 });
 ";
 
-/// Whether the emcc arguments turn on JSPI (`-sJSPI`, `-sJSPI=1`, `-s JSPI`).
-fn wants_jspi(extra: &[String]) -> bool {
-    let mut setting = false;
-    for (i, arg) in extra.iter().enumerate() {
-        let value = match arg.strip_prefix("-s") {
+/// The emcc settings among `extra`, in order: `JSPI` for `-sJSPI` or `-s JSPI`.
+fn emcc_settings(extra: &[String]) -> impl Iterator<Item = &str> {
+    extra
+        .iter()
+        .enumerate()
+        .filter_map(|(i, arg)| match arg.strip_prefix("-s") {
             Some("") => extra.get(i + 1).map(String::as_str),
             Some(rest) => Some(rest),
             None => None,
-        };
+        })
+}
+
+/// Whether the emcc arguments turn on JSPI (`-sJSPI`, `-sJSPI=1`, `-s JSPI`).
+fn wants_jspi(extra: &[String]) -> bool {
+    let mut setting = false;
+    for value in emcc_settings(extra) {
         match value {
-            Some("JSPI") | Some("JSPI=1") => setting = true,
-            Some("JSPI=0") => setting = false,
+            "JSPI" | "JSPI=1" => setting = true,
+            "JSPI=0" => setting = false,
             _ => {}
         }
     }
     setting
+}
+
+/// The browser build's memory limit (its -sMAXIMUM_MEMORY): see link_wasm.
+const WASM_MEMORY_LIMIT: u64 = 2 << 30;
+
+/// An emcc memory size (`4096`, `512MB`, `2GB`) in bytes.
+fn memory_size(text: &str) -> Option<u64> {
+    let digits = text.trim_end_matches(|c: char| c.is_ascii_alphabetic());
+    let unit: u64 = match text[digits.len()..].to_ascii_uppercase().as_str() {
+        "" | "B" => 1,
+        "KB" => 1 << 10,
+        "MB" => 1 << 20,
+        "GB" => 1 << 30,
+        "TB" => 1 << 40,
+        _ => return None,
+    };
+    digits.parse::<u64>().ok()?.checked_mul(unit)
+}
+
+/// A user's memory setting may lower the limit, never raise it: above 2GB an address
+/// would no longer fit the runtime's signed 32-bit intptr_t.
+fn check_memory_settings(extra: &[String]) -> Result<(), HaversError> {
+    for value in emcc_settings(extra) {
+        for name in ["MAXIMUM_MEMORY", "INITIAL_MEMORY", "TOTAL_MEMORY"] {
+            let Some(size) = value.strip_prefix(name).and_then(|v| v.strip_prefix('=')) else {
+                continue;
+            };
+            if !memory_size(size).is_some_and(|bytes| bytes <= WASM_MEMORY_LIMIT) {
+                return Err(HaversError::CompileError(format!(
+                    "-s{name}={size} is ower muckle for the browser: its memory stops at 2GB, \
+                     so ask for 2GB or less"
+                )));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Link `object` and the browser runtime into `output` (`.js`, beside it the `.wasm`).
@@ -687,6 +775,7 @@ pub(crate) fn link_wasm(
     opt_level: u8,
     extra: &[String],
 ) -> Result<(), HaversError> {
+    check_memory_settings(extra)?;
     let runtime = ensure_wasm_runtime()?;
     let pre_js = output.with_extension("pre.js");
     std::fs::write(&pre_js, NODE_ENV_PRE_JS)
@@ -719,7 +808,8 @@ pub(crate) fn link_wasm(
             "-sALLOW_MEMORY_GROWTH=1",
             // Addresses stay below 2^31: C widens a pointer into MdhValue's i64 through
             // a signed 32-bit intptr_t, compiled code through an unsigned one, and the
-            // two agree only there.
+            // two agree only there. A lower limit in `extra` overrides it; a higher one
+            // is refused (check_memory_settings).
             "-sMAXIMUM_MEMORY=2GB",
             "-sSTACK_SIZE=8MB",
             "-sEXIT_RUNTIME=1",
@@ -736,7 +826,7 @@ pub(crate) fn link_wasm(
 
 #[cfg(test)]
 mod tests {
-    use super::wants_jspi;
+    use super::*;
 
     fn args(list: &[&str]) -> Vec<String> {
         list.iter().map(|s| s.to_string()).collect()
@@ -751,5 +841,60 @@ mod tests {
         assert!(wants_jspi(&args(&["-s", "JSPI"])));
         assert!(!wants_jspi(&args(&["-sJSPI", "-sJSPI=0"])));
         assert!(!wants_jspi(&args(&["-sJSPI_EXPORTS=main"])));
+    }
+
+    #[test]
+    fn memory_settings_may_lower_the_limit_but_not_raise_it() {
+        assert_eq!(memory_size("4096"), Some(4096));
+        assert_eq!(memory_size("512MB"), Some(512 << 20));
+        assert_eq!(memory_size("2gb"), Some(2 << 30));
+        assert_eq!(memory_size("1TB"), Some(1 << 40));
+        assert_eq!(memory_size("2XB"), None);
+        assert_eq!(memory_size("-1"), None);
+        assert_eq!(memory_size("99999999999TB"), None);
+        assert!(check_memory_settings(&args(&["-sMAXIMUM_MEMORY=512MB"])).is_ok());
+        assert!(check_memory_settings(&args(&["-sMAXIMUM_MEMORY=2GB"])).is_ok());
+        assert!(check_memory_settings(&args(&["-sALLOW_MEMORY_GROWTH=1"])).is_ok());
+        for bad in [
+            &["-sMAXIMUM_MEMORY=4GB"][..],
+            &["-s", "MAXIMUM_MEMORY=2049MB"],
+            &["-sINITIAL_MEMORY=3GB"],
+            &["-sTOTAL_MEMORY=3GB"],
+            &["-sMAXIMUM_MEMORY=-1"],
+        ] {
+            let err = check_memory_settings(&args(bad)).unwrap_err().to_string();
+            assert!(err.contains("ower muckle"), "{bad:?}: {err}");
+        }
+    }
+
+    /// The stamp covers which sources each archive has and how each is compiled, not
+    /// only the sources' text: a change to either rebuilds the cache.
+    #[test]
+    fn the_runtime_stamp_covers_the_archives_and_their_flags() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("platform")).unwrap();
+        std::fs::write(dir.path().join("a.c"), "int a;\n").unwrap();
+        let stamp =
+            |plan: &[(&str, &[&str])]| c_sources_stamp(b"emcc 1", dir.path(), plan).unwrap();
+        let plain = stamp(&[("liba.a", &["a.c"])]);
+        assert_eq!(plain, stamp(&[("liba.a", &["a.c"])]));
+        // The same source built to yield (-DMDH_WEB_YIELD).
+        assert_ne!(plain, stamp(&[("libmdh_sleep_yield.a", &["a.c"])]));
+        // A source moved to another archive.
+        assert_ne!(
+            stamp(&[("liba.a", &["a.c", "b.c"]), ("libb.a", &[])]),
+            stamp(&[("liba.a", &["a.c"]), ("libb.a", &["b.c"])])
+        );
+        // Another emcc.
+        assert_ne!(
+            plain,
+            c_sources_stamp(b"emcc 2", dir.path(), &[("liba.a", &["a.c"])]).unwrap()
+        );
+        // The flags differ by source: wasm_mul.c keeps the standard ABI.
+        assert_ne!(
+            c_compile_args("platform/wasm_mul.c", false),
+            c_compile_args("a.c", false)
+        );
+        assert!(c_compile_args("a.c", true).contains(&"-DMDH_WEB_YIELD"));
     }
 }

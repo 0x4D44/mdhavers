@@ -45,6 +45,30 @@ mdhavers build games/bogle/shell/native.braw -o .scratch/bogle
 .scratch/bogle
 ```
 
+### Play in the browser
+
+`games/bogle/web/build.sh` builds the game for the web from `shell/web.braw` and puts
+it, with `web/index.html`, in `target/bogle-web/` (`--out DIR` for elsewhere). It needs
+Emscripten's `emcc` on `PATH` and a release compiler (`cargo build --release`, or point
+`MDHAVERS` at one). Serve the directory over HTTP and open it:
+
+```sh
+cargo build --release
+games/bogle/web/build.sh
+python3 -m http.server -d target/bogle-web 8000   # then open http://localhost:8000/
+```
+
+Click the page to start: the click lets sound play and the mouse be captured (pointer
+lock, asked for again on the next click if the browser refuses). The 320x200 frame is
+scaled to the window, pixels kept sharp. The page needs WebAssembly exception handling
+and multi-value, which current Chrome, Edge, Firefox and Safari have; it checks both
+and says what is missing. It does not need JSPI: `shell/web.braw` hands its frames to
+the page with `screen_loop`. `build.sh --jspi` also builds `bogle_jspi.*` from the
+blocking `shell/native.braw` with JSPI, loaded by the page with `?jspi`, for comparison
+in browsers that have it. Choosing **Quit** ends the game and the page says so.
+`web/tools/check.mjs` is a headless Chrome smoke check of a served page (console
+errors, frame rate, sound, screenshots); see its header.
+
 Startup shows the castle splash with **Press ony key**, then the title menu:
 **New Game**, **Controls**, **Kit List**, **Quit**. Navigate menus with Up/Down or W/S and
 choose with Enter/Space. Escape during play opens **Resume**, **Restart Level**,
@@ -73,7 +97,8 @@ The gatehouse, hall, kitchen, crypt,
 chapel and battlement exit remain reachable.
 
 The shell exposes `bogle_init(w,h)` and `bogle_frame(dt_ms)` in
-`shell/frame.braw`; the native host still owns the tiny loop. The bridge-free
+`shell/frame.braw`; the native host still owns the tiny loop, and the browser shell
+`shell/web.braw` hands it to the page with `screen_loop`. The bridge-free
 `shell/frontend.braw` state machine accepts explicit held menu bits and gameplay
 input, advances an exact 35 Hz accumulator with at most four tics per frame,
 and draws each screen in the game font. Menu time and mouse motion are discarded

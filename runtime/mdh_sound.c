@@ -117,6 +117,18 @@ EM_JS(int, mdh_web_sound_open, (int rate, int channels, int capacity), {
         var pending = s.pending; s.pending = null;
         pending.forEach(function (d) { s.send(d); });
     };
+    /* Without a worklet: a ScriptProcessor on the page's thread. */
+    var fallback = function () {
+        var r = reader(options);
+        s.send = function (d) { r.push(d); };
+        var node = ctx.createScriptProcessor(1024, 0, channels);
+        node.onaudioprocess = function (e) {
+            var out = e.outputBuffer;
+            r.fill(out.getChannelData(0), channels === 2 ? out.getChannelData(1) : null);
+            s.played = r.played;
+        };
+        start(node);
+    };
     if (ctx.audioWorklet && typeof Blob !== 'undefined') {
         var code = 'var reader = ' + reader.toString() + ';\n' +
             'class MdhPcm extends AudioWorkletProcessor {\n' +
@@ -134,17 +146,15 @@ EM_JS(int, mdh_web_sound_open, (int rate, int channels, int capacity), {
                 outputChannelCount: [channels], processorOptions: options});
             node.port.onmessage = function (e) { s.played = e.data; };
             start(node);
+        }).catch(function () {
+            /* The worklet would not load (a page whose CSP refuses blob: scripts, say):
+             * fall back, unless sound has closed or the worklet already started. */
+            if (Module.mdhSound !== s || !s.pending) return;
+            if (s.node) { try { s.node.disconnect(); } catch (e) {} s.node = null; }
+            try { fallback(); } catch (e) {}
         });
     } else {
-        var r = reader(options);
-        s.send = function (d) { r.push(d); };
-        var node = ctx.createScriptProcessor(1024, 0, channels);
-        node.onaudioprocess = function (e) {
-            var out = e.outputBuffer;
-            r.fill(out.getChannelData(0), channels === 2 ? out.getChannelData(1) : null);
-            s.played = r.played;
-        };
-        start(node);
+        fallback();
     }
     Module.mdhSound = s;
     return 0;

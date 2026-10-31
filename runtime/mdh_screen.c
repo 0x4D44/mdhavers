@@ -185,24 +185,37 @@ static bool loop_frame(MdhValue fn, MdhLoopCall call, int64_t *last) {
     return !stop && opened;
 }
 
+#include <setjmp.h>
 #ifndef __EMSCRIPTEN__
 /* Natively the shells' own loop, timing included: a frame, then a 1 ms snooze (the
- * frame's screen_shaw paces it to the display). */
+ * frame's screen_shaw paces it to the display). The function is borrowed, so the loop
+ * holds its own reference: a frame may reassign the only variable that held it. An
+ * error out of a frame drops that reference on its way past. */
 MdhValue __mdh_screen_loop(MdhValue fn, MdhLoopCall call) {
     main_thread();
     if (!loop_callable(fn)) __mdh_builtin_error("screen_loop wants a function");
     require_open();
+    __mdh_retain(fn);
+    jmp_buf env;
+    __mdh_try_push(&env);
+    if (setjmp(env) != 0) {
+        __mdh_try_pop();
+        __mdh_release(fn);
+        __mdh_hurl(__mdh_get_last_error());
+        return __mdh_make_nil();
+    }
     int64_t last = __mdh_mono_ms().data;
     for (;;) {
         pump();
         if (input.should_close || !loop_frame(fn, call, &last)) break;
         mdh_sleep_ms(1);
     }
+    __mdh_try_pop();
+    __mdh_release(fn);
     return __mdh_make_nil();
 }
 #else
 #include <emscripten.h>
-#include <setjmp.h>
 /* In a web page nothing may block: the browser calls each frame from
  * requestAnimationFrame (emscripten_set_main_loop), and the call itself never returns
  * (the rest of main does not run; Emscripten unwinds it). When the loop ends the

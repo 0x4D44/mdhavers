@@ -78,6 +78,55 @@ the line runs, so a program that does it on purpose and catches the error with
 `hae_a_bash` works under `mdhavers run` but does not build natively. Example
 programs that do this are marked `# SKIP_NATIVE`.
 
+**Options:**
+- `-o, --output <FILE>`: Output file path
+- `-O, --opt-level <0-3>`: Optimisation level (default 2)
+- `--emit-llvm`: Write LLVM IR (`.ll`) instead of building
+- `--target <TARGET>`: `native` (the default) or `wasm32-emscripten` (also spelled
+  `wasm32-unknown-emscripten`): the browser build, below
+- `--emcc-arg <ARG>`: One extra argument for `emcc` at the browser build's link;
+  repeat it for several
+
+#### Building for the browser
+
+```bash
+mdhavers build --target wasm32-emscripten program.braw -o program.js
+node program.js
+```
+
+The browser build compiles with the same LLVM backend for WebAssembly and links
+with [Emscripten](https://emscripten.org)'s `emcc`, which must be on `PATH` (or
+named by `EMCC`). It writes `program.js` and `program.wasm` beside it; load the
+`.js` from a web page (with a `<canvas id="canvas">` if the program opens a
+screen) or run it under `node`. The first build also compiles the runtime for
+WebAssembly into a cache, which takes a minute; later builds reuse it until the
+runtime sources or the Emscripten version change.
+
+Pass Emscripten options with `--emcc-arg`. Two are common:
+
+```bash
+# Files the program reads, packed into program.data (path@path-in-the-program)
+mdhavers build --target wasm32-emscripten game.braw -o game.js \
+  --emcc-arg=--preload-file --emcc-arg=data@data
+
+# JSPI: let a blocking loop's snooze suspend the program
+mdhavers build --target wasm32-emscripten game.braw -o game.js --emcc-arg=-sJSPI
+```
+
+A web page cannot block, so in a page `snooze` raises an error unless the program
+is built with `-sJSPI`. Draw a game's frames with
+[`screen_loop`](./screen.md#screen_loopframe_fn) instead, which needs no JSPI.
+Only browsers with WebAssembly JSPI can run a `-sJSPI` build; every build needs
+WebAssembly exception handling and multi-value. Under `node`, `snooze` sleeps as
+usual. The rest of the language, files read through `--preload-file`, the screen
+(on a canvas) and sound (Web Audio) work as natively; see
+[Screen](./screen.md) for what differs in the browser. Bogle Castle's page is
+built this way: see `games/bogle/README.md`.
+
+A browser build's memory grows as needed up to 2GB, its limit: the runtime keeps
+every address below 2^31. `--emcc-arg=-sMAXIMUM_MEMORY=512MB` sets a lower limit;
+a `MAXIMUM_MEMORY` or `INITIAL_MEMORY` above 2GB is refused.
+
 ### check
 
 Check a file for syntax and semantic errors without running.
@@ -198,7 +247,15 @@ fi
 
 ## Environment Variables
 
-Currently, mdhavers doesn't use environment variables, but you can pass data through stdin:
+The browser build (`build --target wasm32-emscripten`) reads:
+
+| Variable | Meaning |
+|---|---|
+| `EMCC`, `EMAR` | The Emscripten compiler and archiver to run (default `emcc` and `emar` on `PATH`). |
+| `MDH_RUNTIME_DIR` | Where the runtime sources are (default: the source tree's `runtime/`). |
+| `MDH_WASM_RUNTIME_DIR` | Where the runtime built for WebAssembly is cached (default: `target/mdh-wasm-runtime` in the source tree). |
+
+You can also pass data through stdin:
 
 ```bash
 echo "input data" | mdhavers program.braw

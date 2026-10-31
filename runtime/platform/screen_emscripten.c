@@ -83,16 +83,28 @@ static bool on_key(int type, const EmscriptenKeyboardEvent *e, void *user) {
     return !shortcut;
 }
 
-/* The canvas's CSS box holds the framebuffer scaled to fit and centred. */
+/* The canvas's top-left in the viewport (client) coordinates every mouse event has. */
+EM_JS(void, mdh_web_canvas_origin, (double *x, double *y), {
+    var s = Module.mdhScreen;
+    var r = s ? s.canvas.getBoundingClientRect() : {left: 0, top: 0};
+    HEAPF64[x >> 3] = r.left;
+    HEAPF64[y >> 3] = r.top;
+});
+
+/* The canvas's CSS box holds the framebuffer scaled to fit and centred. Positions come
+ * from clientX/Y less the canvas's origin: the move and up callbacks are on the window,
+ * where targetX/Y would be relative to the viewport, not the canvas. */
 static void to_logical(const EmscriptenMouseEvent *e, Event *ev) {
     double w = 0, h = 0;
     if (emscripten_get_element_css_size(CANVAS, &w, &h) != EMSCRIPTEN_RESULT_SUCCESS || w <= 0 ||
         h <= 0)
         return;
+    double left = 0, top = 0;
+    mdh_web_canvas_origin(&left, &top);
     double sx = w / (double)logical_width, sy = h / (double)logical_height;
     double s = sx < sy ? sx : sy;
-    double x = ((double)e->targetX - (w - (double)logical_width * s) / 2) / s;
-    double y = ((double)e->targetY - (h - (double)logical_height * s) / 2) / s;
+    double x = ((double)e->clientX - left - (w - (double)logical_width * s) / 2) / s;
+    double y = ((double)e->clientY - top - (h - (double)logical_height * s) / 2) / s;
     ev->x = x < 0 ? 0 : x >= logical_width ? logical_width - 1 : (int64_t)x;
     ev->y = y < 0 ? 0 : y >= logical_height ? logical_height - 1 : (int64_t)y;
     ev->has_position = true;

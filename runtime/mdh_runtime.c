@@ -603,6 +603,18 @@ static char *__mdh_alloc_text(int size_overflowed, size_t out_len) {
     return buf;
 }
 
+/* A program's int64 count as a size_t in *out: 1, or 0 when it is negative or does not
+ * fit. Only wasm32's 32-bit size_t can lose bits here (natively the check folds away), and
+ * a count cast without it wraps there: a small buffer, then a long write. */
+static int __mdh_count_to_size(int64_t n, size_t *out) {
+    if (n < 0) return 0;
+#if SIZE_MAX < UINT64_MAX
+    if ((uint64_t)n > SIZE_MAX) return 0;
+#endif
+    *out = (size_t)n;
+    return 1;
+}
+
 /* The first `len` bytes of `s` as a new string; raises the "ower muckle" error when there
  * is no memory for it (MDH-BUG-FLU-00189). */
 static MdhValue __mdh_make_string_n(const char *s, size_t len) {
@@ -6891,8 +6903,10 @@ MdhValue __mdh_center(MdhValue str, MdhValue width_val) {
     int64_t total_pad = width - char_len;
     int64_t left_pad = total_pad / 2;
 
+    size_t pad_n = 0;
     size_t out_len = 0;
-    int overflowed = __builtin_add_overflow((size_t)total_pad, byte_len, &out_len);
+    int overflowed = !__mdh_count_to_size(total_pad, &pad_n) ||
+                     __builtin_add_overflow(pad_n, byte_len, &out_len);
     char *buf = __mdh_alloc_text(overflowed, out_len);
     memset(buf, ' ', out_len);
     memcpy(buf + left_pad, s, byte_len);
@@ -7515,9 +7529,11 @@ MdhValue __mdh_leftpad(MdhValue str, MdhValue width_val, MdhValue pad_val) {
     }
 
     size_t byte_len = strlen(s);
+    size_t pad_n = 0;
     size_t pad_bytes_len = 0;
     size_t out_len = 0;
-    int overflowed = __builtin_mul_overflow((size_t)pad_chars, fill_len, &pad_bytes_len) ||
+    int overflowed = !__mdh_count_to_size(pad_chars, &pad_n) ||
+                     __builtin_mul_overflow(pad_n, fill_len, &pad_bytes_len) ||
                      __builtin_add_overflow(pad_bytes_len, byte_len, &out_len);
 
     char *buf = __mdh_alloc_text(overflowed, out_len);
@@ -7551,9 +7567,11 @@ MdhValue __mdh_rightpad(MdhValue str, MdhValue width_val, MdhValue pad_val) {
     }
 
     size_t byte_len = strlen(s);
+    size_t pad_n = 0;
     size_t pad_bytes_len = 0;
     size_t out_len = 0;
-    int overflowed = __builtin_mul_overflow((size_t)pad_chars, fill_len, &pad_bytes_len) ||
+    int overflowed = !__mdh_count_to_size(pad_chars, &pad_n) ||
+                     __builtin_mul_overflow(pad_n, fill_len, &pad_bytes_len) ||
                      __builtin_add_overflow(byte_len, pad_bytes_len, &out_len);
 
     char *buf = __mdh_alloc_text(overflowed, out_len);
@@ -10615,7 +10633,12 @@ MdhValue __mdh_sporran_fill(MdhValue str, MdhValue width, MdhValue fill_char) {
     if (w_i <= 0) {
         return __mdh_retained(str);
     }
-    size_t w = (size_t)w_i;
+    size_t w = 0;
+    if (!__mdh_count_to_size(w_i, &w)) {
+        /* Wider than memory: natively the padding's allocation fails the same way. */
+        __mdh_raise_too_big();
+        return __mdh_make_string("");
+    }
     int64_t char_len = __mdh_utf8_count_codepoints((const unsigned char *)s);
 
     const unsigned char *fill_bytes = NULL;
@@ -11712,8 +11735,10 @@ MdhValue __mdh_tattie_scone(MdhValue str, MdhValue n) {
     size_t items_len = 0;
     size_t seps_len = 0;
     size_t out_len = 0;
-    int overflowed = __builtin_mul_overflow((size_t)count, slen, &items_len) ||
-                     __builtin_mul_overflow((size_t)(count - 1), sep_len, &seps_len) ||
+    size_t count_n = 0;
+    int overflowed = !__mdh_count_to_size(count, &count_n) ||
+                     __builtin_mul_overflow(count_n, slen, &items_len) ||
+                     __builtin_mul_overflow(count_n - 1, sep_len, &seps_len) ||
                      __builtin_add_overflow(items_len, seps_len, &out_len);
     char *out = __mdh_alloc_text(overflowed, out_len);
     size_t pos = 0;

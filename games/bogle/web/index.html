@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<!--
+  Bogle Castle in the browser. games/bogle/web/build.sh puts this page beside the built
+  bogle.js/.wasm/.data (games/bogle/shell/web.braw); serve that directory over HTTP.
+  The click starts the game, so sound and mouse look may start. ?autostart skips the
+  click (headless checks); ?jspi loads the JSPI build of the blocking shell instead.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bogle Castle</title>
+<link rel="icon" href="data:,">
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  #canvas { display: block; width: 100vw; height: 100vh; background: #000; outline: none; }
+  #overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+             flex-direction: column; gap: 0.6em; background: rgba(0, 0, 0, 0.85); color: #e8dcc0;
+             font: 20px/1.4 Georgia, serif; cursor: pointer; user-select: none; text-align: center; }
+  #overlay small { color: #9a8f78; font-size: 14px; }
+  #overlay.gone { display: none; }
+</style>
+</head>
+<body>
+<canvas id="canvas" tabindex="-1"></canvas>
+<div id="overlay"><div>Click tae play</div><small id="status">sound and mouse look start wi' the click</small></div>
+<script>
+'use strict';
+var overlay = document.getElementById('overlay');
+var statusEl = document.getElementById('status');
+var lastError = '';
+var Module = {
+  canvas: document.getElementById('canvas'),
+  print: function (text) { console.log(text); },
+  printErr: function (text) { console.warn(text); lastError = text; },
+  setStatus: function (text) { if (text) statusEl.textContent = text; },
+  onRuntimeInitialized: function () { overlay.classList.add('gone'); },
+  onAbort: function (what) {
+    overlay.classList.remove('gone');
+    overlay.firstElementChild.textContent = 'Och, it fell ower';
+    statusEl.textContent = String(what);
+  },
+};
+var started = false;
+// The wasm features the build needs, checked on tiny modules: multivalue results (the
+// runtime's ABI) and exception handling (try/catch: setjmp and Rust unwinding).
+function missingFeatures() {
+  var head = [0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00];
+  var multivalue = head.concat([0x01, 0x06, 0x01, 0x60, 0x00, 0x02, 0x7f, 0x7f,
+    0x03, 0x02, 0x01, 0x00, 0x0a, 0x08, 0x01, 0x06, 0x00, 0x41, 0x00, 0x41, 0x00, 0x0b]);
+  var exceptions = head.concat([0x01, 0x04, 0x01, 0x60, 0x00, 0x00, 0x03, 0x02, 0x01, 0x00,
+    0x0d, 0x03, 0x01, 0x00, 0x00,
+    0x0a, 0x09, 0x01, 0x07, 0x00, 0x06, 0x40, 0x07, 0x00, 0x0b, 0x0b]);
+  var missing = [];
+  if (typeof WebAssembly !== 'object') return ['WebAssembly'];
+  if (!WebAssembly.validate(new Uint8Array(multivalue))) missing.push('multi-value');
+  if (!WebAssembly.validate(new Uint8Array(exceptions))) missing.push('exception handling');
+  return missing;
+}
+Module.onExit = function (status) {
+  overlay.classList.remove('gone');
+  overlay.firstElementChild.textContent = status ? 'Och, it fell ower' : "That's the game ower";
+  statusEl.textContent = status ? (lastError || 'see the console') : 'reload tae play again';
+};
+function start() {
+  if (started) return;
+  started = true;
+  var missing = missingFeatures();
+  if (missing.length) {
+    Module.onAbort('this browser\'s WebAssembly lacks ' + missing.join(' and ') +
+                   ': try a current Chrome, Firefox, Safari or Edge');
+    return;
+  }
+  overlay.firstElementChild.textContent = 'Loadin\u2026';
+  Module.canvas.focus();
+  var script = document.createElement('script');
+  // ?jspi: the JSPI build of the blocking shell (build.sh --jspi).
+  var jspi = /[?&]jspi\b/.test(location.search);
+  if (jspi && typeof WebAssembly.Suspending !== 'function') {
+    Module.onAbort('the ?jspi build needs WebAssembly JSPI, which this browser lacks');
+    return;
+  }
+  script.src = jspi ? 'bogle_jspi.js' : 'bogle.js';
+  script.onerror = function () { Module.onAbort(script.src + ' wouldnae load: build it wi\' games/bogle/web/build.sh'); };
+  document.body.appendChild(script);
+}
+overlay.addEventListener('click', start);
+// ?autostart skips the click (headless checks): no sound or pointer lock until one comes.
+if (/[?&]autostart\b/.test(location.search)) start();
+</script>
+</body>
+</html>

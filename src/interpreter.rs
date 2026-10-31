@@ -13192,11 +13192,12 @@ impl Interpreter {
                         line,
                     });
                 }
-                let should_close = self.globals.borrow().get("screen_should_close");
-                let should_close = should_close.ok_or_else(|| HaversError::NotCallable {
-                    name: "screen_should_close".to_string(),
-                    line,
-                })?;
+                // Always defined (graphics.rs); were it not, the call below says so.
+                let should_close = self
+                    .globals
+                    .borrow()
+                    .get("screen_should_close")
+                    .unwrap_or(Value::Nil);
                 let clock = MONO_START.get_or_init(std::time::Instant::now);
                 let mut last = clock.elapsed().as_millis() as i64;
                 loop {

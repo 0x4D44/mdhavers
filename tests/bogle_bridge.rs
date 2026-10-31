@@ -36,8 +36,13 @@ mod native {
         }
 
         fn run(&self) -> Output {
+            self.run_with(&[])
+        }
+
+        fn run_with(&self, envs: &[(&str, &str)]) -> Output {
             let mut command = Command::new(&self.0);
             command.env("MDH_SCREEN", "none");
+            command.envs(envs.iter().copied());
             bounded_output(command)
         }
     }
@@ -294,6 +299,49 @@ hae_a_bash {
                 .filter(|line| line.starts_with("mdh_screen frame "))
                 .count();
             assert_eq!(shown, 3, "rc {rc}: {output:?}");
+        }
+    }
+
+    /// A frame that drops the only variable holding its closure keeps running on it:
+    /// the call site holds a reference to a global it passes, and screen_loop its own.
+    /// MDH_RC_NOFREE=1 keeps a dead closure, so a use of one aborts; without it the
+    /// freed closure's memory is reused. RC on and off.
+    #[test]
+    fn screen_loop_keeps_a_closure_a_frame_lets_go_of() {
+        const SOURCE: &str = r#"
+screen_open(2, 2, "Loop")
+ken held = naething
+dae tick(box, dt) {
+    box["n"] = box["n"] + 1
+    held = naething
+    ken n = box["n"]
+    ken junk = []
+    fer i in 0..64 {
+        shove(junk, |x| x + n + i)
+    }
+    gie box["n"] < 4
+}
+dae run() {
+    ken box = {"n": 0}
+    held = |dt| tick(box, dt)
+    screen_loop(held)
+    gie box["n"]
+}
+blether run()
+blether held
+"#;
+        for rc in [true, false] {
+            let program =
+                Executable::compile_with(SOURCE, LLVMCompiler::new().with_refcounting(rc));
+            for envs in [&[][..], &[("MDH_RC_NOFREE", "1")][..]] {
+                let output = program.run_with(envs);
+                assert!(output.status.success(), "rc {rc} {envs:?}: {output:?}");
+                assert_eq!(
+                    String::from_utf8_lossy(&output.stdout),
+                    "4\nnaething\n",
+                    "rc {rc} {envs:?}"
+                );
+            }
         }
     }
 
@@ -633,4 +681,29 @@ gin box["n"] != 5 {
         .expect_err("a number is no frame function")
         .to_string();
     assert!(error.contains("screen_loop wants a function"), "{error}");
+    for (source, expected) in [
+        ("screen_loop()", "screen_loop"),
+        ("screen_loop(len, len)", "screen_loop"),
+        // A frame's error reaches the caller.
+        (
+            "dae screen_should_close() {\n    gie nae\n}\ndae boom(dt) {\n    hurl \"frame fell ower\"\n}\nscreen_loop(boom)",
+            "frame fell ower",
+        ),
+    ] {
+        let error = Interpreter::new()
+            .interpret(&parse(source).unwrap())
+            .expect_err(source)
+            .to_string();
+        assert!(error.contains(expected), "{source}: {error}");
+    }
+    // Without a window the real screen_should_close refuses, and so does the loop
+    // (raylib: `Window not open`; no graphics: `Nae windae!`).
+    let error = Interpreter::new()
+        .interpret(&parse("screen_loop(|dt| aye)").unwrap())
+        .expect_err("nae window")
+        .to_string();
+    assert!(
+        error.contains("Window not open") || error.contains("Nae windae"),
+        "{error}"
+    );
 }
