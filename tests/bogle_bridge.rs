@@ -12,6 +12,10 @@ mod native {
 
     impl Executable {
         fn compile(source: &str) -> Self {
+            Self::compile_with(source, LLVMCompiler::new())
+        }
+
+        fn compile_with(source: &str, compiler: LLVMCompiler) -> Self {
             static NEXT: AtomicUsize = AtomicUsize::new(0);
             let scratch = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".scratch");
             std::fs::create_dir_all(&scratch).expect("create scratch directory");
@@ -21,7 +25,7 @@ mod native {
                 NEXT.fetch_add(1, Ordering::Relaxed),
                 std::env::consts::EXE_SUFFIX
             )));
-            LLVMCompiler::new()
+            compiler
                 .compile_to_native(
                     &parse(source).expect("parse bridge program"),
                     &executable.0,
@@ -215,6 +219,82 @@ check(|| sound_close())
             String::from_utf8_lossy(&output.stdout),
             "sound ring copy/wrap/in-flight/underrun OK\n"
         );
+    }
+
+    /// screen_loop calls the frame function (a named function, then a closure) once
+    /// a frame with the milliseconds since the last, until it gives nae or closes the
+    /// window; errors in a frame reach the handler around the call. RC on and off.
+    #[test]
+    fn screen_loop_drives_frames_until_nae_or_close() {
+        const SOURCE: &str = r#"
+screen_open(2, 2, "Loop")
+ken pixels = bytes(4)
+ken palette = bytes(768)
+ken frames = 0
+ken dts = []
+dae frame(dt) {
+    frames = frames + 1
+    shove(dts, dt >= 0)
+    screen_shaw(pixels, palette)
+    gie frames < 3
+}
+blether screen_loop(frame)
+blether frames
+blether dts
+dae tick(box, limit) {
+    box["n"] = box["n"] + 1
+    gie box["n"] < limit
+}
+dae run_closure(limit) {
+    ken box = {"n": 0}
+    screen_loop(|dt| tick(box, limit))
+    gie box["n"]
+}
+blether run_closure(4)
+dae boom(dt) {
+    hurl "frame fell ower"
+}
+hae_a_bash {
+    screen_loop(boom)
+} gin_it_gangs_wrang err {
+    blether "caught " + err
+}
+hae_a_bash {
+    screen_loop(42)
+} gin_it_gangs_wrang err {
+    blether err
+}
+ken shut = 0
+dae closer(dt) {
+    shut = shut + 1
+    screen_close()
+    gie aye
+}
+screen_loop(closer)
+blether shut
+hae_a_bash {
+    screen_loop(closer)
+} gin_it_gangs_wrang err {
+    blether err
+}
+"#;
+        for rc in [true, false] {
+            let output =
+                Executable::compile_with(SOURCE, LLVMCompiler::new().with_refcounting(rc)).run();
+            assert!(output.status.success(), "rc {rc}: {output:?}");
+            assert_eq!(
+                String::from_utf8_lossy(&output.stdout),
+                "naething\n3\n[aye, aye, aye]\n4\ncaught Hurled at line 27: frame fell ower\n\
+                 Jings! Something went awfy wrang: screen_loop wants a function\n1\n\
+                 Jings! Something went awfy wrang: Nae windae! Open the screen first\n",
+                "rc {rc}"
+            );
+            let shown = String::from_utf8_lossy(&output.stderr)
+                .lines()
+                .filter(|line| line.starts_with("mdh_screen frame "))
+                .count();
+            assert_eq!(shown, 3, "rc {rc}: {output:?}");
+        }
     }
 
     fn fnv1a32(bytes: &[u8]) -> u32 {
@@ -471,6 +551,7 @@ fn interpreter_without_graphics_reports_nae_windae_for_every_bridge_name() {
         "mouse_down(0)",
         "screen_grab_mouse(aye)",
         "screen_focused()",
+        "screen_loop(|dt| aye)",
     ] {
         let program = parse(call).expect("parse interpreter bridge call");
         let error = Interpreter::new()
@@ -503,4 +584,53 @@ fn sound_interpreter_null_backend_is_per_interpreter_and_bounded() {
         .interpret(&parse("sound_queue(bytes(2))").unwrap())
         .unwrap_err();
     assert!(error.to_string().contains("nae sound is open"), "{error}");
+}
+
+/// The interpreter's screen_loop, without a window: the program stands in its own
+/// screen_should_close (the loop asks the global of that name each frame).
+#[test]
+fn interpreter_screen_loop_calls_frames_until_nae_or_close() {
+    use mdhavers::{parse, Interpreter};
+    let source = r#"
+ken frames = 0
+ken closing = nae
+dae screen_should_close() {
+    gie closing
+}
+ken dts = []
+dae frame(dt) {
+    frames = frames + 1
+    shove(dts, dt >= 0)
+    gie frames < 3
+}
+gin screen_loop(frame) != naething {
+    hurl "screen_loop gave a value"
+}
+gin frames != 3 {
+    hurl "nae frame stopped it: " + tae_string(frames)
+}
+gin dts != [aye, aye, aye] {
+    hurl "dt: " + tae_string(dts)
+}
+dae tick(box) {
+    box["n"] = box["n"] + 1
+    gin box["n"] == 5 {
+        closing = aye
+    }
+    gie aye
+}
+ken box = {"n": 0}
+screen_loop(|dt| tick(box))
+gin box["n"] != 5 {
+    hurl "should_close did not stop it: " + tae_string(box["n"])
+}
+"#;
+    Interpreter::new()
+        .interpret(&parse(source).unwrap())
+        .unwrap();
+    let error = Interpreter::new()
+        .interpret(&parse("screen_loop(42)").unwrap())
+        .expect_err("a number is no frame function")
+        .to_string();
+    assert!(error.contains("screen_loop wants a function"), "{error}");
 }

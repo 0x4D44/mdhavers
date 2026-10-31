@@ -339,6 +339,7 @@ pub const RUNTIME_OWNERSHIP: &[(&str, &str, Ret)] = &[
     ("__mdh_screen_focused", "", Ret::None),
     ("__mdh_screen_grab_mouse", "b", Ret::None),
     ("__mdh_screen_height", "", Ret::None),
+    ("__mdh_screen_loop", "b-", Ret::None), // calls arg 1 back; retains it on the web
     ("__mdh_screen_open", "bbb", Ret::None),
     ("__mdh_screen_shaw", "bb", Ret::None),
     ("__mdh_screen_should_close", "", Ret::None),

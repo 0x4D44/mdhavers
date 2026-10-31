@@ -575,12 +575,18 @@ pub(crate) fn ensure_wasm_runtime() -> Result<WasmRuntime, HaversError> {
     std::fs::create_dir_all(&dir)
         .map_err(|e| HaversError::CompileError(format!("Cannae make {}: {e}", dir.display())))?;
 
+    // One build at a time in this process (tests build in parallel); across processes
+    // each archive is written aside and renamed into place, so a reader sees an old
+    // archive or a new one, never a missing or half-written one.
+    static BUILD: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _one_at_a_time = BUILD.lock().unwrap_or_else(|e| e.into_inner());
+
     let stamp_path = dir.join("c.stamp");
     let stamp = c_runtime_stamp(&src)?;
     let fresh = std::fs::read_to_string(&stamp_path).ok().as_deref() == Some(stamp.as_str())
         && C_ARCHIVES.iter().all(|(lib, _)| dir.join(lib).exists());
     if !fresh {
-        let obj_dir = dir.join("obj");
+        let obj_dir = dir.join(format!("obj-{}", std::process::id()));
         std::fs::create_dir_all(&obj_dir)
             .map_err(|e| HaversError::CompileError(format!("{}: {e}", obj_dir.display())))?;
         for (lib, sources) in C_ARCHIVES {
@@ -611,12 +617,16 @@ pub(crate) fn ensure_wasm_runtime() -> Result<WasmRuntime, HaversError> {
                 objects.push(object);
             }
             let archive = dir.join(lib);
-            let _ = std::fs::remove_file(&archive);
+            let aside = dir.join(format!("{lib}.{}.tmp", std::process::id()));
+            let _ = std::fs::remove_file(&aside);
             run(
-                Command::new(emar()).arg("rcs").arg(&archive).args(&objects),
+                Command::new(emar()).arg("rcs").arg(&aside).args(&objects),
                 &format!("emar {lib}"),
             )?;
+            std::fs::rename(&aside, &archive)
+                .map_err(|e| HaversError::CompileError(format!("{}: {e}", archive.display())))?;
         }
+        let _ = std::fs::remove_dir_all(&obj_dir);
         std::fs::write(&stamp_path, &stamp)
             .map_err(|e| HaversError::CompileError(format!("{}: {e}", stamp_path.display())))?;
     }
@@ -649,6 +659,24 @@ Module.preRun.push(function () {
 });
 ";
 
+/// Whether the emcc arguments turn on JSPI (`-sJSPI`, `-sJSPI=1`, `-s JSPI`).
+fn wants_jspi(extra: &[String]) -> bool {
+    let mut setting = false;
+    for (i, arg) in extra.iter().enumerate() {
+        let value = match arg.strip_prefix("-s") {
+            Some("") => extra.get(i + 1).map(String::as_str),
+            Some(rest) => Some(rest),
+            None => None,
+        };
+        match value {
+            Some("JSPI") | Some("JSPI=1") => setting = true,
+            Some("JSPI=0") => setting = false,
+            _ => {}
+        }
+    }
+    setting
+}
+
 /// Link `object` and the browser runtime into `output` (`.js`, beside it the `.wasm`).
 /// `extra` goes to emcc as it stands (e.g. `--preload-file dir`).
 pub(crate) fn link_wasm(
@@ -669,14 +697,16 @@ pub(crate) fn link_wasm(
         .arg(runtime.dir.join("libgc_stub.a"));
     if uses_screen {
         link.arg(runtime.dir.join("libmdh_screen.a"));
-        // A screen means a browser page: snooze yields to it (see wasm_sleep.c), its
-        // stack suspended by JS Promise Integration. (ASYNCIFY cannot: it supports
-        // neither wasm exceptions nor the multivalue ABI.)
-        link.arg(runtime.dir.join("libmdh_sleep_yield.a"))
-            .arg("-sJSPI=1");
-    } else {
-        link.arg(runtime.dir.join("libmdh_sleep.a"));
     }
+    // In a page snooze cannot block: frames come from screen_loop. A program built with
+    // JSPI (`--emcc-arg=-sJSPI`) may snooze instead, its stack suspended while the page
+    // runs (see wasm_sleep.c). ASYNCIFY could not: it supports neither wasm exceptions
+    // nor the multivalue ABI.
+    link.arg(runtime.dir.join(if wants_jspi(extra) {
+        "libmdh_sleep_yield.a"
+    } else {
+        "libmdh_sleep.a"
+    }));
     if uses_sound {
         link.arg(runtime.dir.join("libmdh_sound.a"));
     }
@@ -702,4 +732,24 @@ pub(crate) fn link_wasm(
     let result = run(&mut link, "emcc link");
     let _ = std::fs::remove_file(&pre_js);
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::wants_jspi;
+
+    fn args(list: &[&str]) -> Vec<String> {
+        list.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn jspi_is_opt_in_through_the_emcc_arguments() {
+        assert!(!wants_jspi(&args(&[])));
+        assert!(!wants_jspi(&args(&["--preload-file", "data"])));
+        assert!(wants_jspi(&args(&["-sJSPI"])));
+        assert!(wants_jspi(&args(&["-sJSPI=1"])));
+        assert!(wants_jspi(&args(&["-s", "JSPI"])));
+        assert!(!wants_jspi(&args(&["-sJSPI", "-sJSPI=0"])));
+        assert!(!wants_jspi(&args(&["-sJSPI_EXPORTS=main"])));
+    }
 }

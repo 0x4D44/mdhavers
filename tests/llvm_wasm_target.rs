@@ -191,3 +191,81 @@ blether "still standin"
          still standin\n"
     );
 }
+
+/// The browser build's screen_loop hands frames to the host loop (under node a timer,
+/// in a page requestAnimationFrame): frames run until one gives nae, then the program
+/// exits 0 without running what follows the call; an uncaught error in a frame exits 1
+/// with its message. Offscreen (MDH_SCREEN=none), so it runs in node. Skips (passes)
+/// when emcc or node is missing.
+#[test]
+fn wasm_screen_loop_runs_frames_from_the_host_loop() {
+    if !available("emcc") || !available("node") {
+        eprintln!("skipping: emcc or node is not on PATH");
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let build = |name: &str, source: &str| {
+        let main = dir.path().join(format!("{name}.braw"));
+        fs::write(&main, source).unwrap();
+        let js = dir.path().join(format!("{name}.js"));
+        LLVMCompiler::new()
+            .compile_to_wasm_with_source(&parse(source).unwrap(), &js, 1, Some(&main), &[])
+            .unwrap();
+        Command::new("node")
+            .arg(&js)
+            .env("MDH_SCREEN", "none")
+            .output()
+            .unwrap()
+    };
+    let run = build(
+        "frames",
+        r#"
+screen_open(2, 2, "Loop")
+ken frames = 0
+dae tick(box, limit) {
+    box["n"] = box["n"] + 1
+    blether "frame " + tae_string(box["n"])
+    screen_shaw(bytes(4), bytes(768))
+    gie box["n"] < limit
+}
+ken box = {"n": 0}
+hae_a_bash {
+    screen_loop(|dt| tick(box, 3))
+} gin_it_gangs_wrang err {
+    blether "never here"
+}
+blether "nor here"
+"#,
+    );
+    assert!(run.status.success(), "{run:?}");
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "frame 1\nframe 2\nframe 3\n"
+    );
+    let shown = String::from_utf8_lossy(&run.stderr)
+        .lines()
+        .filter(|line| line.starts_with("mdh_screen frame "))
+        .count();
+    assert_eq!(shown, 3, "{run:?}");
+
+    let run = build(
+        "fails",
+        r#"
+screen_open(2, 2, "Loop")
+dae frame(dt) {
+    hurl "frame fell ower"
+}
+hae_a_bash {
+    screen_loop(frame)
+} gin_it_gangs_wrang err {
+    blether "never here"
+}
+"#,
+    );
+    assert_eq!(run.status.code(), Some(1), "{run:?}");
+    assert!(run.stdout.is_empty(), "{run:?}");
+    assert!(
+        String::from_utf8_lossy(&run.stderr).contains("frame fell ower"),
+        "{run:?}"
+    );
+}

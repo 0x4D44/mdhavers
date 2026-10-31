@@ -163,3 +163,99 @@ MdhValue __mdh_screen_focused(void) {
     main_thread(); require_open(); pump();
     return __mdh_make_bool(offscreen || input.focused);
 }
+
+/* screen_loop(frame_fn): the host drives the frames. `call` is compiled code's late
+ * dispatcher for one argument (`__mdh_late_call_1`): it calls any function value with
+ * the language's own arity, default-argument and closure rules, borrowing both
+ * arguments and returning +1. The frame function gets the milliseconds since the
+ * previous frame (mono_ms, so 0 on the first) and the loop ends when it gives `nae`,
+ * when the window should close, or when it closes the window itself. */
+typedef MdhValue (*MdhLoopCall)(MdhValue fn, MdhValue arg);
+
+static bool loop_callable(MdhValue fn) {
+    return fn.tag == MDH_TAG_FUNCTION || fn.tag == MDH_TAG_CLOSURE;
+}
+/* One frame; false when the loop should stop. */
+static bool loop_frame(MdhValue fn, MdhLoopCall call, int64_t *last) {
+    int64_t now = __mdh_mono_ms().data;
+    MdhValue result = call(fn, __mdh_make_int(now - *last));
+    *last = now;
+    bool stop = result.tag == MDH_TAG_BOOL && result.data == 0;
+    __mdh_release(result);
+    return !stop && opened;
+}
+
+#ifndef __EMSCRIPTEN__
+/* Natively the shells' own loop, timing included: a frame, then a 1 ms snooze (the
+ * frame's screen_shaw paces it to the display). */
+MdhValue __mdh_screen_loop(MdhValue fn, MdhLoopCall call) {
+    main_thread();
+    if (!loop_callable(fn)) __mdh_builtin_error("screen_loop wants a function");
+    require_open();
+    int64_t last = __mdh_mono_ms().data;
+    for (;;) {
+        pump();
+        if (input.should_close || !loop_frame(fn, call, &last)) break;
+        mdh_sleep_ms(1);
+    }
+    return __mdh_make_nil();
+}
+#else
+#include <emscripten.h>
+#include <setjmp.h>
+/* In a web page nothing may block: the browser calls each frame from
+ * requestAnimationFrame (emscripten_set_main_loop), and the call itself never returns
+ * (the rest of main does not run; Emscripten unwinds it). When the loop ends the
+ * program exits, with 0, or with 1 after an uncaught error. Handlers around the
+ * screen_loop call lived in main's unwound frames, so each frame has its own: an
+ * error a frame does not catch ends the program as an uncaught one does. */
+static MdhValue web_fn;
+static MdhLoopCall web_call;
+static int64_t web_last;
+
+/* An import, not EM_ASM: EM_ASM cannot sit in a function that uses setjmp. */
+EM_JS(void, mdh_web_hush, (void), {
+    if (Module.mdhSound) {
+        try { Module.mdhSound.ctx.close(); } catch (e) {}
+        Module.mdhSound = null;
+    }
+});
+
+static void web_finish(int status) {
+    emscripten_cancel_main_loop();
+    __mdh_release(web_fn);
+    web_fn = __mdh_make_nil();
+    if (opened) __mdh_screen_close();
+    mdh_web_hush(); /* the rest of main (a sound_close, say) never runs */
+    emscripten_force_exit(status);
+}
+
+static void web_frame(void) {
+    jmp_buf env;
+    __mdh_try_push(&env);
+    if (setjmp(env) != 0) {
+        __mdh_try_pop();
+        MdhValue text = __mdh_to_string(__mdh_get_last_error());
+        fprintf(stderr, "%s\n", __mdh_get_string(text));
+        __mdh_release(text);
+        web_finish(1);
+        return;
+    }
+    pump();
+    bool more = !input.should_close && loop_frame(web_fn, web_call, &web_last);
+    __mdh_try_pop();
+    if (!more) web_finish(0);
+}
+
+MdhValue __mdh_screen_loop(MdhValue fn, MdhLoopCall call) {
+    main_thread();
+    if (!loop_callable(fn)) __mdh_builtin_error("screen_loop wants a function");
+    require_open();
+    __mdh_retain(fn); /* kept past this call: the frames outlive main */
+    web_fn = fn;
+    web_call = call;
+    web_last = __mdh_mono_ms().data;
+    emscripten_set_main_loop(web_frame, 0, true);
+    return __mdh_make_nil(); /* not reached: set_main_loop unwinds main */
+}
+#endif

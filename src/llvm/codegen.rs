@@ -5495,10 +5495,7 @@ impl<'ctx> CodeGen<'ctx> {
 
     /// `tv_nsec` of a `struct timespec { i64 tv_sec; long tv_nsec; }` the C library has
     /// filled in. wasm32's `long` is 32 bits, so there it is loaded as such and widened.
-    fn load_tv_nsec(
-        &self,
-        nsec_ptr: PointerValue<'ctx>,
-    ) -> inkwell::values::IntValue<'ctx> {
+    fn load_tv_nsec(&self, nsec_ptr: PointerValue<'ctx>) -> inkwell::values::IntValue<'ctx> {
         if self.wasm32 {
             let nsec = self
                 .builder
@@ -24449,6 +24446,39 @@ impl<'ctx> CodeGen<'ctx> {
                         0,
                         "screen_focused",
                         "screen_focused returned void",
+                    );
+                }
+                "screen_loop" => {
+                    self.uses_screen = true;
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "screen_loop expects 1 argument".to_string(),
+                        ));
+                    }
+                    // The runtime calls the frame function back through the late
+                    // dispatcher, so it gets the language's own call rules.
+                    let dispatcher = self.late_call_dispatcher(1);
+                    let ptr_type = self.context.ptr_type(AddressSpace::default());
+                    let screen_loop = self
+                        .module
+                        .get_function("__mdh_screen_loop")
+                        .unwrap_or_else(|| {
+                            self.module.add_function(
+                                "__mdh_screen_loop",
+                                self.types.value_type.fn_type(
+                                    &[self.types.value_type.into(), ptr_type.into()],
+                                    false,
+                                ),
+                                Some(Linkage::External),
+                            )
+                        });
+                    let mut call_args = self.compile_metadata_args(args)?;
+                    call_args.push(dispatcher.as_global_value().as_pointer_value().into());
+                    return self.build_call_basic_value(
+                        screen_loop,
+                        &call_args,
+                        "screen_loop",
+                        "screen_loop returned void",
                     );
                 }
                 "screen_clear" | "draw_pixel" | "draw_rect" | "draw_circle" | "draw_line"

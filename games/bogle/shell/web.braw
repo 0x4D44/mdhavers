@@ -1,0 +1,7 @@
+# The browser shell: the page draws the frames (screen_loop), so nothing here
+# blocks. On the web screen_loop never returns: the game ends when bogle_frame
+# gives nae, and the runtime closes the window and exits.
+fetch "frame"
+bogle_init(320, 200)
+screen_loop(bogle_frame)
+bogle_close()

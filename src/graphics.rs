@@ -22,6 +22,18 @@ thread_local! {
     static FRAMEBUFFER_RGBA: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
 }
 
+/// Whether a screen window is open (`screen_loop` stops once its frame closes it).
+#[cfg(feature = "graphics")]
+pub(crate) fn screen_is_open() -> bool {
+    RAYLIB_HANDLE.with(|h| h.borrow().is_some())
+}
+
+/// Without graphics no window ever opens.
+#[cfg(not(feature = "graphics"))]
+pub(crate) fn screen_is_open() -> bool {
+    false
+}
+
 /// Register all graphics functions in the interpreter globals
 #[cfg(feature = "graphics")]
 pub fn register_graphics_functions(globals: &Rc<RefCell<crate::value::Environment>>) {

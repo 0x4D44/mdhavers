@@ -8242,7 +8242,8 @@ impl Interpreter {
         // argument, so call_value dispatches them by name (call_builtin_hof).
         // gaun - map (Scots: "going"); sieve - filter; tumble - reduce/fold;
         // ilk - for each; hunt - find first; ony - any; aw - all;
-        // grup_up - group by key; pairt_by - partition into [matches, rest].
+        // grup_up - group by key; pairt_by - partition into [matches, rest];
+        // screen_loop - call a frame function once per frame (docs/src/reference/screen.md).
         for (name, arity) in [
             ("gaun", 2),
             ("sieve", 2),
@@ -8253,6 +8254,7 @@ impl Interpreter {
             ("aw", 2),
             ("grup_up", 2),
             ("pairt_by", 2),
+            ("screen_loop", 1),
         ] {
             globals.borrow_mut().define(
                 name.to_string(),
@@ -13176,6 +13178,46 @@ impl Interpreter {
                     Value::List(Rc::new(RefCell::new(matches))),
                     Value::List(Rc::new(RefCell::new(non_matches))),
                 ]))))
+            }
+
+            // screen_loop(frame_fn) - the native runtime's loop (runtime/mdh_screen.c):
+            // frame_fn(ms since the last frame) until it gives nae, the window should
+            // close, or the frame closed it; a 1 ms snooze between frames.
+            "screen_loop" => {
+                check_arity("screen_loop", 1, args.len(), line)?;
+                let func = args[0].clone();
+                if !matches!(func, Value::Function(_) | Value::NativeFunction(_)) {
+                    return Err(HaversError::TypeError {
+                        message: "screen_loop wants a function".to_string(),
+                        line,
+                    });
+                }
+                let should_close = self.globals.borrow().get("screen_should_close");
+                let should_close = should_close.ok_or_else(|| HaversError::NotCallable {
+                    name: "screen_should_close".to_string(),
+                    line,
+                })?;
+                let clock = MONO_START.get_or_init(std::time::Instant::now);
+                let mut last = clock.elapsed().as_millis() as i64;
+                loop {
+                    if self
+                        .call_value(should_close.clone(), Vec::new(), line)?
+                        .is_truthy()
+                    {
+                        break;
+                    }
+                    let now = clock.elapsed().as_millis() as i64;
+                    let was_open = crate::graphics::screen_is_open();
+                    let result =
+                        self.call_value(func.clone(), vec![Value::Integer(now - last)], line)?;
+                    last = now;
+                    let closed = was_open && !crate::graphics::screen_is_open();
+                    if matches!(result, Value::Bool(false)) || closed {
+                        break;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                }
+                Ok(Value::Nil)
             }
 
             _ => Err(HaversError::NotCallable {

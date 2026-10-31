@@ -60,6 +60,7 @@ mdhavers build hello_screen.braw -o hello_screen
 | Native, any other target | The functions exist but `runtime/platform/screen_none.c` has no window: `screen_open` hurls `Nae windae on this platform yet`, unless `MDH_SCREEN=none` is set (see below). Selected in `build.rs:101`. |
 | Interpreter, built with the `graphics` (raylib) feature | Supported by `src/graphics.rs`. Same function names and the same `screen_shaw` formats; the details below note where it differs from native. |
 | Interpreter, built without `graphics` (the CLI-only and minimal builds) | The names exist but every screen, key and mouse call hurls `Nae windae! Screen an' keyboard functions cannae be used in native code` (`src/graphics.rs:828`). `MDH_SCREEN=none` does not change this. |
+| Browser (`mdhavers build --target wasm32-emscripten`, LLVM) | Supported by `runtime/mdh_screen.c` with a `<canvas id="canvas">` in `runtime/platform/screen_emscripten.c`: the framebuffer is drawn at its own size and scaled by CSS (nearest-neighbour, aspect kept). A page cannot block, so draw frames with [`screen_loop`](#screen_loopframe_fn), not a `whiles` loop with `snooze` (see there). `screen_should_close` is always `nae`. |
 | JavaScript (`compile`) and WebAssembly (`wasm`) | Not implemented. `src/compiler.rs` and `src/wasm_compiler.rs` define no `screen_*`, `key_*` or `mouse_*` helper. The JavaScript output compiles but stops at the call with `ReferenceError: screen_open is not defined`; the `wasm` command refuses to compile with `Dae 'screen_open' isnae kent tae the WASM backend ...`. |
 
 All screen, key and mouse functions must be called from the main thread. The
@@ -206,6 +207,63 @@ music out while the window is unfocused.
 Errors: native `Nae windae! Open the screen first`; interpreter `Window not
 open`.
 
+### `screen_loop(frame_fn)`
+
+Hands the frame loop to the host. Calls `frame_fn(dt)` once a frame, where
+`dt` is the integer milliseconds since the previous frame (by `mono_ms`, so
+the first is near 0), until `frame_fn` returns `nae`, the window should close,
+or `frame_fn` closed the window itself. Any other result (`aye`, `naething`)
+keeps it going. Returns `naething`. `frame_fn` is any function value: a named
+function, a closure, or a function with defaults that takes one argument.
+
+Natively, and in the interpreter, it is the loop a program would write itself,
+timing included:
+
+```text
+ken last = mono_ms()
+whiles nae screen_should_close() {
+    ken now = mono_ms()
+    gin frame_fn(now - last) == nae {
+        brak
+    }
+    last = now
+    snooze(1)
+}
+```
+
+so `screen_shaw` inside the frame paces it to the display. An error a frame
+does not catch reaches any `hae_a_bash` around the `screen_loop` call.
+
+In the browser the page draws each frame from `requestAnimationFrame`
+(`emscripten_set_main_loop`), and nothing blocks. **The call never returns
+there:** the rest of the program after it does not run. When the loop ends the
+runtime closes the window, silences any sound and exits with status 0. A
+handler around the call cannot catch a frame's error in the browser (it lived
+in the part of the program that was set aside); the error is printed and the
+program exits with status 1, as an uncaught error does. Keep clean-up that
+must happen in the browser inside `frame_fn`, before it returns `nae`.
+
+Compiled code calls the frame function through the same dispatcher as any
+call of a function value, so arity, default and closure rules are the
+language's own. The native runtime borrows the function for the call; in the
+browser it keeps a reference until the loop ends.
+
+Errors: native `screen_loop wants a function`, then `Nae windae! Open the
+screen first`; interpreter `screen_loop wants a function`, then the
+`screen_should_close` error (`Window not open`, or `Nae windae! ...` without
+graphics).
+
+#### `snooze` in the browser
+
+A web page's main thread may not block, so in the browser `snooze` raises
+`snooze cannae haud up a web page: let screen_loop rin yer frames, or build
+wi' --emcc-arg=-sJSPI`. Under node, and in workers, it sleeps as usual. A
+program built with `--emcc-arg=-sJSPI` may keep its own blocking loop: each
+`snooze` suspends the program (WebAssembly JS Promise Integration) and lets
+the page run, waiting for the display's next frame after a `screen_shaw`.
+Only browsers with JSPI can run such a build (Chrome 137 and later at the time
+of writing).
+
 ## Keyboard
 
 Key state is sampled when the screen polls: after each `screen_shaw` and on
@@ -298,6 +356,16 @@ whiles nae screen_should_close() {
     last = now
     snooze(1)
 }
+bogle_close()
+```
+
+The browser shell, `games/bogle/shell/web.braw`, is the same with the loop
+handed to the page:
+
+```text
+fetch "frame"
+bogle_init(320, 200)
+screen_loop(bogle_frame)
 bogle_close()
 ```
 
