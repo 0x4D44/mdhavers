@@ -375,3 +375,10 @@ fn e1m2_playthrough_matches_native_rc_modes_and_interpreter_prefix() {
 fn kirkyard_playthrough_matches_native_rc_modes_and_interpreter_prefix() {
     check_playthrough("kirkyard", 11);
 }
+
+// The Wood o' Dreich: deer, thistles, falling trees, the bell and the clock,
+// started from the kirkyard's carry (replays/forest.carry).
+#[test]
+fn forest_playthrough_matches_native_rc_modes_and_interpreter_prefix() {
+    check_playthrough("forest", 8);
+}

@@ -10,7 +10,7 @@ dae weapon_hitscan(g, angle, range, damage) {
     ken best = range + 1
     ken target = naething
     fer a in g["actors"] {
-        gin a["active"] an bogle_is_target(a["kind"]) {
+        gin a["active"] an bogle_hittable(a) {
             ken dx = (a["x"] - g["x"]) / 65536
             ken dy = (a["y"] - g["y"]) / 65536
             ken along = (dx * cosine + dy * sine) / 65536
@@ -56,7 +56,7 @@ dae bagpipe_blast(g) {
     ken cosine = bogle_cos(g["sin"], g["angle"])
     ken sine = bogle_sin(g["sin"], g["angle"])
     fer a in g["actors"] {
-        gin a["active"] an bogle_is_target(a["kind"]) {
+        gin a["active"] an bogle_hittable(a) {
             ken dx = (a["x"] - g["x"]) / 65536
             ken dy = (a["y"] - g["y"]) / 65536
             ken distance = isqrt(dx * dx + dy * dy)
@@ -172,7 +172,7 @@ dae projectiles_tick(g) {
                         }
                     } ither gin p["active"] an p["kind"] == "mars" {
                         fer a in g["actors"] {
-                            gin a["active"] an bogle_is_target(a["kind"]) {
+                            gin a["active"] an bogle_hittable(a) {
                                 ken dx = (a["x"] - nx) / 65536
                                 ken dy = (a["y"] - ny) / 65536
                                 gin dx * dx + dy * dy <= 400 an nz >= a["z"] an nz <= a["z"] + 56 * 65536 {

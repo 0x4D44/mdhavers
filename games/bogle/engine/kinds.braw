@@ -27,8 +27,17 @@ dae bogle_is_walker(kind) {
     gie bogle_is_target(kind) an kind != 4 an kind != 5
 }
 
-# Story things that take E: not Wullie or the graves, so walking past them
-# never steals a press meant for an organ stop.
+# Story things that take E: not Wullie, the graves or the wood's beasts, so
+# walking past them never steals a press meant for an organ stop or a sign.
 dae bogle_is_usable(kind) {
-    gie bogle_is_story_thing(kind) an kind != 40 an kind != 41
+    gie bogle_is_story_thing(kind) an kind != 40 an kind != 41 an nae (kind >= 42 an kind <= 45)
+}
+
+# What a weapon can strike right now: a thistle hiding as a tuft and the
+# trees (standing, falling or fallen) are dressing that shots pass through.
+dae bogle_hittable(a) {
+    gin a["kind"] == 45 or (a["kind"] == 44 an a["state"] == "tuft") {
+        gie nae
+    }
+    gie bogle_is_target(a["kind"])
 }

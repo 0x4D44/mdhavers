@@ -1,0 +1,138 @@
+# The Wood o' Dreich, campaign level 2. Run this builder from the repository root.
+# Night: sky ceilings outdoors, moonlit clearings a touch brighter. Every
+# sector stays above the map's ghostlight, so the ghosts can be hurt.
+#
+# Layout (x east, y north):
+#   the end of the Tartan Tunneller's earth tunnel x 0..64, y 0..256 (start),
+#     stopped dead at a dig face with his signpost; stairs climb east out of it;
+#   the wood x 256..1152, y -128..640: a 7 by 6 grid of 128-unit cells, the
+#     solid ones walls of pine bark and hedge, with clearings to the south, the
+#     east and the north-west and a dead end in the middle;
+#   the castle wall along y 640..672, unfinished: a gap at x 928..992 is a
+#     walk-over trigger (link 6), with a signpost on the lawn pointing back;
+#   the castle lawn x 768..1152, y 672..864, the bell beside the front door
+#     (link 7, opened only by the script), and the lobby with the clock.
+fetch "games/bogle/maps/cells"
+
+ken wood = new_map()
+wood["name"] = "The Wood o' Dreich"
+wood["story"] = "forest"
+wood["briefing"] = [
+    "The tunnel runs on frae the crypt. Mostly.",
+    "Past the wood stands Castle Bogle.",
+    "Mind the deer. Mind the thistles. Mind the trees.",
+    "Then ring at the front door like a civilised body.",
+]
+wood["require"] = [["story", "door"]]
+wood["ghostlight"] = 80
+
+ken BARK = 24
+ken HEDGE = 25
+ken EARTH = 26
+
+# The end of the tunnel, and the stairs climbing out of it to the east.
+cell(0, 0, 64, 256, -64, 48, 9, 9, 104, EARTH)
+stair_run(64, 160, 24, 64, 8, -64, 8, 96, 9, 104, EARTH)
+
+# The wood, north row first: '.' a path, '#' solid trees.
+ken WOOD_ROWS = [
+    "..###.#",
+    "..###..",
+    ".#..##.",
+    "..#.#..",
+    "#......",
+    "##..#..",
+]
+ken clearings = [[0, 4], [1, 4], [0, 5], [1, 5], [2, 0], [3, 0], [2, 1], [3, 1], [5, 0], [6, 0], [5, 1], [6, 1]]
+fer row in 0..6 {
+    ken line = WOOD_ROWS[5 - row]
+    fer column in 0..7 {
+        gin line[column] == "." {
+            ken light = 112
+            gin contains(clearings, [column, row]) {
+                light = 136
+            }
+            ken wall = BARK
+            gin (column + row) % 3 == 0 {
+                wall = HEDGE
+            }
+            ken x = 256 + column * 128
+            ken y = -128 + row * 128
+            cell(x, y, x + 128, y + 128, 0, 256, 9, -1, light, wall)
+        }
+    }
+}
+
+# The gap in the castle wall, the lawn, the front door and the lobby.
+cell(928, 640, 992, 672, 0, 256, 1, -1, 128, 0)
+trigger_cell([928, 640, 992, 672], 6)
+cell(768, 672, 1152, 864, 0, 256, 1, -1, 144, 0)
+door_cell(928, 864, 992, 896, 0, 112, 0, 7)
+cell(896, 896, 1024, 1024, 0, 128, 11, 2, 168, 4)
+
+ken owners = emit(wood)
+
+# Things. The player starts at the dig face end of the tunnel, facing it.
+map_thing(wood, 1, 32, 40, 1024)
+map_thing(wood, 57, 32, 232, 0, 1)
+# The south path and clearing: a thistle, the Mars box, a plate.
+map_thing(wood, 16, 448, 200)
+map_thing(wood, 44, 470, 40)
+map_thing(wood, 44, 704, 96)
+map_thing(wood, 15, 576, 40)
+map_thing(wood, 11, 640, -40)
+# A tree at the mouth of the east clearing, the deer and a ghost in it.
+map_thing(wood, 45, 832, 100)
+map_thing(wood, 43, 1040, 100, 2048)
+map_thing(wood, 4, 1080, 0)
+map_thing(wood, 14, 1100, -60)
+map_thing(wood, 12, 1000, -80)
+# The east path north: a thistle and a tree by the way.
+map_thing(wood, 44, 1110, 260)
+map_thing(wood, 45, 1112, 360)
+map_thing(wood, 16, 1088, 448)
+# The dead end in the middle: a haggis and a ghost.
+map_thing(wood, 3, 704, 300)
+map_thing(wood, 4, 576, 320)
+# The north-west clearing, off the way: a deer, a haggis, a ghost, a tree.
+map_thing(wood, 43, 400, 560, 0)
+map_thing(wood, 3, 320, 600)
+map_thing(wood, 4, 448, 440)
+map_thing(wood, 45, 360, 480)
+map_thing(wood, 13, 320, 380)
+map_thing(wood, 10, 440, 610)
+# The lawn: the signpost by the gap, the bell beside the front door.
+map_thing(wood, 57, 896, 704, 0, 2)
+map_thing(wood, 54, 1008, 852)
+map_thing(wood, 10, 1100, 760)
+# The lobby: the grandfather clock against the north wall, armour either side.
+map_thing(wood, 55, 960, 1004)
+map_thing(wood, 31, 908, 940)
+map_thing(wood, 31, 1012, 940)
+
+ken parsed = validate(wood)
+check_portals(parsed)
+# The unfinished castle wall: granite on both faces and in the gap.
+ken specials = [[[256, 640, 1152, 672], 0]]
+wood["walls"] = cell_walls(parsed, owners, specials, [])
+# The front door wears oak on both approaches (the granite lawn has no row
+# of its own, so it gains one).
+fer s in 0..len(owners) {
+    fer i in 0..parsed["wall_count"][s] {
+        ken next = parsed["portal"][parsed["wall_first"][s] + i]
+        gin next >= 0 an parsed["kind"][next] == 1 an parsed["tag"][next] == 7 * 256 {
+            ken found = nae
+            fer row in wood["walls"] {
+                gin row[0] == s an row[1] == i {
+                    row[2] = 4
+                    found = aye
+                }
+            }
+            gin nae found {
+                shove(wood["walls"], [s, i, 4, 0, 0, 0, 0, 0])
+            }
+        }
+    }
+}
+write(wood, "games/bogle/data/forest.map")
+blether "forest sectors " + tae_string(len(wood["sectors"])) + " things " + tae_string(len(wood["things"])) + " walls " + tae_string(len(wood["walls"]))

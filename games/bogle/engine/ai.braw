@@ -245,6 +245,101 @@ dae grave_tick(g, a) {
     }
 }
 
+# A thistle (44) hides as a tuft until the player comes within 72, then
+# rustles and pops up over 6 tics. Up, it prods 6 within 36 every 24 tics;
+# after 105 tics with the player out of reach it sinks back over 6 tics.
+# Only an up thistle can be hit, and a killed one stays down.
+dae thistle_tick(g, a, distance) {
+    ken state = a["state"]
+    gin state == "tuft" {
+        gin distance < 72 {
+            a["state"] = "pop"
+            a["timer"] = 0
+            bogle_emit_sound(g, "rustle")
+        }
+        gie naething
+    }
+    a["timer"] = a["timer"] + 1
+    gin state == "pop" or state == "sink" {
+        gin a["timer"] >= 6 {
+            a["state"] = "up"
+            a["timer"] = 24
+            a["far"] = 0
+            gin state == "sink" {
+                a["state"] = "tuft"
+            }
+        }
+        gie naething
+    }
+    gin state == "prod" an a["timer"] >= 6 {
+        a["state"] = "up"
+    }
+    gin distance < 72 {
+        a["far"] = 0
+    } ither {
+        a["far"] = a["far"] + 1
+        gin a["far"] >= 105 {
+            a["state"] = "sink"
+            a["timer"] = 0
+            gie naething
+        }
+    }
+    gin distance < 36 an a["timer"] >= 24 an bogle_sight(g, a["x"], a["y"], a["z"] + 24 * 65536, a["sector"], g["x"], g["y"], g["z"] + 24 * 65536, g["sector"]) {
+        hurt_player(g, 6)
+        a["state"] = "prod"
+        a["timer"] = 0
+    }
+}
+
+# A tree (45) falls toward the player when they come within 96, or when they
+# stand still (no movement keys) for 105 tics within 192, either way in
+# sight. It falls over 18 tics along its 120-unit length (its height);
+# landing hurts 25 if the player is within 24 of that line. Then it lies as
+# dressing. Once each.
+ken TREE_LENGTH = 120
+
+dae tree_tick(g, a, distance) {
+    gin a["state"] == "standing" {
+        gin distance < 192 an bit_an(g["held_keys"], 15) == 0 {
+            a["still"] = a["still"] + 1
+        } ither {
+            a["still"] = 0
+        }
+        gin (distance < 96 or a["still"] >= 105) an bogle_sight(g, a["x"], a["y"], a["z"] + 48 * 65536, a["sector"], g["x"], g["y"], g["z"] + 32 * 65536, g["sector"]) {
+            ken fall = actor_towards(a, g["x"], g["y"], 65536)
+            gin fall[0] == 0 an fall[1] == 0 {
+                fall = [65536, 0]
+            }
+            a["dx"] = fall[0]
+            a["dy"] = fall[1]
+            actor_face(g, a, fall[0], fall[1])
+            a["state"] = "falling"
+            a["timer"] = 0
+            bogle_emit_sound(g, "timber")
+        }
+    } ither gin a["state"] == "falling" {
+        a["timer"] = a["timer"] + 1
+        gin a["timer"] >= 18 {
+            a["state"] = "fallen"
+            bogle_emit_sound(g, "thud")
+            gin tree_line_distance(a, g["x"], g["y"]) <= 24 {
+                hurt_player(g, 25)
+                g["message"] = "TIMBER! Flattened by a Scots pine."
+            }
+        }
+    }
+}
+
+# Map units from x,y to the tree's fall line (unit direction dx,dy in 16.16).
+dae tree_line_distance(a, x, y) {
+    ken px = (x - a["x"]) / 65536
+    ken py = (y - a["y"]) / 65536
+    ken along = max(0, min(TREE_LENGTH, (px * a["dx"] + py * a["dy"]) / 65536))
+    ken ex = px - a["dx"] * along / 65536
+    ken ey = py - a["dy"] * along / 65536
+    gie isqrt(ex * ex + ey * ey)
+}
+
 dae story_actors_tick(g) {
     ken count = len(g["actors"])
     fer i in 0..count {
@@ -270,14 +365,19 @@ dae ai_tick(g) {
                 a["timer"] = a["timer"] - 1
                 gin a["timer"] <= 0 {
                     a["state"] = "chase"
-                    gin a["kind"] == 2 {
+                    gin a["kind"] == 2 or a["kind"] == 43 {
                         a["state"] = "patrol"
+                    }
+                    gin a["kind"] == 44 {
+                        a["state"] = "up"
                     }
                 }
             } ither {
                 ken distance = actor_distance(a["x"], a["y"], g["x"], g["y"])
                 ken kind = a["kind"]
-                gin kind == 2 {
+                # The mad deer (43) charges like the gamekeeper, without the
+                # fists, and hits harder.
+                gin kind == 2 or kind == 43 {
                     gin a["state"] == "windup" or a["state"] == "fists" {
                         actor_face(g, a, g["x"] - a["x"], g["y"] - a["y"])
                         a["timer"] = a["timer"] - 1
@@ -293,7 +393,11 @@ dae ai_tick(g) {
                         a["charge_tics"] = a["charge_tics"] + 1
                         ken ahead = (g["x"] - a["x"]) / 65536 * a["dx"] + (g["y"] - a["y"]) / 65536 * a["dy"]
                         gin distance < 32 an bogle_sight(g, a["x"], a["y"], a["z"] + 24 * 65536, a["sector"], g["x"], g["y"], g["z"] + 24 * 65536, g["sector"]) {
-                            hurt_player(g, 15)
+                            ken hit = 15
+                            gin kind == 43 {
+                                hit = 20
+                            }
+                            hurt_player(g, hit)
                             a["state"] = "stunned"
                             a["timer"] = 35
                         } ither gin ahead < 0 or a["charge_tics"] > 70 {
@@ -327,15 +431,21 @@ dae ai_tick(g) {
                             ken velocity = actor_towards(a, g["x"], g["y"], 163840)
                             a["dx"] = velocity[0]
                             a["dy"] = velocity[1]
-                            bogle_emit_sound(g, "gamekeeper")
+                            ken cue = "gamekeeper"
+                            gin kind == 43 {
+                                cue = "deer_snort"
+                            }
+                            bogle_emit_sound(g, cue)
                             actor_face(g, a, g["x"] - a["x"], g["y"] - a["y"])
                             a["state"] = "windup"
                             a["timer"] = 18
                             gin nae a["seen_player"] {
                                 a["seen_player"] = aye
-                                bogle_emit_sound(g, "keeper_roar")
-                                a["state"] = "fists"
-                                a["timer"] = 35
+                                gin kind == 2 {
+                                    bogle_emit_sound(g, "keeper_roar")
+                                    a["state"] = "fists"
+                                    a["timer"] = 35
+                                }
                             }
                         } ither gin a["hunt_tics"] > 0 {
                             # No lane, or no sight: walk round the cover towards the
@@ -395,9 +505,15 @@ dae ai_tick(g) {
                         a["timer"] = 70
                     }
                 }
-                # Placeholder for the new monster kinds: chase, and bite 4
-                # within 24 every 18 tics.
-                gin kind >= 42 {
+                gin kind == 44 {
+                    thistle_tick(g, a, distance)
+                }
+                gin kind == 45 {
+                    tree_tick(g, a, distance)
+                }
+                # Placeholder for the rat: chase, and bite 4 within 24 every
+                # 18 tics.
+                gin kind == 42 {
                     a["timer"] = a["timer"] + 1
                     gin distance < 24 an bogle_sight(g, a["x"], a["y"], a["z"] + 24 * 65536, a["sector"], g["x"], g["y"], g["z"] + 24 * 65536, g["sector"]) {
                         gin a["timer"] >= 18 {

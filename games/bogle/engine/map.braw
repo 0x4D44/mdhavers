@@ -299,7 +299,8 @@ dae map_parse(text) {
                     haud
                 }
                 # Story records: the level script id, exit requirements as
-                # word pairs (keys <mask>, item <name>, weapon <n>), and the
+                # word pairs (keys <mask>, item <name>, weapon <n>, story
+                # <flag>: the level script set that flag), and the
                 # ghost's hurt light.
                 gin tokens[0] == "story" {
                     map_need(len(tokens) == 2 an m["story"] == "", "story record")
@@ -307,9 +308,9 @@ dae map_parse(text) {
                     haud
                 }
                 gin tokens[0] == "require" {
-                    map_need(len(tokens) == 3 an (tokens[1] == "keys" or tokens[1] == "item" or tokens[1] == "weapon"), "require record")
+                    map_need(len(tokens) == 3 an (tokens[1] == "keys" or tokens[1] == "item" or tokens[1] == "weapon" or tokens[1] == "story"), "require record")
                     ken want = tokens[2]
-                    gin tokens[1] != "item" {
+                    gin tokens[1] == "keys" or tokens[1] == "weapon" {
                         want = map_integer(want)
                     }
                     shove(m["require"], [tokens[1], want])

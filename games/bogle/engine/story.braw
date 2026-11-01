@@ -133,7 +133,97 @@ dae kirk_use(g, a) {
     gie nae
 }
 
+# The Wood o' Dreich: the castle wall gap is a walk-over trigger (link 6);
+# the front door (link 7) opens only for the bell. g["story"]: ghosts (their
+# line said), gap (the wall line said), door (the bell answered), slide (the
+# clock opened; the level is won when its line is read).
+ken FOREST_GAP = 6
+ken FOREST_DOOR = 7
+
+dae forest_use(g, a) {
+    ken s = g["story"]
+    gin a["kind"] == 57 {
+        gin a["flags"] == 2 {
+            story_say(g, ["KIRK 200 YDS. BY THE ROAD."])
+        } ither {
+            story_say(g, ["TUNNEL STOPS HERE. SORRY. — TT"])
+        }
+        gie aye
+    }
+    gin a["kind"] == 54 {
+        gin s["door"] {
+            g["message"] = "Naebody answers. The door's open."
+        } ither {
+            bogle_emit_sound(g, "bell")
+            ken pitch = "I'm a Girder Juice salesman."
+            story_ask(g, ["BONG-G-G.", "Wha's there? State yer business."], [pitch, pitch, pitch], "bell")
+        }
+        gie aye
+    }
+    gin a["kind"] == 55 {
+        gin nae s["slide"] {
+            s["slide"] = aye
+            story_say(g, ["This is all too easy."])
+        }
+        gie aye
+    }
+    gie nae
+}
+
+dae forest_event(g, tag) {
+    ken s = g["story"]
+    gin tag == FOREST_GAP an nae s["gap"] {
+        s["gap"] = aye
+        story_say(g, ["The castle wall was never finished. Ye could hae just walked here."])
+        story_objective(g, "RING THE BELL")
+    }
+    gin tag == "bell" an nae s["door"] {
+        s["door"] = aye
+        bogle_activate(g, FOREST_DOOR)
+        story_say(g, ["Come in. Wait in the lobby. Dinnae touch anything."])
+        story_objective(g, "WAIT IN THE LOBBY")
+    }
+}
+
+# A ghost in the player's view (a 90-degree cone) with a clear line.
+dae forest_ghost_seen(g) {
+    ken cosine = bogle_cos(g["sin"], g["angle"])
+    ken sine = bogle_sin(g["sin"], g["angle"])
+    fer a in g["actors"] {
+        gin a["active"] an a["kind"] == 4 {
+            ken dx = (a["x"] - g["x"]) / 65536
+            ken dy = (a["y"] - g["y"]) / 65536
+            ken along = dx * cosine + dy * sine
+            ken across = dy * cosine - dx * sine
+            gin along > abs(across) an dx * dx + dy * dy < 589824 an bogle_sight(g, g["x"], g["y"], g["view_z"], g["sector"], a["x"], a["y"], a["z"] + 32 * 65536, a["sector"]) {
+                gie aye
+            }
+        }
+    }
+    gie nae
+}
+
+dae forest_tick(g) {
+    ken s = g["story"]
+    gin g["talk"] != naething {
+        gie naething
+    }
+    gin s["slide"] {
+        g["message"] = "The clock door swings open. Wheeeee!"
+        story_win(g)
+    } ither gin nae s["ghosts"] an forest_ghost_seen(g) {
+        s["ghosts"] = aye
+        story_say(g, ["We followed ye doon the tunnel!"])
+    }
+}
+
 dae story_init(g) {
+    gin story_id(g) == "forest" {
+        story_objective(g, "FIND A WAY OOT THE WOOD")
+        fer flag in ["ghosts", "gap", "door", "slide"] {
+            g["story"][flag] = nae
+        }
+    }
     gin story_id(g) == "kirkyard" {
         story_objective(g, "FIND THE BRASS KEY")
         g["story"]["air"] = nae
@@ -149,6 +239,9 @@ dae story_init(g) {
 # Called for each link tag that fired (queued by bogle_activate) and for
 # each talk choice event.
 dae story_event(g, tag) {
+    gin story_id(g) == "forest" {
+        forest_event(g, tag)
+    }
     gin story_id(g) == "test" {
         gin tag == "vague" {
             story_say(g, ["INTERPRETING VAGUE ANSWER AS NO."])
@@ -176,6 +269,9 @@ dae story_tick(g) {
     gin story_id(g) == "kirkyard" an nae g["story"]["air"] an bit_an(g["keys"], 4) != 0 {
         story_objective(g, "START THE COMPRESSOR")
     }
+    gin story_id(g) == "forest" {
+        forest_tick(g)
+    }
     gin story_id(g) == "test" {
         gin g["story"]["countdown"] > 0 {
             g["story"]["countdown"] = g["story"]["countdown"] - 1
@@ -191,6 +287,9 @@ dae story_tick(g) {
 dae story_use(g, a) {
     gin story_id(g) == "kirkyard" {
         gie kirk_use(g, a)
+    }
+    gin story_id(g) == "forest" {
+        gie forest_use(g, a)
     }
     gin story_id(g) == "test" {
         gin a["kind"] == 50 an nae contains(g["story"], "asked") {

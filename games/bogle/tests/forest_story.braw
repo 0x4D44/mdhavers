@@ -1,0 +1,182 @@
+fetch "games/bogle/engine/game"
+
+# The Wood o' Dreich script: the signposts, the ghosts' line (once), the
+# castle wall gap (once), the bell (every answer is the same, and every one
+# opens the front door, which nothing else opens), and the clock that wins.
+dae fs_sector(m, x, y) {
+    fer s in 0..len(m["floor_h"]) {
+        gin map_point(m, s, x, y) {
+            gie s
+        }
+    }
+    gie -1
+}
+
+dae fs_at(g, x, y, angle) {
+    g["x"] = x * 65536
+    g["y"] = y * 65536
+    g["angle"] = angle
+    g["sector"] = fs_sector(g["map"], x, y)
+    g["z"] = 0
+    g["view_z"] = 2686976
+}
+
+dae fs_tic(g, keys) {
+    tic(g, {"keys": keys, "dx": 0})
+}
+
+dae fs_press(g, keys) {
+    fs_tic(g, keys)
+    fs_tic(g, 0)
+}
+
+dae fs_read(g) {
+    whiles g["talk"] != naething {
+        fs_press(g, 128)
+    }
+}
+
+# A quiet wood: the monsters put away so only the script acts.
+dae fs_game() {
+    ken g = new_game(load_map("games/bogle/data/forest.map"))
+    fer a in g["actors"] {
+        gin bogle_is_target(a["kind"]) {
+            a["active"] = nae
+        }
+    }
+    gie g
+}
+
+dae fs_door(g) {
+    fer d in g["doors"] {
+        gin g["map"]["tag"][d["sector"]] == 7 * 256 {
+            gie d["state"]
+        }
+    }
+    gie "none"
+}
+
+ken g = fs_game()
+mak_siccar g["objective"] == "FIND A WAY OOT THE WOOD"
+fs_at(g, 32, 180, 1024)
+fs_press(g, 128)
+mak_siccar g["talk"]["lines"] == ["TUNNEL STOPS HERE. SORRY. — TT"]
+fs_read(g)
+fs_at(g, 940, 720, 2048)
+fs_press(g, 128)
+mak_siccar g["talk"]["lines"] == ["KIRK 200 YDS. BY THE ROAD."]
+fs_read(g)
+blether "ok the signposts say their piece"
+
+# A ghost behind the player says nothing; the first in view says its line,
+# once.
+g = new_game(load_map("games/bogle/data/forest.map"))
+ken ghosts = []
+fer a in g["actors"] {
+    gin a["kind"] == 4 {
+        shove(ghosts, a)
+    }
+    gin bogle_is_target(a["kind"]) {
+        a["active"] = nae
+    }
+}
+fs_at(g, 32, 100, 1024)
+ken ghost = ghosts[0]
+ghost["active"] = aye
+ghost["x"] = 32 * 65536
+ghost["y"] = 20 * 65536
+ghost["sector"] = fs_sector(g["map"], 32, 20)
+fs_tic(g, 0)
+mak_siccar g["talk"] == naething an nae g["story"]["ghosts"]
+ghost["y"] = 220 * 65536
+fs_tic(g, 0)
+mak_siccar g["talk"]["lines"] == ["We followed ye doon the tunnel!"] an g["story"]["ghosts"]
+fs_read(g)
+ken other = ghosts[1]
+other["active"] = aye
+other["x"] = 40 * 65536
+other["y"] = 200 * 65536
+other["sector"] = ghost["sector"]
+fer i in 0..20 {
+    fs_tic(g, 0)
+    mak_siccar g["talk"] == naething
+}
+blether "ok the first ghost in view says its line, the once"
+
+# Walking north through the gap in the castle wall: its line, once.
+g = fs_game()
+fs_at(g, 960, 600, 1024)
+fer i in 0..30 {
+    gin g["talk"] == naething {
+        fs_tic(g, 1)
+    }
+}
+mak_siccar g["talk"]["lines"] == ["The castle wall was never finished. Ye could hae just walked here."]
+mak_siccar g["objective"] == "RING THE BELL"
+fs_read(g)
+fer i in 0..30 {
+    fs_tic(g, 2)
+    mak_siccar g["talk"] == naething
+}
+fer i in 0..40 {
+    fs_tic(g, 1)
+    mak_siccar g["talk"] == naething
+}
+blether "ok the wall gap says its line the once"
+
+# Before the bell, E on the front door does nothing. Each of the three
+# answers (all the same) opens it.
+fer pick in 0..3 {
+    g = fs_game()
+    fs_at(g, 936, 840, 1024)
+    fs_press(g, 128)
+    mak_siccar g["talk"] == naething an fs_door(g) == "closed" an g["message"] == "It's shut fast. There must be a switch."
+    fs_at(g, 980, 810, 1024)
+    fs_press(g, 128)
+    mak_siccar g["talk"]["lines"][1] == "Wha's there? State yer business."
+    fs_press(g, 128)
+    mak_siccar g["talk"]["choices"] == ["I'm a Girder Juice salesman.", "I'm a Girder Juice salesman.", "I'm a Girder Juice salesman."]
+    fer i in 0..pick {
+        fs_press(g, 2)
+    }
+    mak_siccar g["talk"]["sel"] == pick an fs_door(g) == "closed"
+    fs_press(g, 128)
+    mak_siccar g["talk"]["lines"] == ["Come in. Wait in the lobby. Dinnae touch anything."]
+    mak_siccar g["story"]["door"] an g["objective"] == "WAIT IN THE LOBBY"
+    fs_read(g)
+    mak_siccar fs_door(g) == "opening" or fs_door(g) == "open"
+    fs_press(g, 128)
+    mak_siccar g["talk"] == naething an g["message"] == "Naebody answers. The door's open."
+}
+blether "ok every answer at the bell is the same, an every yin opens the door"
+
+# The clock: its line, then the level is won (the slide doon).
+fer i in 0..40 {
+    fs_tic(g, 0)
+}
+fs_at(g, 960, 960, 1024)
+fs_press(g, 128)
+mak_siccar g["talk"]["lines"] == ["This is all too easy."] an nae g["won"]
+fs_read(g)
+mak_siccar g["won"] an g["story"]["slide"]
+blether "ok the clock is all too easy, an the level is won"
+
+# A deer, thistle or tree in front of a signpost never takes the E press.
+fer kind in [43, 44, 45] {
+    g = fs_game()
+    fs_at(g, 32, 180, 1024)
+    fer a in g["actors"] {
+        gin a["kind"] == kind {
+            a["active"] = aye
+            a["x"] = 32 * 65536
+            a["y"] = 196 * 65536
+            a["sector"] = fs_sector(g["map"], 32, 196)
+            a["state"] = "idle"
+            a["timer"] = 1000
+        }
+    }
+    fs_press(g, 128)
+    mak_siccar g["talk"] != naething an g["talk"]["lines"] == ["TUNNEL STOPS HERE. SORRY. — TT"]
+    fs_read(g)
+}
+blether "ok a beast in front o the signpost disnae swallow the E"

@@ -1,0 +1,102 @@
+fetch "games/bogle/engine/game"
+
+# The thistle hides as a tuft no weapon touches until the player comes
+# within 72; then it rustles and pops up over 6 tics (up1, up2), prods 6
+# within 36 every 24 tics, and sinks again after 105 tics out of reach. A
+# killed thistle stays down. The first thistle of the wood, at (470, 40).
+dae th_sector(m, x, y) {
+    fer s in 0..len(m["floor_h"]) {
+        gin map_point(m, s, x, y) {
+            gie s
+        }
+    }
+    gie -1
+}
+
+dae th_player(g, x, y, angle) {
+    g["x"] = x * 65536
+    g["y"] = y * 65536
+    g["angle"] = angle
+    g["sector"] = th_sector(g["map"], x, y)
+    g["z"] = 0
+    g["view_z"] = 2686976
+}
+
+dae th_tics(g, count) {
+    fer i in 0..count {
+        tic(g, {"keys": 0, "dx": 0})
+    }
+}
+
+dae th_game() {
+    ken g = new_game(load_map("games/bogle/data/forest.map"))
+    ken thistle = naething
+    fer a in g["actors"] {
+        gin a["kind"] == 44 an thistle == naething {
+            thistle = a
+        } ither gin bogle_is_target(a["kind"]) {
+            a["active"] = nae
+        }
+    }
+    mak_siccar thistle["x"] == 470 * 65536 an thistle["y"] == 40 * 65536
+    gie [g, thistle]
+}
+
+ken pair = th_game()
+ken g = pair[0]
+ken th = pair[1]
+# 100 units north, facing it: still a tuft, and shots go straight through.
+th_player(g, 470, 140, 3072)
+th_tics(g, 20)
+mak_siccar th["state"] == "tuft" an bogle_actor_art(g, th) == "dec_thistle_tuft"
+weapon_hitscan(g, 3072, 768, 8)
+splash_damage(g, th["x"], th["y"], 0, th["sector"], 96, 60, naething)
+mak_siccar nae damage_actor(g, th, 10) an th["health"] == 30 an th["active"]
+blether "ok a tuft sits quiet an nae weapon touches it"
+
+th_player(g, 470, 100, 3072)
+tic(g, {"keys": 0, "dx": 0})
+mak_siccar th["state"] == "pop" an contains(g["sounds"], "rustle")
+ken frames = [bogle_actor_art(g, th)]
+fer i in 0..6 {
+    tic(g, {"keys": 0, "dx": 0})
+    shove(frames, bogle_actor_art(g, th))
+}
+mak_siccar frames == ["spr_thistle_up1", "spr_thistle_up1", "spr_thistle_up1", "spr_thistle_up2", "spr_thistle_up2", "spr_thistle_up2", "spr_thistle_up2"]
+mak_siccar th["state"] == "up" an g["health"] == 100
+mak_siccar damage_actor(g, th, 5) an th["health"] == 25
+blether "ok within 72 it rustles an pops up ower 6 tics, an can be hurt"
+
+# Within 36 it prods at once, then every 24 tics.
+th_player(g, 470, 70, 3072)
+tic(g, {"keys": 0, "dx": 0})
+mak_siccar g["health"] == 94 an th["state"] == "prod" an bogle_actor_art(g, th) == "spr_thistle_prod"
+th_tics(g, 23)
+mak_siccar g["health"] == 94 an th["state"] == "up"
+tic(g, {"keys": 0, "dx": 0})
+mak_siccar g["health"] == 88
+blether "ok it prods 6 within 36 every 24 tics"
+
+# Between 36 and 72 it stays up and harmless; out of reach it sinks after 105.
+th_player(g, 470, 100, 3072)
+th_tics(g, 200)
+mak_siccar g["health"] == 88 an th["state"] == "up"
+th_player(g, 470, 200, 3072)
+th_tics(g, 104)
+mak_siccar th["state"] == "up"
+tic(g, {"keys": 0, "dx": 0})
+mak_siccar th["state"] == "sink"
+th_tics(g, 6)
+mak_siccar th["state"] == "tuft" an nae damage_actor(g, th, 5)
+blether "ok efter 105 tics oot o reach it sinks back tae a tuft"
+
+# Killed while up, it stays down for good.
+th_player(g, 470, 100, 3072)
+th_tics(g, 7)
+mak_siccar th["state"] == "up"
+damage_actor(g, th, 30)
+mak_siccar nae th["active"]
+th_player(g, 470, 70, 3072)
+th_tics(g, 200)
+mak_siccar nae th["active"] an g["health"] == 88
+blether "ok a killed thistle stays doon"

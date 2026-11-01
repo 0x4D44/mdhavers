@@ -34,6 +34,8 @@ gin bogle_option("BOGLE_FRONTEND", "0") == "1" {
                 mak_siccar bit_an(headless_game["keys"], need[1]) == need[1]
             } ither gin need[0] == "item" {
                 mak_siccar contains(headless_game["items"], need[1])
+            } ither gin need[0] == "story" {
+                mak_siccar contains(headless_game["story"], need[1]) an headless_game["story"][need[1]] == aye
             } ither {
                 mak_siccar headless_game["owned"][need[1] - 1]
             }

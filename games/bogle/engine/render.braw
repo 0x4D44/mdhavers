@@ -271,6 +271,11 @@ dae bogle_sprites(g, fb, w, h, visible, drawsegs, cosine, sine) {
                 name = view[0]
                 mirror = view[1]
             }
+            # The falling tree's art topples to the right: mirror it when its
+            # fall line runs to the viewer's left.
+            gin kind == 45 an actor["state"] != "standing" {
+                mirror = actor["dx"] * sine - actor["dy"] * cosine < 0
+            }
             texture = art[name]
             fullbright = kind == 4 or kind == 32 or kind == 37 or kind == 40 or (bogle_is_pickup(kind) an bogle_pickup_glint(g["tics"]))
         } ither {
@@ -906,6 +911,18 @@ dae bogle_story_height(kind) {
     }
     gin kind == 56 {
         gie 72
+    }
+    gin kind == 43 {
+        gie 60
+    }
+    gin kind == 45 {
+        gie 120
+    }
+    gin kind == 55 {
+        gie 84
+    }
+    gin kind == 57 {
+        gie 60
     }
     gie 48
 }

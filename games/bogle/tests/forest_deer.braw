@@ -1,0 +1,88 @@
+fetch "games/bogle/engine/game"
+
+# The mad deer charges like the gamekeeper without the fists: first sight
+# goes straight to the wind-up, the charge hits for 20, and a charge into a
+# wall stuns it. Set in the wood's west path, every other actor put away.
+dae deer_game(x, y) {
+    ken g = new_game(load_map("games/bogle/data/forest.map"))
+    ken deer = naething
+    fer a in g["actors"] {
+        gin a["kind"] == 43 an deer == naething {
+            deer = a
+        } ither {
+            a["active"] = nae
+        }
+    }
+    deer_place(g, deer, x, y)
+    gie [g, deer]
+}
+
+dae deer_sector(m, x, y) {
+    fer s in 0..len(m["floor_h"]) {
+        gin map_point(m, s, x, y) {
+            gie s
+        }
+    }
+    gie -1
+}
+
+dae deer_place(g, a, x, y) {
+    a["x"] = x * 65536
+    a["y"] = y * 65536
+    a["sector"] = deer_sector(g["map"], x, y)
+}
+
+dae deer_player(g, x, y) {
+    g["x"] = x * 65536
+    g["y"] = y * 65536
+    g["sector"] = deer_sector(g["map"], x, y)
+    g["z"] = 0
+    g["view_z"] = 2686976
+}
+
+dae deer_tic(g) {
+    tic(g, {"keys": 0, "dx": 0})
+}
+
+# The deer at (448, 150) sees the player 80 units north: a snort and the
+# wind-up, never the gamekeeper's fists or roar.
+ken pair = deer_game(448, 150)
+ken g = pair[0]
+ken deer = pair[1]
+deer_player(g, 448, 230)
+mak_siccar deer["health"] == 50 an deer["state"] == "patrol"
+deer_tic(g)
+mak_siccar deer["state"] == "windup" an deer["timer"] == 18 an deer["seen_player"]
+mak_siccar contains(g["sounds"], "deer_snort") an nae contains(g["sounds"], "keeper_roar")
+blether "ok the deer snorts an winds up at first sight, nae fists"
+
+whiles deer["state"] == "windup" {
+    deer_tic(g)
+}
+mak_siccar deer["state"] == "charge"
+ken tics = 0
+whiles deer["state"] == "charge" an tics < 70 {
+    deer_tic(g)
+    tics = tics + 1
+}
+mak_siccar deer["state"] == "stunned" an deer["timer"] == 35 an g["health"] == 80
+blether "ok the charge hits for 20 an the deer staggers"
+
+# Same wind-up, but as the charge starts the player is through the trees to
+# the north, out of sight: the deer runs on into the hedge and is stunned.
+pair = deer_game(448, 150)
+g = pair[0]
+deer = pair[1]
+deer_player(g, 448, 230)
+whiles deer["state"] != "charge" {
+    deer_tic(g)
+}
+deer_player(g, 448, 448)
+tics = 0
+whiles deer["state"] == "charge" an tics < 70 {
+    deer_tic(g)
+    tics = tics + 1
+}
+mak_siccar deer["state"] == "stunned" an deer["timer"] == 35 an g["health"] == 100
+mak_siccar deer["y"] / 65536 > 200 an deer["y"] / 65536 < 256
+blether "ok a charge intae a wall stuns the deer for a second"

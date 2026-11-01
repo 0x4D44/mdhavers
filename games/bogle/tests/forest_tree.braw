@@ -1,0 +1,101 @@
+fetch "games/bogle/engine/game"
+
+# A tree falls toward the player when they come within 96, or when they
+# stand still (no movement keys) for 105 tics within 192. It falls over 18
+# tics; landing hurts 25 only within 24 of its 120-unit fall line; then it
+# lies there, once. The tree at the mouth of the east clearing, (832, 100).
+dae tr_sector(m, x, y) {
+    fer s in 0..len(m["floor_h"]) {
+        gin map_point(m, s, x, y) {
+            gie s
+        }
+    }
+    gie -1
+}
+
+dae tr_player(g, x, y) {
+    g["x"] = x * 65536
+    g["y"] = y * 65536
+    g["sector"] = tr_sector(g["map"], x, y)
+    g["z"] = 0
+    g["view_z"] = 2686976
+}
+
+# Both strafe keys held: movement input, but the player stays put.
+ken FIDGET = 12
+
+dae tr_tics(g, count, keys) {
+    fer i in 0..count {
+        tic(g, {"keys": keys, "dx": 0})
+    }
+}
+
+dae tr_game() {
+    ken g = new_game(load_map("games/bogle/data/forest.map"))
+    ken tree = naething
+    fer a in g["actors"] {
+        gin a["kind"] == 45 an tree == naething {
+            tree = a
+        } ither gin bogle_is_target(a["kind"]) {
+            a["active"] = nae
+        }
+    }
+    mak_siccar tree["x"] == 832 * 65536 an tree["y"] == 100 * 65536
+    gie [g, tree]
+}
+
+# Fidgeting 137 units off it stands; within 96 it falls toward the player,
+# and landing on the line hurts 25. Weapons pass through it throughout.
+ken pair = tr_game()
+ken g = pair[0]
+ken tree = pair[1]
+tr_player(g, 700, 64)
+tr_tics(g, 300, FIDGET)
+mak_siccar tree["state"] == "standing"
+tr_player(g, 760, 70)
+tr_tics(g, 1, FIDGET)
+mak_siccar tree["state"] == "falling" an contains(g["sounds"], "timber") an tree["dx"] < 0 an tree["dy"] < 0
+mak_siccar nae damage_actor(g, tree, 10)
+tr_tics(g, 17, FIDGET)
+mak_siccar tree["state"] == "falling" an bogle_actor_art(g, tree) == "spr_tree_fall2" an g["health"] == 100
+tr_tics(g, 1, FIDGET)
+mak_siccar tree["state"] == "fallen" an bogle_actor_art(g, tree) == "dec_tree_fallen" an g["health"] == 75
+blether "ok within 96 it falls toward ye an flattens ye on its line"
+
+# Once: it lies there however long the player lingers, still or not.
+tr_tics(g, 300, 0)
+mak_siccar tree["state"] == "fallen" an g["health"] == 75
+blether "ok a fallen tree lies there an falls nae mair"
+
+# Off the line, or past its tip, the landing misses.
+fer spot in [[790, 20], [680, 30]] {
+    pair = tr_game()
+    g = pair[0]
+    tree = pair[1]
+    tr_player(g, 760, 70)
+    tr_tics(g, 1, FIDGET)
+    tr_player(g, spot[0], spot[1])
+    tr_tics(g, 18, FIDGET)
+    mak_siccar tree["state"] == "fallen" an g["health"] == 100
+    mak_siccar tree_line_distance(tree, g["x"], g["y"]) > 24
+}
+blether "ok aff its line or past its tip the tree misses"
+
+# Standing still 137 units off: it falls on the 105th still tic. A fidget
+# starts the count again; out beyond 192 stillness never counts.
+pair = tr_game()
+g = pair[0]
+tree = pair[1]
+tr_player(g, 600, 64)
+tr_tics(g, 300, 0)
+mak_siccar tree["state"] == "standing"
+tr_player(g, 700, 64)
+tr_tics(g, 100, 0)
+tr_tics(g, 1, FIDGET)
+tr_tics(g, 104, 0)
+mak_siccar tree["state"] == "standing" an tree["still"] == 104
+tr_tics(g, 1, 0)
+mak_siccar tree["state"] == "falling"
+tr_tics(g, 18, 0)
+mak_siccar tree["state"] == "fallen" an g["health"] == 75
+blether "ok staun still 105 tics within 192 an doon it comes"

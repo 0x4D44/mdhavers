@@ -48,10 +48,12 @@ dae init_things(g) {
                 hp = 200
                 state = "chase"
             }
-            # New monster kinds chase until their own behaviour lands.
+            # The rat chases until its own behaviour lands; the deer
+            # patrols like the gamekeeper; thistles hide as tufts and trees
+            # stand until they fall.
             gin kind >= 42 an kind <= 45 {
-                hp = [12, 50, 30, 30][kind - 42]
-                state = "chase"
+                hp = [12, 50, 30, 1][kind - 42]
+                state = ["chase", "patrol", "tuft", "standing"][kind - 42]
             }
             gin kind == 49 {
                 hp = 450
@@ -83,6 +85,11 @@ dae init_things(g) {
             })
             gin kind == 36 {
                 g["stones"][i] = g["actors"][len(g["actors"]) - 1]
+            }
+            gin kind == 44 or kind == 45 {
+                ken plant = g["actors"][len(g["actors"]) - 1]
+                plant["far"] = 0
+                plant["still"] = 0
             }
             gin kind == 40 {
                 ken wullie = g["actors"][len(g["actors"]) - 1]
@@ -131,7 +138,7 @@ dae damage_actor(g, actor, damage) {
     gin actor["active"] an actor["kind"] == 40 {
         g["message"] = "Ye cannae shoot Wullie!"
     }
-    gin nae actor["active"] or damage <= 0 or nae bogle_is_monster(actor["kind"]) {
+    gin nae actor["active"] or damage <= 0 or nae bogle_is_monster(actor["kind"]) or nae bogle_hittable(actor) {
         gie nae
     }
     gin actor["kind"] == 4 an g["map"]["light"][actor["sector"]] <= bogle_ghostlight(g["map"]) {
@@ -184,7 +191,7 @@ dae splash_damage(g, x, y, z, sector, radius, damage, source, skip_stone = -1) {
         hurt_player(g, damage * (radius - distance) / radius)
     }
     fer a in g["actors"] {
-        gin a["active"] an bogle_is_target(a["kind"]) {
+        gin a["active"] an bogle_hittable(a) {
             distance = actor_distance(x, y, a["x"], a["y"])
             gin distance < radius an bogle_sight(g, x, y, z + 24 * 65536, sector, a["x"], a["y"], a["z"] + 24 * 65536, a["sector"]) {
                 damage_actor(g, a, damage * (radius - distance) / radius)
@@ -215,7 +222,7 @@ dae actor_move(g, a, dx, dy) {
         "vz": 0,
         "sector": a["sector"],
         "ignore_steps": a["kind"] == 5,
-        "no_drop": a["kind"] == 2 or a["kind"] == 3,
+        "no_drop": a["kind"] == 2 or a["kind"] == 3 or a["kind"] == 43,
     }
     gin contains(g, "stones") {
         body["stones"] = g["stones"]

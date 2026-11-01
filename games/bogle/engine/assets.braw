@@ -57,7 +57,7 @@ dae make_cmap() {
 dae bogle_assets() {
     gin nae contains(bogle_asset_cache, "textures") {
         ken textures = []
-        fer name in ["tex_granite", "tex_flagstone_moss", "tex_slate_under", "tex_dungeon_brick", "tex_oak_panel", "tex_tapestry_thistle", "tex_celtic_lintel", "tex_cell_door", "tex_portcullis", "tex_peat_straw", "tex_bog", "tex_chapel_stone", "tex_fryer_oil", "tex_lever_wall", "tex_loch_water", "tex_cow_wall", "tex_stag_wall", "tex_banner_wall", "tex_exit_gate", "tex_switch_off", "tex_switch_on", "tex_kirk_stone", "tex_stained_glass", "tex_crypt_door"] {
+        fer name in ["tex_granite", "tex_flagstone_moss", "tex_slate_under", "tex_dungeon_brick", "tex_oak_panel", "tex_tapestry_thistle", "tex_celtic_lintel", "tex_cell_door", "tex_portcullis", "tex_peat_straw", "tex_bog", "tex_chapel_stone", "tex_fryer_oil", "tex_lever_wall", "tex_loch_water", "tex_cow_wall", "tex_stag_wall", "tex_banner_wall", "tex_exit_gate", "tex_switch_off", "tex_switch_on", "tex_kirk_stone", "tex_stained_glass", "tex_crypt_door", "tex_bark", "tex_hedge", "tex_earth_tunnel"] {
             shove(textures, bogle_asset(name, 64, 64))
         }
         ken sprites = []
@@ -108,6 +108,10 @@ dae bogle_gameplay_assets() {
         art["dec_thistle_pot"] = bogle_asset("dec_thistle_pot", 64, 96)
         # The kirkyard (story art batch 1).
         fer name in ["spr_wullie_idle", "spr_wullie_walk1", "spr_wullie_walk2", "dec_grave", "dec_lamp_post", "dec_organ", "dec_organ_key_red", "dec_organ_key_blue", "dec_organ_key_gold", "dec_organ_key_green", "dec_compressor", "pick_key_brass"] {
+            art[name] = bogle_asset(name, 64, 96)
+        }
+        # The Wood o' Dreich (story art batch 2).
+        fer name in ["spr_deer_idle", "spr_deer_walk1", "spr_deer_walk2", "spr_deer_charge", "spr_deer_pain", "spr_deer_death", "dec_thistle_tuft", "spr_thistle_up1", "spr_thistle_up2", "spr_thistle_prod", "dec_tree", "spr_tree_fall1", "spr_tree_fall2", "dec_tree_fallen", "dec_signpost", "dec_castle_bell", "dec_grandfather_clock"] {
             art[name] = bogle_asset(name, 64, 96)
         }
         art["pick_bagpipes"] = bogle_asset("pick_bagpipes", 64, 96)
@@ -250,6 +254,50 @@ dae bogle_actor_art(g, actor) {
         name = "dec_compressor"
     } ither gin kind == 56 {
         name = "dec_organ"
+    } ither gin kind == 43 {
+        name = "spr_deer_idle"
+        gin state == "chase" or state == "patrol" {
+            name = "spr_deer_walk" + tae_string(tick + 1)
+        }
+        gin state == "charge" or state == "windup" {
+            name = "spr_deer_charge"
+        }
+        gin state == "stunned" {
+            name = "spr_deer_pain"
+        }
+        gin state == "dead" {
+            name = "spr_deer_death"
+        }
+    } ither gin kind == 44 {
+        # Pop runs up1 then up2; sink runs them backwards.
+        ken early = actor["timer"] < 3
+        name = "spr_thistle_up2"
+        gin state == "tuft" {
+            name = "dec_thistle_tuft"
+        }
+        gin (state == "pop" an early) or (state == "sink" an nae early) {
+            name = "spr_thistle_up1"
+        }
+        gin state == "prod" {
+            name = "spr_thistle_prod"
+        }
+    } ither gin kind == 45 {
+        name = "dec_tree"
+        gin state == "falling" {
+            name = "spr_tree_fall1"
+            gin actor["timer"] >= 9 {
+                name = "spr_tree_fall2"
+            }
+        }
+        gin state == "fallen" {
+            name = "dec_tree_fallen"
+        }
+    } ither gin kind == 54 {
+        name = "dec_castle_bell"
+    } ither gin kind == 55 {
+        name = "dec_grandfather_clock"
+    } ither gin kind == 57 {
+        name = "dec_signpost"
     } ither gin bogle_is_monster(kind) {
         name = "spr_haggis_walk" + tae_string(tick + 1)
     } ither gin kind >= 30 an kind <= 37 {
