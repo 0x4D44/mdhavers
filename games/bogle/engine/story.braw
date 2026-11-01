@@ -467,10 +467,6 @@ dae story_init(g) {
         g["story"]["tune"] = 0
         g["story"]["open"] = nae
     }
-    gin story_id(g) == "test" {
-        story_objective(g, "ASK THE COMPUTER")
-        g["story"]["countdown"] = 0
-    }
 }
 
 # Called for each link tag that fired (queued by bogle_activate) and for
@@ -481,16 +477,6 @@ dae story_event(g, tag) {
     }
     gin story_id(g) == "forest" {
         forest_event(g, tag)
-    }
-    gin story_id(g) == "test" {
-        gin tag == "vague" {
-            story_say(g, ["INTERPRETING VAGUE ANSWER AS NO."])
-            g["story"]["countdown"] = 350
-            story_objective(g, "PULL THE LEVER")
-        }
-        gin tag == 7 {
-            g["story"]["plate"] = aye
-        }
     }
 }
 
@@ -525,14 +511,6 @@ dae story_tick(g) {
     gin story_id(g) == "lab" {
         lab_tick(g)
     }
-    gin story_id(g) == "test" {
-        gin g["story"]["countdown"] > 0 {
-            g["story"]["countdown"] = g["story"]["countdown"] - 1
-            gin g["story"]["countdown"] == 0 {
-                story_fail(g)
-            }
-        }
-    }
 }
 
 # E on a story thing. Gives aye when the script used the press; nae lets it
@@ -549,34 +527,6 @@ dae story_use(g, a) {
     }
     gin story_id(g) == "lab" {
         gie lab_use(g, a)
-    }
-    gin story_id(g) == "test" {
-        gin a["kind"] == 50 an nae contains(g["story"], "asked") {
-            g["story"]["asked"] = aye
-            story_ask(g, ["DO YOU WISH TO SAVE THE PRINCESS?"], ["What do you think?", "What do you think?", "What do you think?"], "vague")
-            gie aye
-        }
-        gin a["kind"] == 52 {
-            gin contains(g["story"], "air") {
-                g["message"] = "It's runnin' fine."
-            } ither {
-                g["story"]["air"] = aye
-                a["state"] = "on"
-                story_say(g, ["The compressor wheezes intae life."])
-            }
-            gie aye
-        }
-        gin a["kind"] == 53 {
-            gin g["story"]["countdown"] == 0 {
-                g["message"] = "It disnae budge. No yet."
-            } ither {
-                g["story"]["countdown"] = 0
-                g["clock_stop"] = aye
-                a["state"] = "on"
-                story_win(g)
-            }
-            gie aye
-        }
     }
     gie nae
 }

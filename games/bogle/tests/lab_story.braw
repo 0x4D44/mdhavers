@@ -3,8 +3,9 @@ fetch "games/bogle/engine/game"
 # The lab script: every answer at the computer is vague and starts the
 # disposal countdown (drawn on the HUD); a lever before the question makes
 # the computer ask anyway; levers pull once; the third frees Ailsa and stops
-# the countdown and the clock; the countdown running out fails the level; a
-# live contraption never takes E, and the slumped one wins only wi the core.
+# the countdown and the clock (the computer then cancels); the countdown
+# running out fails the level; a live contraption never takes E, and the
+# slumped one wins only wi the core.
 dae ls_sector(m, x, y) {
     fer s in 0..len(m["floor_h"]) {
         gin map_point(m, s, x, y) {
@@ -142,7 +143,12 @@ fer i in 0..400 {
 mak_siccar g["clock"] == freed_at an freed_at > before an nae g["failed"]
 ls_pull(g, 2)
 mak_siccar g["story"]["levers"] == 3
-blether "ok levers pull once; the third frees Ailsa and stops the countdoon and the clock"
+# The computer, asked again once she is free, has stood down.
+ls_at(g, -1136, -24, 1024)
+ls_press(g, 128)
+mak_siccar g["talk"]["lines"] == ["DISPOSAL CANCELLED. HAVE A NICE DAY."]
+ls_read(g)
+blether "ok levers pull once; the third frees Ailsa and stops the countdoon and the clock; the computer cancels"
 
 # The countdown running out fails the level.
 g = ls_game()

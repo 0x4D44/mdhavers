@@ -1,7 +1,8 @@
 fetch "games/bogle/engine/game"
 
 # Talk freezes the world, reads only fresh presses, and lets no shot or pipe
-# blast leak out; every computer choice reads as no and starts the countdown.
+# blast leak out; every computer choice reads as no and starts the lab's
+# countdown (the test wing runs the lab script).
 dae talk_game() {
     ken g = new_game(load_map("games/bogle/data/storytest.map"))
     # Face the computer at (200, 200) from 40 units west.
@@ -24,7 +25,7 @@ dae talk_tic(g, keys, dx = 0) {
 }
 
 ken g = talk_game()
-mak_siccar g["objective"] == "ASK THE COMPUTER" an g["talk"] == naething
+mak_siccar g["objective"] == "SAVE AILSA" an g["talk"] == naething
 g["owned"][3] = aye
 g["weapon"] = 4
 fer i in 0..5 {
@@ -66,10 +67,13 @@ mak_siccar g["talk"]["sel"] == 1 an g["story"]["countdown"] == 0
 blether "ok choices move only on fresh presses"
 
 talk_tic(g, 64 + 128)
-mak_siccar g["story"]["choice"] == 1 an g["story"]["countdown"] == 350
-mak_siccar g["talk"]["lines"] == ["INTERPRETING VAGUE ANSWER AS NO."] an g["objective"] == "PULL THE LEVER"
+mak_siccar g["story"]["choice"] == 1 an g["story"]["countdown"] == 6300
+mak_siccar g["talk"]["lines"] == ["INTERPRETING VAGUE ANSWER AS NO.", "PRINCESS DISPOSAL IN THREE MINUTES."] an g["objective"] == "PULL THE THREE LEVERS"
 talk_tic(g, 64 + 128)
-mak_siccar g["talk"] != naething an g["story"]["countdown"] == 350
+mak_siccar g["talk"] != naething an g["talk"]["at"] == 0 an g["story"]["countdown"] == 6300
+talk_tic(g, 64)
+talk_tic(g, 64 + 128)
+mak_siccar g["talk"] != naething an g["talk"]["at"] == 1
 talk_tic(g, 64)
 talk_tic(g, 64 + 128)
 mak_siccar g["talk"] == naething an g["hold_fire"]
@@ -80,7 +84,7 @@ fer i in 0..10 {
     sounds = talk_tic(g, 64)
     mak_siccar g["bag_charge"] == 0 an nae contains(sounds, "pipe_fill") an nae contains(sounds, "pipe_blast")
 }
-mak_siccar g["tics"] == tics + 10 an g["story"]["countdown"] == 340 an g["puff"] == 100
+mak_siccar g["tics"] == tics + 10 an g["story"]["countdown"] == 6290 an g["puff"] == 100
 sounds = talk_tic(g, 0)
 mak_siccar nae g["hold_fire"]
 sounds = talk_tic(g, 64)
@@ -88,6 +92,8 @@ mak_siccar g["bag_charge"] == 1 an contains(sounds, "pipe_fill")
 blether "ok fire held oot o talk does nothing until released"
 
 g = talk_game()
+talk_tic(g, 64 + 128)
+talk_tic(g, 64)
 talk_tic(g, 64 + 128)
 talk_tic(g, 64)
 talk_tic(g, 64 + 128)
@@ -111,10 +117,12 @@ fer pick in 0..3 {
     }
     mak_siccar g["talk"]["sel"] == pick
     talk_tic(g, 128)
-    mak_siccar g["talk"]["lines"] == ["INTERPRETING VAGUE ANSWER AS NO."] an g["story"]["countdown"] == 350
+    mak_siccar g["talk"]["lines"][0] == "INTERPRETING VAGUE ANSWER AS NO." an g["story"]["countdown"] == 6300
 }
 blether "ok every choice is read as no and starts the countdown"
 
+talk_tic(g, 0)
+talk_tic(g, 128)
 talk_tic(g, 0)
 talk_tic(g, 128)
 mak_siccar g["talk"] == naething
@@ -122,7 +130,7 @@ g["story"]["countdown"] = 2
 talk_tic(g, 0)
 mak_siccar nae g["failed"]
 talk_tic(g, 0)
-mak_siccar g["failed"] an nae g["won"]
+mak_siccar g["failed"] an nae g["won"] an g["message"] == "DISPOSAL COMPLETE."
 tics = g["tics"]
 clock = g["clock"]
 before = talk_positions(g)

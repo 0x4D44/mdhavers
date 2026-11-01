@@ -2,7 +2,8 @@ fetch "games/bogle/engine/game"
 
 # The kirkyard organ: nothing but a wheeze before the compressor runs; the
 # right tune (red, gold, blue, green) opens the crypt door; a wrong stop
-# resets the tune; presses after the crypt opens change nothing.
+# resets the tune, and a sour red starts it afresh at one; presses after
+# the crypt opens change nothing.
 ken g = new_game(load_map("games/bogle/data/kirkyard.map"))
 
 dae org_at(g, x, y, angle) {
@@ -80,14 +81,18 @@ org_stop(g, "gold")
 mak_siccar g["story"]["tune"] == 0 an nae g["story"]["open"] an org_crypt(g) == "closed"
 blether "ok a wrang stop plays a sour chord an resets the tune"
 
-fer colour in ["red", "gold", "blue", "green"] {
+org_stop(g, "red")
+mak_siccar g["story"]["tune"] == 1 an g["message"] == "Paaarp! RED."
+org_stop(g, "red")
+mak_siccar g["story"]["tune"] == 1 an g["message"] == "BLAAURGH! A sour chord. Start again."
+fer colour in ["gold", "blue", "green"] {
     org_stop(g, colour)
 }
 mak_siccar g["story"]["open"] an g["talk"] != naething an g["talk"]["lines"][1] == "Somewhere below, the crypt door creaks open."
 org_read(g)
 mak_siccar org_crypt(g) == "opening" or org_crypt(g) == "open"
 mak_siccar g["objective"] == "DOON INTAE THE CRYPT"
-blether "ok red, gold, blue, green opens the crypt door"
+blether "ok a sour red starts the tune at one; red, red, gold, blue, green opens the crypt door"
 
 g["message"] = ""
 ken before = tae_string(g["story"])

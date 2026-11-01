@@ -1,10 +1,37 @@
 fetch "games/bogle/shell/replay"
 
 # Story records, path points, locks 3 and 4, story items, the use priority,
-# link tags reaching the script, the lever stopping the clock, carry and the
-# story-map replay digest.
+# link tags reaching the script (held while talk is open), the levers
+# stopping the clock, carry and the story-map replay digest. The test wing
+# runs the lab script; reparsed wi another `story` record it runs that one.
 dae eng_tic(g, keys) {
     gie tic(g, {"keys": keys, "dx": 0})
+}
+
+dae eng_wing(story, extra = "") {
+    ken text = replace(read_file("games/bogle/data/storytest.map"), "story lab", "story " + story)
+    gie new_game(map_parse(text + extra))
+}
+
+# Read a talk box through to its end.
+dae eng_read(g) {
+    whiles g["talk"] != naething {
+        eng_tic(g, 128)
+        eng_tic(g, 0)
+    }
+}
+
+dae eng_actor(g, kind, index = 0) {
+    ken n = 0
+    fer a in g["actors"] {
+        gin a["kind"] == kind {
+            gin n == index {
+                gie a
+            }
+            n = n + 1
+        }
+    }
+    gie naething
 }
 
 dae eng_at(g, x, y, angle) {
@@ -24,7 +51,7 @@ dae eng_door(g, sector) {
 }
 
 ken m = load_map("games/bogle/data/storytest.map")
-mak_siccar m["story"] == "test" an m["ghostlight"] == 64 an len(m["intro"]) == 2
+mak_siccar m["story"] == "lab" an m["ghostlight"] == 64 an len(m["intro"]) == 2
 mak_siccar m["require"] == [["keys", 4], ["item", "head"]]
 ken legacy = load_map("games/bogle/data/e1m1.map")
 mak_siccar legacy["story"] == "" an legacy["require"] == [] an legacy["ghostlight"] == 96 an legacy["intro"] == []
@@ -36,18 +63,20 @@ mak_siccar paths["paths"][0]["x"] == 200 * 65536 an paths["paths"][2]["x"] == 40
 mak_siccar paths["map"]["ghostlight"] == 200 an nae damage_actor(paths, paths["actors"][0], 10)
 blether "ok story records parse, legacy maps keep defaults, path points are no actors"
 
-ken g = new_game(load_map("games/bogle/data/storytest.map"))
+ken g = eng_wing("forest")
 # The brass door (sector 2) refuses without the brass key.
 eng_at(g, 240, 56, 0)
 eng_tic(g, 128)
 mak_siccar g["message"] == "It's lockit. Ye'll be needin' the brass key." an eng_door(g, 2)["state"] == "closed"
 eng_tic(g, 0)
-# Walking onto the west strip fires link tag 7 to the script.
-mak_siccar nae contains(g["story"], "plate")
+# Walking onto the west strip fires link tag 6, the forest's wall gap.
+mak_siccar nae g["story"]["gap"] an g["objective"] == "FIND A WAY OOT THE WOOD"
 eng_at(g, -64, 64, 0)
 g["sector"] = 1
 eng_tic(g, 0)
-mak_siccar g["story"]["plate"] an bit_an(g["keys"], 4) == 4 an g["message"] == "Brass key: opens the plant room."
+mak_siccar g["story"]["gap"] an g["objective"] == "RING THE BELL" an g["talk"]["lines"] == ["The castle wall was never finished. Ye could hae just walked here."]
+mak_siccar bit_an(g["keys"], 4) == 4 an g["message"] == "Brass key: opens the plant room."
+eng_read(g)
 eng_at(g, 240, 56, 0)
 eng_tic(g, 128)
 mak_siccar eng_door(g, 2)["state"] == "opening"
@@ -68,15 +97,29 @@ eng_tic(g, 128)
 mak_siccar eng_door(g, 3)["state"] == "opening"
 blether "ok lock 4 refuses withoot the heid and opens wi it"
 
-g = new_game(load_map("games/bogle/data/storytest.map"))
-ken compressor = g["actors"][1]
-mak_siccar compressor["kind"] == 52
+# E on a sign on the strip in the tic the gap fires: the sign's box shows
+# and the tag waits, queued, until it is read.
+g = eng_wing("forest", "t 57 -32 128 0 0\n")
+eng_at(g, -64, 128, 0)
+g["sector"] = 1
+eng_tic(g, 128)
+mak_siccar g["talk"]["lines"] == ["TUNNEL STOPS HERE. SORRY. — TT"] an g["fired"] == [6] an nae g["story"]["gap"]
+eng_tic(g, 0)
+eng_tic(g, 128)
+mak_siccar g["talk"] == naething an g["fired"] == [6] an nae g["story"]["gap"]
+eng_tic(g, 0)
+mak_siccar g["story"]["gap"] an g["fired"] == [] an g["talk"]["lines"][0] == "The castle wall was never finished. Ye could hae just walked here."
+blether "ok a tag fired while talk is open waits till it closes"
+
+g = eng_wing("kirkyard")
+ken compressor = eng_actor(g, 52)
 compressor["x"] = 230 * 65536
 eng_at(g, 216, 56, 0)
 eng_tic(g, 128)
-mak_siccar g["talk"]["lines"] == ["The compressor wheezes intae life."] an g["story"]["air"] an compressor["state"] == "on"
+mak_siccar g["talk"]["lines"][0] == "The compressor wheezes intae life." an g["story"]["air"] an compressor["state"] == "on"
+mak_siccar g["objective"] == "PLAY THE TUNE"
 eng_tic(g, 0)
-eng_tic(g, 128)
+eng_read(g)
 mak_siccar g["talk"] == naething
 g["keys"] = 4
 eng_tic(g, 0)
@@ -84,9 +127,8 @@ eng_tic(g, 128)
 mak_siccar g["message"] == "It's runnin' fine." an eng_door(g, 2)["state"] == "closed"
 blether "ok a story thing in reach takes E before the door"
 
-ken computer = g["actors"][0]
-mak_siccar computer["kind"] == 50
-g["story"]["asked"] = aye
+# The kirkyard script has nae use for the computer.
+ken computer = eng_actor(g, 50)
 compressor["active"] = nae
 computer["x"] = 230 * 65536
 computer["y"] = 56 * 65536
@@ -95,23 +137,36 @@ eng_tic(g, 128)
 mak_siccar g["talk"] == naething an eng_door(g, 2)["state"] == "opening"
 blether "ok a story thing the script passes on lets E fall through tae the door"
 
+# The lab's three levers, each pulled from in front.
+dae eng_pull(g, lever) {
+    ken x = lever["x"]
+    ken y = lever["y"]
+    lever["x"] = 100 * 65536
+    lever["y"] = 128 * 65536
+    lever["sector"] = 0
+    eng_at(g, 64, 128, 0)
+    eng_tic(g, 128)
+    eng_tic(g, 0)
+    lever["x"] = x
+    lever["y"] = y
+}
+
 g = new_game(load_map("games/bogle/data/storytest.map"))
-ken lever = g["actors"][6]
-mak_siccar lever["kind"] == 53
-lever["x"] = 100 * 65536
-lever["y"] = 128 * 65536
-lever["sector"] = 0
-eng_tic(g, 128)
-mak_siccar g["message"] == "It disnae budge. No yet." an nae g["won"]
-g["story"]["countdown"] = 100
-eng_tic(g, 0)
-eng_tic(g, 128)
-mak_siccar g["won"] an g["clock_stop"] an g["story"]["countdown"] == 0 an lever["state"] == "on"
+mak_siccar g["objective"] == "SAVE AILSA" an eng_actor(g, 53, 2) != naething
+eng_pull(g, eng_actor(g, 53, 0))
+mak_siccar g["story"]["asked"] an g["story"]["levers"] == 1 an g["talk"]["lines"][1] == "TAMPERING DETECTED. DO YOU WISH TO SAVE THE PRINCESS?"
+eng_read(g)
+mak_siccar g["story"]["countdown"] > 6290 an g["objective"] == "PULL THE THREE LEVERS" an nae g["clock_stop"]
+eng_pull(g, eng_actor(g, 53, 1))
+mak_siccar g["story"]["levers"] == 2 an g["message"] == "Clunk! 1 tae go." an g["story"]["countdown"] > 0
+eng_pull(g, eng_actor(g, 53, 2))
+mak_siccar g["story"]["freed"] an g["clock_stop"] an g["story"]["countdown"] == 0 an eng_actor(g, 53, 2)["state"] == "on"
+eng_read(g)
 ken clock = g["clock"]
-g["won"] = nae
 eng_tic(g, 0)
-mak_siccar g["clock"] == clock an g["story"]["countdown"] == 0
-blether "ok the lever stops the countdoon and freezes the clock"
+eng_tic(g, 0)
+mak_siccar g["clock"] == clock an g["story"]["countdown"] == 0 an nae g["failed"]
+blether "ok the third lever stops the countdoon and freezes the clock"
 
 g = new_game(load_map("games/bogle/data/storytest.map"))
 g["items"] = ["head"]

@@ -106,3 +106,7 @@ fer i in 0..80 * 50 {
 }
 mak_siccar nae same
 blether "ok the deid rat lies where it fell"
+
+# Rats are story things (drawn 30 tall); the actor heights leave them be.
+mak_siccar bogle_story_height(42) == 30 an bogle_actor_height(42) == 48
+blether "ok a rat stands 30 tall as a story thing"

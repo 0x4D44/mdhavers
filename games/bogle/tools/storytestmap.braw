@@ -1,19 +1,21 @@
 fetch "mapbuild.braw"
 # Story test map for the engine fixtures. Run from the repository root.
 # Hall x=0..256 (start (64,128) facing east): computer (50) and compressor
-# (52). West, a walk-over strip with link tag 7 holds the brass key and
+# (52). West, a walk-over strip with link tag 6 holds the brass key and
 # Wullie. East, a brass door (lock 3) to the head room (head pickup, a rat
 # from the new monster range) and a retina door (lock 4) to the exit room
-# (lever 53 and the exit). The `story test` script lives in engine/story.braw.
+# (three levers 53 and the exit). It runs the real lab script; fixtures that
+# need another script reparse it with a different `story` record (tag 6 is
+# the forest's wall gap).
 ken story_builder = new_map()
 story_builder["name"] = "The Test Wing"
 story_builder["briefing"] = ["ASK THE COMPUTER. FIND THE BRASS KEY AND THE HEID."]
 story_builder["intro"] = ["A wee test o the story engine.", "Naebody will ever see this."]
-story_builder["story"] = "test"
+story_builder["story"] = "lab"
 story_builder["require"] = [["keys", 4], ["item", "head"]]
 story_builder["ghostlight"] = 64
 room(story_builder, [[0, 0], [256, 0], [256, 112], [256, 144], [256, 256], [0, 256]], 0, 128)
-room(story_builder, [[-128, 0], [0, 0], [0, 256], [-128, 256]], 0, 128, 1, 2, 160, 0, 7 * 256)
+room(story_builder, [[-128, 0], [0, 0], [0, 256], [-128, 256]], 0, 128, 1, 2, 160, 0, 6 * 256)
 door(story_builder, [[256, 0], [288, 0], [288, 112], [256, 112]], 0, 128, 3)
 door(story_builder, [[256, 144], [288, 144], [288, 256], [256, 256]], 0, 128, 4)
 room(story_builder, [[288, 0], [512, 0], [512, 112], [288, 112]], 0, 128)
@@ -27,5 +29,7 @@ map_thing(story_builder, 23, 400, 56)
 map_thing(story_builder, 42, 480, 56)
 map_thing(story_builder, 53, 400, 200)
 map_thing(story_builder, 21, 480, 200)
+map_thing(story_builder, 53, 340, 170)
+map_thing(story_builder, 53, 340, 230)
 write(story_builder, "games/bogle/data/storytest.map")
 blether "ok story test map"
