@@ -10,6 +10,9 @@
 use std::path::Path;
 use std::process::{Command, Stdio};
 
+#[path = "support/runtime_core.rs"]
+mod runtime_core;
+
 const DRIVER: &str = r#"
 #include "mdh_runtime.h"
 #include <stdio.h>
@@ -50,7 +53,8 @@ fn chunks_with_a_huge_size_never_overflows_int64() {
     std::fs::write(&driver, DRIVER).unwrap();
     let exe = dir.path().join("driver");
     let cc = std::env::var("CC").unwrap_or_else(|_| "cc".to_string());
-    // The Rust runtime helpers are not needed here; leave their symbols unresolved.
+    let core_object = runtime_core::build_object(dir.path());
+    // Higher-level Rust helpers are not used here; only the value core is needed.
     let unresolved = if cfg!(target_os = "macos") {
         "-Wl,-undefined,dynamic_lookup"
     } else {
@@ -67,6 +71,7 @@ fn chunks_with_a_huge_size_never_overflows_int64() {
             "-Iruntime/platform",
         ])
         .arg(&driver)
+        .arg(&core_object)
         .args([
             "runtime/mdh_runtime.c",
             "runtime/gc_stub.c",

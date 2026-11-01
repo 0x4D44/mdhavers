@@ -112,6 +112,7 @@ wat = { version = "1.0", optional = true }
 cc = "1.0"
 
 [dev-dependencies]
+mdh_runtime_core = { path = "runtime/mdh_runtime_core" }
 pretty_assertions = "1.4"
 tempfile = "3.10"
 rcgen = "0.12"

@@ -1286,12 +1286,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "mdh_runtime_core"
+version = "0.1.0"
+
+[[package]]
 name = "mdh_runtime_rs"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
  "glam",
  "libsrtp",
+ "mdh_runtime_core",
  "om-fork-miniaudio",
  "openssl",
  "pollster",

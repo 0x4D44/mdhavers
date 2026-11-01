@@ -2,7 +2,8 @@
  * mdhavers Runtime Library - Implementation
  *
  * Provides runtime support for compiled mdhavers programs.
- * Uses Boehm GC for memory management.
+ * Heap allocation and reference counting live in gc_stub.c; allocation-free
+ * value primitives live in the Rust mdh_runtime_core crate.
  */
 
 #define _GNU_SOURCE
@@ -72,12 +73,6 @@ static int mdh_clock_gettime_realtime(struct timespec *ts) {
 #define dup _dup
 #define mkstemp mdh_mkstemp
 #endif
-
-typedef struct {
-    uint8_t ok;
-    MdhValue value;
-    MdhValue error;
-} MdhRsResult;
 
 /* Rust runtime FFI (JSON + regex) */
 extern MdhRsResult __mdh_rs_json_parse(MdhValue json_str);
@@ -371,36 +366,8 @@ static int64_t __mdh_double_to_i64_saturating(double v) {
 
 /* ========== Value Creation ========== */
 
-MdhValue __mdh_make_nil(void) {
-    MdhValue v;
-    v.tag = MDH_TAG_NIL;
-    v.data = 0;
-    return v;
-}
-
-MdhValue __mdh_make_bool(bool value) {
-    MdhValue v;
-    v.tag = MDH_TAG_BOOL;
-    v.data = value ? 1 : 0;
-    return v;
-}
-
-MdhValue __mdh_make_int(int64_t value) {
-    MdhValue v;
-    v.tag = MDH_TAG_INT;
-    v.data = value;
-    return v;
-}
-
-MdhValue __mdh_make_float(double value) {
-    MdhValue v;
-    v.tag = MDH_TAG_FLOAT;
-    /* Store float bits in the int64 field */
-    union { double f; int64_t i; } u;
-    u.f = value;
-    v.data = u.i;
-    return v;
-}
+/* The immediate constructors are defined in runtime/mdh_runtime_core and linked
+ * through mdh_runtime_rs. They do not allocate, raise, or change reference counts. */
 
 /* A copy of `value` as a string value. Out of memory, it raises the "ower muckle" error
  * (in quiet mode it records that and returns the error text instead), so it never
@@ -1068,10 +1035,6 @@ bool __mdh_truthy(MdhValue a) {
 }
 
 /* ========== Type Operations ========== */
-
-uint8_t __mdh_get_tag(MdhValue a) {
-    return a.tag;
-}
 
 void __mdh_type_error(const char *op, uint8_t got1, uint8_t got2) {
     static const char *type_names[] = {

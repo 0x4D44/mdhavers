@@ -8,6 +8,7 @@ use std::sync::{Mutex, OnceLock};
 use std::{env, fmt};
 
 use crate::tri_engine::{with_engine, LoopCallback, MeshData, RenderItem};
+use crate::{__mdh_make_float, __mdh_make_int, __mdh_make_nil};
 use crate::{
     mdh_dict_get_named, mdh_dict_set, mdh_error_string, mdh_float_value, mdh_list_push,
     mdh_make_string_from_rust, mdh_new_dict, mdh_new_list, mdh_value_to_string, take_no_memory,
@@ -1684,9 +1685,6 @@ const MDH_KIND_NATIVE: u32 = 8;
 
 extern "C" {
     fn __mdh_obj_alloc(kind: u32, size: usize) -> *mut std::ffi::c_void;
-    fn __mdh_make_nil() -> MdhValue;
-    fn __mdh_make_int(value: i64) -> MdhValue;
-    fn __mdh_make_float(value: f64) -> MdhValue;
     fn __mdh_list_get(list: MdhValue, index: i64) -> MdhValue;
     fn __mdh_list_len(list: MdhValue) -> i64;
     fn __mdh_out_of_memory_message() -> MdhValue;

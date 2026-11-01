@@ -629,6 +629,7 @@ blether Pot().n
             include_str!("../../runtime/gc_stub.c")
         );
         let rust_runtime = [
+            include_str!("../../runtime/mdh_runtime_core/src/lib.rs"),
             include_str!("../../runtime/mdh_runtime_rs/src/lib.rs"),
             include_str!("../../runtime/mdh_runtime_rs/src/tri_runtime.rs"),
             include_str!("../../runtime/mdh_runtime_rs/src/audio.rs"),

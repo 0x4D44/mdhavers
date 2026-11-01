@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex};
 use miniaudio::{Decoder, DecoderConfig, Device, DeviceConfig, DeviceType, Format, FramesMut};
 use rustysynth::{MidiFile, MidiFileSequencer, SoundFont, Synthesizer, SynthesizerSettings};
 
+use super::{__mdh_make_bool, __mdh_make_float, __mdh_make_int, __mdh_make_nil};
 use super::{
     mdh_error_string, mdh_float_value, mdh_string_to_rust, MdhValue, MDH_TAG_BOOL,
     MDH_TAG_FLOAT, MDH_TAG_INT, MDH_TAG_NIL, MDH_TAG_STRING,
@@ -450,10 +451,6 @@ fn expect_string(value: MdhValue, name: &str) -> Result<String, String> {
 }
 
 extern "C" {
-    fn __mdh_make_nil() -> MdhValue;
-    fn __mdh_make_bool(value: bool) -> MdhValue;
-    fn __mdh_make_int(value: i64) -> MdhValue;
-    fn __mdh_make_float(value: f64) -> MdhValue;
     fn __mdh_hurl(value: MdhValue);
 }
 
@@ -461,7 +458,7 @@ extern "C" {
 pub extern "C" fn __mdh_soond_stairt() -> MdhValue {
     with_state(|state| {
         state.ensure_audio()?;
-        Ok(unsafe { __mdh_make_nil() })
+        Ok(__mdh_make_nil())
     })
 }
 
@@ -469,7 +466,7 @@ pub extern "C" fn __mdh_soond_stairt() -> MdhValue {
 pub extern "C" fn __mdh_soond_steek() -> MdhValue {
     with_state(|state| {
         state.shutdown();
-        Ok(unsafe { __mdh_make_nil() })
+        Ok(__mdh_make_nil())
     })
 }
 
@@ -480,7 +477,7 @@ pub extern "C" fn __mdh_soond_wheesht(value: MdhValue) -> MdhValue {
         state.ensure_audio()?;
         let mut mixer = state.mixer()?;
         mixer.muted = wheesht;
-        Ok(unsafe { __mdh_make_nil() })
+        Ok(__mdh_make_nil())
     })
 }
 
@@ -492,7 +489,7 @@ pub extern "C" fn __mdh_soond_luid(value: MdhValue) -> MdhValue {
         state.ensure_audio()?;
         let mut mixer = state.mixer()?;
         mixer.master_volume = volume;
-        Ok(unsafe { __mdh_make_nil() })
+        Ok(__mdh_make_nil())
     })
 }
 
@@ -500,7 +497,7 @@ pub extern "C" fn __mdh_soond_luid(value: MdhValue) -> MdhValue {
 pub extern "C" fn __mdh_soond_hou_luid() -> MdhValue {
     with_state(|state| {
         let mixer = state.mixer()?;
-        Ok(unsafe { __mdh_make_float(mixer.master_volume as f64) })
+        Ok(__mdh_make_float(mixer.master_volume as f64))
     })
 }
 
@@ -508,7 +505,7 @@ pub extern "C" fn __mdh_soond_hou_luid() -> MdhValue {
 pub extern "C" fn __mdh_soond_haud_gang() -> MdhValue {
     with_state(|state| {
         let _ = state;
-        Ok(unsafe { __mdh_make_nil() })
+        Ok(__mdh_make_nil())
     })
 }
 
@@ -529,7 +526,7 @@ pub extern "C" fn __mdh_soond_lade(path_val: MdhValue) -> MdhValue {
         };
         let mut mixer = state.mixer()?;
         let handle = AudioState::alloc_handle(&mut mixer.sounds, entry);
-        Ok(unsafe { __mdh_make_int(handle) })
+        Ok(__mdh_make_int(handle))
     })
 }
 
@@ -544,7 +541,7 @@ pub extern "C" fn __mdh_soond_spiel(handle_val: MdhValue) -> MdhValue {
         };
         entry.position = 0.0;
         entry.state = PlayState::Playing;
-        Ok(unsafe { __mdh_make_nil() })
+        Ok(__mdh_make_nil())
     })
 }
 
@@ -558,7 +555,7 @@ pub extern "C" fn __mdh_soond_haud(handle_val: MdhValue) -> MdhValue {
             None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         entry.state = PlayState::Paused;
-        Ok(unsafe { __mdh_make_nil() })
+        Ok(__mdh_make_nil())
     })
 }
 
@@ -572,7 +569,7 @@ pub extern "C" fn __mdh_soond_gae_on(handle_val: MdhValue) -> MdhValue {
             None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         entry.state = PlayState::Playing;
-        Ok(unsafe { __mdh_make_nil() })
+        Ok(__mdh_make_nil())
     })
 }
 
@@ -587,7 +584,7 @@ pub extern "C" fn __mdh_soond_stap(handle_val: MdhValue) -> MdhValue {
         };
         entry.state = PlayState::Stopped;
         entry.position = 0.0;
-        Ok(unsafe { __mdh_make_nil() })
+        Ok(__mdh_make_nil())
     })
 }
 
@@ -602,7 +599,7 @@ pub extern "C" fn __mdh_soond_unlade(handle_val: MdhValue) -> MdhValue {
         };
         entry.state = PlayState::Stopped;
         mixer.sounds[handle] = None;
-        Ok(unsafe { __mdh_make_nil() })
+        Ok(__mdh_make_nil())
     })
 }
 
@@ -615,7 +612,7 @@ pub extern "C" fn __mdh_soond_is_spielin(handle_val: MdhValue) -> MdhValue {
             Some(entry) => entry,
             None => return Err(ERR_BAD_HANDLE.to_string()),
         };
-        Ok(unsafe { __mdh_make_bool(entry.state == PlayState::Playing) })
+        Ok(__mdh_make_bool(entry.state == PlayState::Playing))
     })
 }
 
@@ -631,7 +628,7 @@ pub extern "C" fn __mdh_soond_pit_luid(handle_val: MdhValue, val: MdhValue) -> M
             None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         entry.volume = value;
-        Ok(unsafe { __mdh_make_nil() })
+        Ok(__mdh_make_nil())
     })
 }
 
@@ -646,7 +643,7 @@ pub extern "C" fn __mdh_soond_pit_pan(handle_val: MdhValue, val: MdhValue) -> Md
             None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         entry.pan = pan;
-        Ok(unsafe { __mdh_make_nil() })
+        Ok(__mdh_make_nil())
     })
 }
 
@@ -661,7 +658,7 @@ pub extern "C" fn __mdh_soond_pit_tune(handle_val: MdhValue, val: MdhValue) -> M
             None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         entry.pitch = pitch;
-        Ok(unsafe { __mdh_make_nil() })
+        Ok(__mdh_make_nil())
     })
 }
 
@@ -676,7 +673,7 @@ pub extern "C" fn __mdh_soond_pit_rin_roond(handle_val: MdhValue, val: MdhValue)
             None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         entry.looped = looped;
-        Ok(unsafe { __mdh_make_nil() })
+        Ok(__mdh_make_nil())
     })
 }
 
@@ -690,7 +687,7 @@ pub extern "C" fn __mdh_soond_ready(handle_val: MdhValue) -> MdhValue {
             None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         let _ = entry;
-        Ok(unsafe { __mdh_make_bool(true) })
+        Ok(__mdh_make_bool(true))
     })
 }
 
@@ -711,7 +708,7 @@ pub extern "C" fn __mdh_muisic_lade(path_val: MdhValue) -> MdhValue {
         };
         let mut mixer = state.mixer()?;
         let handle = AudioState::alloc_handle(&mut mixer.music, entry);
-        Ok(unsafe { __mdh_make_int(handle) })
+        Ok(__mdh_make_int(handle))
     })
 }
 
@@ -728,7 +725,7 @@ pub extern "C" fn __mdh_muisic_spiel(handle_val: MdhValue) -> MdhValue {
             entry.position = 0.0;
         }
         entry.state = PlayState::Playing;
-        Ok(unsafe { __mdh_make_nil() })
+        Ok(__mdh_make_nil())
     })
 }
 
@@ -742,7 +739,7 @@ pub extern "C" fn __mdh_muisic_haud(handle_val: MdhValue) -> MdhValue {
             None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         entry.state = PlayState::Paused;
-        Ok(unsafe { __mdh_make_nil() })
+        Ok(__mdh_make_nil())
     })
 }
 
@@ -756,7 +753,7 @@ pub extern "C" fn __mdh_muisic_gae_on(handle_val: MdhValue) -> MdhValue {
             None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         entry.state = PlayState::Playing;
-        Ok(unsafe { __mdh_make_nil() })
+        Ok(__mdh_make_nil())
     })
 }
 
@@ -771,7 +768,7 @@ pub extern "C" fn __mdh_muisic_stap(handle_val: MdhValue) -> MdhValue {
         };
         entry.state = PlayState::Stopped;
         entry.position = 0.0;
-        Ok(unsafe { __mdh_make_nil() })
+        Ok(__mdh_make_nil())
     })
 }
 
@@ -786,7 +783,7 @@ pub extern "C" fn __mdh_muisic_unlade(handle_val: MdhValue) -> MdhValue {
         };
         entry.state = PlayState::Stopped;
         mixer.music[handle] = None;
-        Ok(unsafe { __mdh_make_nil() })
+        Ok(__mdh_make_nil())
     })
 }
 
@@ -799,7 +796,7 @@ pub extern "C" fn __mdh_muisic_is_spielin(handle_val: MdhValue) -> MdhValue {
             Some(entry) => entry,
             None => return Err(ERR_BAD_HANDLE.to_string()),
         };
-        Ok(unsafe { __mdh_make_bool(entry.state == PlayState::Playing) })
+        Ok(__mdh_make_bool(entry.state == PlayState::Playing))
     })
 }
 
@@ -815,7 +812,7 @@ pub extern "C" fn __mdh_muisic_loup(handle_val: MdhValue, seconds_val: MdhValue)
         };
         let target = (pos * OUTPUT_SAMPLE_RATE as f64).max(0.0);
         entry.position = target.min(entry.buffer.frames as f64);
-        Ok(unsafe { __mdh_make_nil() })
+        Ok(__mdh_make_nil())
     })
 }
 
@@ -829,7 +826,7 @@ pub extern "C" fn __mdh_muisic_hou_lang(handle_val: MdhValue) -> MdhValue {
             None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         let length = entry.buffer.frames as f64 / OUTPUT_SAMPLE_RATE as f64;
-        Ok(unsafe { __mdh_make_float(length) })
+        Ok(__mdh_make_float(length))
     })
 }
 
@@ -843,7 +840,7 @@ pub extern "C" fn __mdh_muisic_whaur(handle_val: MdhValue) -> MdhValue {
             None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         let pos = entry.position / OUTPUT_SAMPLE_RATE as f64;
-        Ok(unsafe { __mdh_make_float(pos) })
+        Ok(__mdh_make_float(pos))
     })
 }
 
@@ -859,7 +856,7 @@ pub extern "C" fn __mdh_muisic_pit_luid(handle_val: MdhValue, val: MdhValue) -> 
             None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         entry.volume = value;
-        Ok(unsafe { __mdh_make_nil() })
+        Ok(__mdh_make_nil())
     })
 }
 
@@ -874,7 +871,7 @@ pub extern "C" fn __mdh_muisic_pit_pan(handle_val: MdhValue, val: MdhValue) -> M
             None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         entry.pan = pan;
-        Ok(unsafe { __mdh_make_nil() })
+        Ok(__mdh_make_nil())
     })
 }
 
@@ -889,7 +886,7 @@ pub extern "C" fn __mdh_muisic_pit_tune(handle_val: MdhValue, val: MdhValue) -> 
             None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         entry.pitch = pitch;
-        Ok(unsafe { __mdh_make_nil() })
+        Ok(__mdh_make_nil())
     })
 }
 
@@ -904,7 +901,7 @@ pub extern "C" fn __mdh_muisic_pit_rin_roond(handle_val: MdhValue, val: MdhValue
             None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         entry.looped = looped;
-        Ok(unsafe { __mdh_make_nil() })
+        Ok(__mdh_make_nil())
     })
 }
 
@@ -966,7 +963,7 @@ pub extern "C" fn __mdh_midi_lade(midi_val: MdhValue, sf_val: MdhValue) -> MdhVa
 
         let mut mixer = state.mixer()?;
         let handle = AudioState::alloc_handle(&mut mixer.midi, entry);
-        Ok(unsafe { __mdh_make_int(handle) })
+        Ok(__mdh_make_int(handle))
     })
 }
 
@@ -983,7 +980,7 @@ pub extern "C" fn __mdh_midi_spiel(handle_val: MdhValue) -> MdhValue {
             entry.sequencer.play(&entry.midi, entry.looped);
         }
         entry.state = PlayState::Playing;
-        Ok(unsafe { __mdh_make_nil() })
+        Ok(__mdh_make_nil())
     })
 }
 
@@ -997,7 +994,7 @@ pub extern "C" fn __mdh_midi_haud(handle_val: MdhValue) -> MdhValue {
             None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         entry.state = PlayState::Paused;
-        Ok(unsafe { __mdh_make_nil() })
+        Ok(__mdh_make_nil())
     })
 }
 
@@ -1011,7 +1008,7 @@ pub extern "C" fn __mdh_midi_gae_on(handle_val: MdhValue) -> MdhValue {
             None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         entry.state = PlayState::Playing;
-        Ok(unsafe { __mdh_make_nil() })
+        Ok(__mdh_make_nil())
     })
 }
 
@@ -1026,7 +1023,7 @@ pub extern "C" fn __mdh_midi_stap(handle_val: MdhValue) -> MdhValue {
         };
         entry.sequencer.stop();
         entry.state = PlayState::Stopped;
-        Ok(unsafe { __mdh_make_nil() })
+        Ok(__mdh_make_nil())
     })
 }
 
@@ -1041,7 +1038,7 @@ pub extern "C" fn __mdh_midi_unlade(handle_val: MdhValue) -> MdhValue {
         };
         entry.sequencer.stop();
         mixer.midi[handle] = None;
-        Ok(unsafe { __mdh_make_nil() })
+        Ok(__mdh_make_nil())
     })
 }
 
@@ -1054,7 +1051,7 @@ pub extern "C" fn __mdh_midi_is_spielin(handle_val: MdhValue) -> MdhValue {
             Some(entry) => entry,
             None => return Err(ERR_BAD_HANDLE.to_string()),
         };
-        Ok(unsafe { __mdh_make_bool(entry.state == PlayState::Playing) })
+        Ok(__mdh_make_bool(entry.state == PlayState::Playing))
     })
 }
 
@@ -1069,7 +1066,7 @@ pub extern "C" fn __mdh_midi_loup(handle_val: MdhValue, seconds_val: MdhValue) -
             None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         seek_midi(entry, pos)?;
-        Ok(unsafe { __mdh_make_nil() })
+        Ok(__mdh_make_nil())
     })
 }
 
@@ -1082,7 +1079,7 @@ pub extern "C" fn __mdh_midi_hou_lang(handle_val: MdhValue) -> MdhValue {
             Some(entry) => entry,
             None => return Err(ERR_BAD_HANDLE.to_string()),
         };
-        Ok(unsafe { __mdh_make_float(entry.midi.get_length() as f64) })
+        Ok(__mdh_make_float(entry.midi.get_length() as f64))
     })
 }
 
@@ -1095,7 +1092,7 @@ pub extern "C" fn __mdh_midi_whaur(handle_val: MdhValue) -> MdhValue {
             Some(entry) => entry,
             None => return Err(ERR_BAD_HANDLE.to_string()),
         };
-        Ok(unsafe { __mdh_make_float(entry.sequencer.get_position() as f64) })
+        Ok(__mdh_make_float(entry.sequencer.get_position() as f64))
     })
 }
 
@@ -1111,7 +1108,7 @@ pub extern "C" fn __mdh_midi_pit_luid(handle_val: MdhValue, val: MdhValue) -> Md
             None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         entry.volume = value;
-        Ok(unsafe { __mdh_make_nil() })
+        Ok(__mdh_make_nil())
     })
 }
 
@@ -1126,7 +1123,7 @@ pub extern "C" fn __mdh_midi_pit_pan(handle_val: MdhValue, val: MdhValue) -> Mdh
             None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         entry.pan = pan;
-        Ok(unsafe { __mdh_make_nil() })
+        Ok(__mdh_make_nil())
     })
 }
 
@@ -1141,6 +1138,6 @@ pub extern "C" fn __mdh_midi_pit_rin_roond(handle_val: MdhValue, val: MdhValue) 
             None => return Err(ERR_BAD_HANDLE.to_string()),
         };
         entry.looped = looped;
-        Ok(unsafe { __mdh_make_nil() })
+        Ok(__mdh_make_nil())
     })
 }

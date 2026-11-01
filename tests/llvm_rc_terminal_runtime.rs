@@ -5,6 +5,9 @@ use std::fs::{self, File};
 use std::path::Path;
 use std::process::{Command, Stdio};
 
+#[path = "support/runtime_core.rs"]
+mod runtime_core;
+
 const DRIVER: &str = r#"
 #include "mdh_runtime.h"
 #include <assert.h>
@@ -67,6 +70,7 @@ fn raw_hurl_releases_only_its_previous_error_reference() {
         .unwrap();
     let driver = dir.path().join("driver.c");
     fs::write(&driver, DRIVER).unwrap();
+    let core_object = runtime_core::build_object(dir.path());
     let executable = dir.path().join("driver");
     let unresolved = if cfg!(target_os = "macos") {
         "-Wl,-undefined,dynamic_lookup"
@@ -79,6 +83,7 @@ fn raw_hurl_releases_only_its_previous_error_reference() {
         .current_dir(root)
         .args(["-std=gnu17", "-O2", "-w", "-Iruntime", "-Iruntime/platform"])
         .arg(driver)
+        .arg(&core_object)
         .args([
             "runtime/mdh_runtime.c",
             "runtime/gc_stub.c",

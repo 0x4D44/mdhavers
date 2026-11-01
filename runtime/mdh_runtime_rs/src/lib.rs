@@ -32,20 +32,13 @@ mod tri_engine;
 #[cfg(feature = "graphics3d")]
 mod tri_runtime;
 
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct MdhValue {
-    pub tag: u8,
-    pub data: i64,
-}
-
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct MdhRsResult {
-    pub ok: u8,
-    pub value: MdhValue,
-    pub error: MdhValue,
-}
+// Re-export the same C ABI from this staticlib. Immediate values no longer call
+// back into C; the dependency-free core can also be tested without this crate's
+// networking/media dependencies.
+pub use mdh_runtime_core::{
+    __mdh_get_tag, __mdh_make_bool, __mdh_make_float, __mdh_make_int, __mdh_make_nil, MdhRsResult,
+    MdhValue,
+};
 
 #[repr(C)]
 struct MdhList {
@@ -61,27 +54,16 @@ struct MdhBytes {
     capacity: i64,
 }
 
-pub(crate) const MDH_TAG_NIL: u8 = 0;
-pub(crate) const MDH_TAG_BOOL: u8 = 1;
-pub(crate) const MDH_TAG_INT: u8 = 2;
-pub(crate) const MDH_TAG_FLOAT: u8 = 3;
-pub(crate) const MDH_TAG_STRING: u8 = 4;
-pub(crate) const MDH_TAG_LIST: u8 = 5;
-pub(crate) const MDH_TAG_DICT: u8 = 6;
-pub(crate) const MDH_TAG_FUNCTION: u8 = 7;
-pub(crate) const MDH_TAG_SET: u8 = 11;
-pub(crate) const MDH_TAG_CLOSURE: u8 = 12;
-pub(crate) const MDH_TAG_BYTES: u8 = 13;
 #[cfg(feature = "graphics3d")]
-pub(crate) const MDH_TAG_NATIVE: u8 = 14;
+pub(crate) use mdh_runtime_core::MDH_TAG_NATIVE;
+pub(crate) use mdh_runtime_core::{
+    MDH_TAG_BOOL, MDH_TAG_BYTES, MDH_TAG_CLOSURE, MDH_TAG_DICT, MDH_TAG_FLOAT, MDH_TAG_FUNCTION,
+    MDH_TAG_INT, MDH_TAG_LIST, MDH_TAG_NIL, MDH_TAG_SET, MDH_TAG_STRING,
+};
 
 extern "C" {
     fn __mdh_stack_low() -> i32;
     fn __mdh_stack_overflow_message() -> MdhValue;
-    fn __mdh_make_nil() -> MdhValue;
-    fn __mdh_make_bool(value: bool) -> MdhValue;
-    fn __mdh_make_int(value: i64) -> MdhValue;
-    fn __mdh_make_float(value: f64) -> MdhValue;
     // These never raise, which would longjmp across our frames: out of memory, they
     // return 0 (MDH-BUG-FLU-00188). Every value this file stores is one it has just made,
     // so it hands its reference over: push/set_owned take the caller's +1 (reference
