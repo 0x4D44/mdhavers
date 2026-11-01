@@ -1,26 +1,25 @@
 # MDH-BUG-FLU-00254 — bogle_parity e1m2 playthrough fails: e1m2.hashes has 39 rows, test expects 38
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** tests
 - **Raised:** 2026-11-01T18:48:46Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261101T223822Z-b3718553
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00254-run-fix-20261101T223822Z-b3718553
-- **Owner base:** 8b868bbdcab440a7e57a3bc4baee2c95843960ae
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-11-01T22:38:22Z
-- **Owner until:** 2026-11-02T02:38:22Z
-- **Owner session:** flux/2a9090d7-08f7-48c7-bee8-7b7d1d963ab2 (run fix-20261101T223822Z-b3718553)
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-11-01T18:48:46Z, raised via `deltic bugs new --land`)
+- **State history:** Open (2026-11-01T18:48:46Z, raised via `deltic bugs new --land`) -> Fixed (2026-11-01T22:38:28Z, deltic:auto role=fix run=fix-20261101T223822Z-b3718553 branch=task/bug-MDH-BUG-FLU-00254-run-fix-20261101T223822Z-b3718553 code=3c4d9cb gate=manual)
 
 ## Observation
 
