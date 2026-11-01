@@ -1,10 +1,8 @@
-use super::{mdh_error_string, MdhValue};
+use super::{__mdh_make_nil, mdh_error_string, MdhValue};
 
 const ERR_NO_AUDIO: &str = "Soond isnae available - build wi' --features audio";
 
 extern "C" {
-    #[cfg_attr(target_os = "emscripten", link_name = "__mdh_make_nil__rsabi")]
-    fn __mdh_make_nil() -> MdhValue;
     #[cfg_attr(target_os = "emscripten", link_name = "__mdh_hurl__rsabi")]
     fn __mdh_hurl(value: MdhValue);
 }

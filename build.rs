@@ -37,8 +37,12 @@ fn main() {
     println!("cargo:rerun-if-changed=runtime/mdh_runtime_rs/src/net_stub.rs");
     println!("cargo:rerun-if-changed=runtime/mdh_runtime_rs/src/audio_stub.rs");
     println!("cargo:rerun-if-changed=runtime/mdh_runtime_rs/src/audio.rs");
+    println!("cargo:rerun-if-changed=runtime/mdh_runtime_rs/src/audio_stub.rs");
     println!("cargo:rerun-if-changed=runtime/mdh_runtime_rs/src/tri_runtime.rs");
     println!("cargo:rerun-if-changed=runtime/mdh_runtime_rs/src/tri_engine.rs");
+    // The dependency-free core supplies the value ABI used by both runtimes.
+    println!("cargo:rerun-if-changed=runtime/mdh_runtime_core/Cargo.toml");
+    println!("cargo:rerun-if-changed=runtime/mdh_runtime_core/src");
 
     // On macOS a graphics build runs the CLI on the main thread (raylib/GLFW
     // need it), so src/main.rs cannae spawn its big-stack thread there. Ask
@@ -157,7 +161,7 @@ fn main() {
         });
     }
 
-    // Build Rust runtime helpers (JSON + regex) as a staticlib.
+    // Build the Rust runtime, including the core value ABI, as a staticlib.
     let profile = env::var("PROFILE").unwrap_or_else(|_| "debug".to_string());
     let mut cargo_args = vec![
         "build".to_string(),
@@ -201,18 +205,19 @@ fn main() {
         panic!("Failed to compile Rust runtime (mdh_runtime_rs)");
     }
 
-    // On Windows, the static lib is named differently
-    let (lib_name, out_name) = if target.contains("windows") {
-        ("mdh_runtime_rs.lib", "mdh_runtime_rs.lib")
+    // MSVC uses .lib; Windows GNU uses lib*.a like other GNU targets. The
+    // embedded filename is stable on every target (see src/llvm/compiler.rs).
+    let lib_name = if target.contains("msvc") {
+        "mdh_runtime_rs.lib"
     } else {
-        ("libmdh_runtime_rs.a", "mdh_runtime_rs.a")
+        "libmdh_runtime_rs.a"
     };
 
     let built_lib = runtime_target_dir
         .join(&target)
         .join(&profile)
         .join(lib_name);
-    let out_path = out_dir.join(out_name);
+    let out_path = out_dir.join("mdh_runtime_rs.a");
     fs::copy(&built_lib, &out_path).unwrap_or_else(|e| {
         panic!(
             "Failed to copy {} to {}: {}",

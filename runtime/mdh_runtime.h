@@ -12,7 +12,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-/* Value type tags - must match src/llvm/types.rs */
+/* Value type tags - must match src/llvm/types.rs and runtime/mdh_runtime_core. */
 typedef enum {
     MDH_TAG_NIL = 0,
     MDH_TAG_BOOL = 1,
@@ -36,12 +36,33 @@ typedef enum {
  * Uses a tagged union where:
  * - tag identifies the type
  * - data holds either an immediate value (int, float, bool)
- *   or a pointer (string, list, etc.)
+ *   or a pointer (string, list, etc.). Floats use their exact IEEE-754 bits.
+ * This is C layout, NOT packed or a serialization format; padding is unspecified.
+ * Copying a value does not retain it. See the per-symbol ownership contracts in
+ * src/llvm/ownership.rs and docs/runtime-rust-migration.md.
  */
 typedef struct {
     uint8_t tag;
     int64_t data;  /* Can be cast to pointer or numeric types */
 } MdhValue;
+
+/* Rust helpers return before C raises. `ok` is 0/1; the inactive field is nil.
+ * This layout is shared with runtime/mdh_runtime_core::MdhRsResult. */
+typedef struct {
+    uint8_t ok;
+    MdhValue value;
+    MdhValue error;
+} MdhRsResult;
+
+/* Enforce the established 64-bit ABI in C as well as Rust. Typedef assertions also
+ * work with C compilers that do not expose C11 _Static_assert (including MSVC). */
+#if UINTPTR_MAX == UINT64_MAX
+typedef char MdhValue_size_must_be_16[(sizeof(MdhValue) == 16) ? 1 : -1];
+typedef char MdhValue_data_must_be_at_8[(offsetof(MdhValue, data) == 8) ? 1 : -1];
+typedef char MdhRsResult_size_must_be_40[(sizeof(MdhRsResult) == 40) ? 1 : -1];
+typedef char MdhRsResult_value_must_be_at_8[(offsetof(MdhRsResult, value) == 8) ? 1 : -1];
+typedef char MdhRsResult_error_must_be_at_24[(offsetof(MdhRsResult, error) == 24) ? 1 : -1];
+#endif
 
 /* Forward declarations for complex types */
 typedef struct MdhList MdhList;
@@ -72,8 +93,10 @@ struct MdhBytes {
 /* ========== Allocation ==========
  *
  * The single allocator (runtime/gc_stub.c). Every heap allocation made by compiled code
- * and by the runtimes goes through these, so reference counting can later add its
- * header in one place. Nothing is freed yet.
+ * and for runtime values goes through these. With counting enabled, objects carry a
+ * header and counted kinds are freed at zero (subject to the masks below). Rust's
+ * internal String/Vec/network state still uses Rust's allocator; never hand those
+ * buffers to these allocation/free functions or publish them as counted objects.
  *
  * - An object is what an MdhValue's data points at (a string's chars, an MdhList, a
  *   dict/creel handle, a closure block, an instance handle, ...). Allocate it with
@@ -217,10 +240,12 @@ void __mdh_shared_store_uncounted(MdhValue *slot, MdhValue value);
 
 /* ========== Value Creation ========== */
 
+/* Rust core leaf operations: no allocation, no reference-count work, no raising. */
 MdhValue __mdh_make_nil(void);
 MdhValue __mdh_make_bool(bool value);
 MdhValue __mdh_make_int(int64_t value);
 MdhValue __mdh_make_float(double value);
+/* Heap constructors below remain in C and may raise; Rust uses the *_try APIs. */
 MdhValue __mdh_make_string(const char *value);
 MdhValue __mdh_make_list(int32_t capacity);
 

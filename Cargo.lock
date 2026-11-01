@@ -1506,6 +1506,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "mdh_runtime_core"
+version = "0.1.0"
+
+[[package]]
 name = "mdhavers"
 version = "0.3.159"
 dependencies = [
@@ -1521,6 +1525,7 @@ dependencies = [
  "logos",
  "lsp-server",
  "lsp-types",
+ "mdh_runtime_core",
  "om-fork-miniaudio",
  "openssl",
  "pretty_assertions",

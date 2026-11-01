@@ -1,0 +1,9 @@
+[package]
+name = "mdh_runtime_core"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Allocation-free native value ABI for mdhavers"
+
+[lib]
+crate-type = ["rlib"]

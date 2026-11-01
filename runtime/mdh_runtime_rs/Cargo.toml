@@ -12,6 +12,7 @@ audio = ["miniaudio", "rustysynth"]
 graphics3d = ["wgpu", "winit", "glam", "pollster", "bytemuck"]
 
 [dependencies]
+mdh_runtime_core = { path = "../mdh_runtime_core" }
 regex = "1.10"
 serde_json = { version = "1.0", features = ["preserve_order"] }
 miniaudio = { package = "om-fork-miniaudio", version = "0.12.2", optional = true }

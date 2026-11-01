@@ -1,6 +1,6 @@
 //! Runtime Function Declarations
 //!
-//! Declares external C runtime functions that provide the mdhavers runtime.
+//! Declares the native runtime's C ABI, implemented by both C and Rust.
 
 use inkwell::module::Module;
 use inkwell::values::FunctionValue;

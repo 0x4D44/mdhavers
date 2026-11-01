@@ -15,6 +15,9 @@
 use std::path::Path;
 use std::process::{Command, Stdio};
 
+#[path = "support/runtime_core.rs"]
+mod runtime_core;
+
 const OUT_DIR: &str = env!("OUT_DIR");
 
 const COMMON: &str = r#"
@@ -25,12 +28,6 @@ const COMMON: &str = r#"
 #include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
-
-typedef struct {
-    uint8_t ok;
-    MdhValue value;
-    MdhValue error;
-} MdhRsResult;
 
 static int fd_is_open(int fd) { return fcntl(fd, F_GETFD) != -1; }
 "#;
@@ -114,6 +111,7 @@ fn compile(dir: &Path, name: &str, driver: &str, objects: &[String], extra: &[&s
 #[test]
 fn the_c_wrapper_does_not_close_the_dup_fd_again() {
     let dir = tempfile::tempdir().unwrap();
+    let core_object = runtime_core::build_object(dir.path());
     let unresolved = if cfg!(target_os = "macos") {
         "-Wl,-undefined,dynamic_lookup"
     } else {
@@ -127,6 +125,7 @@ fn the_c_wrapper_does_not_close_the_dup_fd_again() {
             "runtime/mdh_runtime.c".to_string(),
             "runtime/gc_stub.c".to_string(),
             "runtime/platform/platform_unix.c".to_string(),
+            core_object.to_string_lossy().into_owned(),
         ],
         &[unresolved],
     );
