@@ -3430,3 +3430,339 @@ Figure bounds use the largest 8-connected non-key component. The idle front fram
 | `spr_tartan_ghost_float2_a4.png` | 6–250 | 0.0 px | 34364 | 0 | 0 |
 | `spr_tartan_ghost_float2_a5.png` | 4–250 | −1.0 px | 30754 | 0 | 0 |
 
+
+## spr_wullie_idle.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure (or object), full body, facing the viewer, centred, feet (or base) at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+Old Wullie, the kirk caretaker: a stooped, very old, kindly man in a flat tweed cap, a long tweed coat and green wellies, with enormous thick round spectacles that make his eyes huge, squinting, holding a glowing brass lantern up in one hand. Single figure, full body, facing the viewer, standing.
+
+Square 1:1 production game sprite, to be saved at 256x256. Match the existing Bogle Castle sprites: chunky charcoal outlines, broad rough-painted angular colour facets, simple large cloth and object shapes that remain clear at 64 pixels. Keep the complete subject and every prop inside the frame with a small clear magenta margin above and at both sides. The lowest complete uncut boot sole or object base must touch the very bottom edge with no empty row underneath. The background is a visually flat opaque magenta #FF00FF digital matte, including all corners and every gap; clear background pixels must be within 24 of RGB(255,0,255) on each channel. Confine all painting and shading to the outlined subject. No scenery, floor, cast shadow, diffuse glow, gradients, transparency, checkerboard, text, lettering, numbers, logo, border, signature or watermark.
+The warm orange lantern light stays inside the brass lantern's glass; no glow spills onto the magenta. Wullie has a big kindly nose, bushy white eyebrows, a little wispy white hair, brown-grey tweed and broad dark moss-green wellington boots. His back is stooped but his huge spectacled eyes look toward the viewer.
+~~~
+
+Self-review: The stooped silhouette, huge round spectacles and raised lantern read at 64 px; complete boots end at row 252 with a 3 px lower margin; visually flat near-magenta rather than exact #FF00FF, matte core R240–253 G0–16 B241–252 with zero pixels beyond tolerance 24; no text.
+
+
+## spr_wullie_walk1.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure (or object), full body, facing the viewer, centred, feet (or base) at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+The same Old Wullie (same cap, coat, wellies, spectacles, lantern) mid-stride with his left foot forward, lantern raised, peering blindly. Single figure, full body, facing the viewer.
+
+Reference image 1 is spr_wullie_idle.png, the accepted 256x256 identity and style reference. Preserve this exact stooped kindly very old caretaker, with the same brown-grey flat tweed cap and long tweed coat, enormous brass-rimmed round spectacles with huge magnified eyes, big kindly nose, bushy white eyebrows and wispy white hair, red tartan scarf, olive waistcoat, brown trousers and broad moss-green wellies. Keep the same glowing brass lantern raised in his anatomical right hand (on the viewer's left). Match his face, colours, clothing, proportions, chunky charcoal outlines and broad painted facets. Change only the walking pose: his anatomical LEFT foot (on the viewer's RIGHT) steps clearly forward, with the right leg trailing. Keep chest and face directed toward the viewer, squinting and peering blindly through those huge spectacles. Make the walking stride unmistakable and retain the stooped back. Preserve the original figure scale and lantern scale.
+
+Square 1:1 production game sprite, to be saved at 256x256. Match the existing Bogle Castle sprites: chunky charcoal outlines, broad rough-painted angular colour facets, simple large cloth and object shapes that remain clear at 64 pixels. Keep the complete subject and every prop inside the frame with a small clear magenta margin above and at both sides. The lowest complete uncut boot sole or object base must touch the very bottom edge with no empty row underneath. The background is a visually flat opaque magenta #FF00FF digital matte, including all corners and every gap; clear background pixels must be within 24 of RGB(255,0,255) on each channel. Confine all painting and shading to the outlined subject. No scenery, floor, cast shadow, diffuse glow, gradients, transparency, checkerboard, text, lettering, numbers, logo, border, signature or watermark.
+The lowest complete planted boot sole must reach the bottom row, with no magenta gap below it. No cropped boot outlines. The warm orange lantern light stays inside its brass-and-glass silhouette, with no glow on the magenta.
+~~~
+
+Self-review: Left boot (viewer right) steps clearly forward and the spectacles/lantern silhouette reads at 64 px; same Wullie as idle, complete boots end at row 253 with a 2 px lower margin; visually flat near-magenta rather than exact #FF00FF, matte core R244–253 G1–17 B243–252 with zero pixels beyond tolerance 24; no text.
+
+
+## spr_wullie_walk2.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure (or object), full body, facing the viewer, centred, feet (or base) at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+The same Old Wullie mid-stride with his right foot forward, lantern raised, peering blindly. Single figure, full body, facing the viewer.
+
+Reference image 1 is spr_wullie_idle.png, the accepted 256x256 identity and style reference. Preserve this exact stooped kindly very old caretaker, with the same brown-grey flat tweed cap and long tweed coat, enormous brass-rimmed round spectacles with huge magnified eyes, big kindly nose, bushy white eyebrows and wispy white hair, red tartan scarf, olive waistcoat, brown trousers and broad moss-green wellies. Keep the same glowing brass lantern raised in his anatomical right hand (on the viewer's left). Match his face, colours, clothing, proportions, chunky charcoal outlines and broad painted facets. Change only the walking pose: his anatomical RIGHT foot (on the viewer's LEFT) steps clearly forward, with the left leg trailing. This must be the opposite leg phase from walk1: the large forward boot belongs on the LEFT of the IMAGE while the right-side boot is behind. Do not mirror the whole image: the lantern stays on the viewer's left. Keep chest and face directed toward the viewer, squinting and peering blindly through those huge spectacles. Make the walking stride unmistakable and retain the stooped back. Preserve the original figure scale and lantern scale.
+
+Square 1:1 production game sprite, to be saved at 256x256. Match the existing Bogle Castle sprites: chunky charcoal outlines, broad rough-painted angular colour facets, simple large cloth and object shapes that remain clear at 64 pixels. Keep the complete subject and every prop inside the frame with a small clear magenta margin above and at both sides. The lowest complete uncut boot sole or object base must touch the very bottom edge with no empty row underneath. The background is a visually flat opaque magenta #FF00FF digital matte, including all corners and every gap; clear background pixels must be within 24 of RGB(255,0,255) on each channel. Confine all painting and shading to the outlined subject. No scenery, floor, cast shadow, diffuse glow, gradients, transparency, checkerboard, text, lettering, numbers, logo, border, signature or watermark.
+The lowest complete planted boot sole must reach the bottom row, with no magenta gap below it. No cropped boot outlines. The warm orange lantern light stays inside its brass-and-glass silhouette, with no glow on the magenta.
+~~~
+
+Self-review: Right boot (viewer left) steps clearly forward, opposite to walk1, and the silhouette reads at 64 px; same Wullie and viewer-left lantern, complete boots end at row 253 with a 2 px lower margin; visually flat near-magenta rather than exact #FF00FF, matte core R244–253 G0–17 B243–253 with zero pixels beyond tolerance 24; no text.
+
+
+## dec_grave.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure (or object), full body, facing the viewer, centred, feet (or base) at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+A mossy, slightly leaning grey kirkyard headstone with a rounded top and a carved Celtic cross, a small mound of earth and grass tufts at its foot. Single object, front view, centred, base at the bottom edge.
+
+Square 1:1 production game sprite, to be saved at 256x256. Match the existing Bogle Castle sprites: chunky charcoal outlines, broad rough-painted angular colour facets, simple large cloth and object shapes that remain clear at 64 pixels. Keep the complete subject and every prop inside the frame with a small clear magenta margin above and at both sides. The lowest complete uncut boot sole or object base must touch the very bottom edge with no empty row underneath. The background is a visually flat opaque magenta #FF00FF digital matte, including all corners and every gap; clear background pixels must be within 24 of RGB(255,0,255) on each channel. Confine all painting and shading to the outlined subject. No scenery, floor, cast shadow, diffuse glow, gradients, transparency, checkerboard, text, lettering, numbers, logo, border, signature or watermark.
+One complete broad chunky granite-grey headstone, gently leaning, with a large simple ringed Celtic cross incised into its front face: short rounded arms and a bold circle around their intersection. Use broad grey-blue stone facets, thick charcoal contours and moss-green clumps matching the established Bogle Castle granite texture and iron-brazier dressing style. The small self-contained peat-brown earth mound and a few broad grass tufts belong to the headstone's base; no surrounding ground plane. Keep the complete rounded top, stone sides and entire mound silhouette inside the canvas, with the mound's lowest uncut base meeting the bottom row. No epitaph, dates, names, letters, numbers, runes or other inscriptions; the Celtic cross is the only carved ornament. No skulls, bones, skeletons, characters, flowers, fence, scenery, shadows or extra headstones.
+~~~
+
+Self-review: Leaning rounded headstone and large ringed Celtic cross read at 64 px, with moss and a complete earth/grass base ending at row 254 (1 px lower margin); visually flat near-magenta rather than exact #FF00FF, matte core R244–254 G0–17 B242–253 with zero pixels beyond tolerance 24; no lettering.
+
+
+## dec_lamp_post.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure (or object), full body, facing the viewer, centred, feet (or base) at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+A tall old Victorian cast-iron kirkyard lamp post with a glowing warm-orange lantern head. Single object, front view, centred, base at the bottom edge. Tall and narrow.
+
+Square 1:1 production game sprite, to be saved at 256x256. Match the existing Bogle Castle sprites: chunky charcoal outlines, broad rough-painted angular colour facets, simple large cloth and object shapes that remain clear at 64 pixels. Keep the complete subject and every prop inside the frame with a small clear magenta margin above and at both sides. The lowest complete uncut boot sole or object base must touch the very bottom edge with no empty row underneath. The background is a visually flat opaque magenta #FF00FF digital matte, including all corners and every gap; clear background pixels must be within 24 of RGB(255,0,255) on each channel. Confine all painting and shading to the outlined subject. No scenery, floor, cast shadow, diffuse glow, gradients, transparency, checkerboard, text, lettering, numbers, logo, border, signature or watermark.
+One complete freestanding Victorian lamp post with a tall narrow charcoal-black and iron-blue cast-iron shaft, a simple stepped fluted base, one broad collar, and one chunky old-fashioned glass lantern head with a peaked iron cap and little rounded finial. The lantern glows warm torch orange and golden yellow, contained entirely inside its heavy dark outlined glass housing. Match the broad iron-blue metal facets, thick dark outlines and friendly 1990s painted proportions of the existing Bogle Castle iron brazier. Keep iron details broad and sparse, the glass panes large and readable; avoid delicate filigree. The post should fill nearly the whole canvas height while remaining tall and narrow, about one quarter of the square's width at its widest part. Centre it vertically and horizontally with the complete finial safely inside the top and the lowest uncut base touching the bottom row. No magenta gap beneath the base. No lantern light spills onto the perfectly flat magenta background. No signs, hanging boards, letters, numbers, dates, wall, fence, street, ground plane, figures, plants, second lamp, shadow or extra objects.
+~~~
+
+Self-review: Tall narrow Victorian post and warm-orange lantern read at 64 px, complete finial and stepped base visible with the base meeting row 255; visually flat near-magenta rather than exact #FF00FF, matte core R246–254 G1–17 B244–253 with zero pixels beyond tolerance 24; no text.
+
+
+
+## dec_organ.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure (or object), full body, facing the viewer, centred, feet (or base) at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+
+A church pipe-organ console: a dark oak console with two keyboards and a bench, a fan of shiny brass pipes rising behind it, a sheet of music on the stand. Single object, front view, centred, base at the bottom edge.
+
+Square 1:1 production game dressing sprite, to be saved at 256x256. One complete self-contained church organ assembly: broad dark peat-brown oak console with exactly two clearly separated stacked rows of chunky bone-white and charcoal keys, a simple matching oak bench in front, a broad fan of large shiny brass pipes behind, tallest at the middle, and one bone-white sheet on the music stand above the keyboards. The sheet has only a few broad plain staff lines, no notes, lettering or other glyphs. Face directly toward the viewer with just enough elevated frontal view to see both keyboards and the bench top. Match the established Bogle Castle sprites: chunky charcoal outlines, broad rough-painted angular colour facets, simple large wooden and metal shapes readable at 64 pixels. Brass is muted gold with restrained broad pale highlights, not photorealistic. Keep every pipe tip, console edge, sheet, bench leg and full base inside the frame, with a small magenta margin above and at both sides. The lowest complete uncut bench foot or organ base must touch the very bottom row, with no empty row below. The background is a visually flat opaque magenta #FF00FF digital matte, including every corner and gap between pipes and bench legs; clear matte pixels must be within 24 of RGB(255,0,255) on each channel. Confine all painting and shading to the outlined object. No room, walls, floor, scenery, cast shadow, diffuse glow, gradient, transparency, checkerboard, lettering, words, numbers, logo, border, signature or watermark.
+~~~
+
+Self-review: Organ silhouette, brass pipe fan, two keyboards and bench read at 64 px; complete base ends at row 253 (2 px lower margin); visually flat near-magenta rather than exact #FF00FF, matte core R242–252 G0–16 B242–252 with zero pixels beyond tolerance 24; no text or lettering; sprite, not a tile.
+
+
+## dec_organ_key_red.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure (or object), full body, facing the viewer, centred, feet (or base) at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+
+One big round organ stop knob on a short dark oak stalk: a chunky round ivory rim with a bright tartan-red face. Single object, front view, centred, base at the bottom edge. No lettering.
+
+Square 1:1 production game object sprite, to be saved at 256x256. A single large round organ stop knob faces directly toward the viewer, its circular face surrounded by a thick chunky bone-ivory raised rim with a charcoal outline. The big central face is bright tartan red, a plain bold colour with a few broad hand-painted red facets, no tartan checks or pattern. The rim has a few broad warm bone-grey painted facets. A short stout dark peat-brown oak stalk emerges from behind the lower centre of the knob, extending straight down to a broad flat square-cut unbroken base at the very bottom row. Make the round knob large, about three quarters of the canvas width, with the short stalk clearly visible below. One complete centered symmetrical object, circular front not elliptical, no perspective angle. Match Bogle Castle's chunky charcoal outlines and broad rough-painted angular colour facets, readable at 64 pixels; restrained simple highlights, no tiny carved detail. Keep the entire knob inside the frame with a small clear magenta margin above and at both sides; the complete uncut stalk base touches the bottom edge with no empty row beneath. The background is a visually flat opaque magenta #FF00FF digital matte, including every corner and gap; clear matte pixels must be within 24 of RGB(255,0,255) on each channel. Confine painting and shading to the outlined knob and stalk. No letters, numbers, musical notation, symbols, text, labels, decoration, screw holes, other knobs, console, room, floor, scenery, cast shadow, glow, gradient, transparency, checkerboard, logo, border, signature or watermark.
+~~~
+
+Self-review: Round ivory-rimmed red knob and short oak stalk read at 64 px; complete stalk base meets row 255; visually flat near-magenta rather than exact #FF00FF, matte core R245–254 G1–17 B242–252 with zero pixels beyond tolerance 24; no lettering; sprite, not a tile.
+
+
+## dec_organ_key_blue.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure (or object), full body, facing the viewer, centred, feet (or base) at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+
+Exactly the same organ stop knob as the red one but with a bright loch-blue face. Single object, front view, centred, base at the bottom edge. No lettering.
+
+Edit reference image 1, dec_organ_key_red.png, the exact 256x256 canonical organ stop knob. Change only the big red circular face to bright loch blue. Preserve this exact chunky round bone-ivory rim, thick charcoal outlines, short dark peat-brown oak stalk, wood facets, front view, proportions, highlights, framing, canvas scale and position. Keep the same broad rough-painted angular facets on the face, replacing its red tones by saturated loch-blue tones with restrained pale blue highlights and dark-blue painted facets. The face is a plain blue colour, no checks, pattern or glyphs. Do not change the ivory rim or the stalk, redraw the object, shift it, resize it or add any objects. The complete square-cut stalk base stays at the bottom edge, with no empty row underneath. Square 1:1 production game sprite to be saved at 256x256, with a clear silhouette at 64 pixels. Preserve the visually flat opaque magenta #FF00FF background, including every corner and gap; clear matte pixels must be within 24 of RGB(255,0,255) on each channel. All painting stays inside the outlined knob and stalk. No text, lettering, numbers, musical notation, symbols, labels, logo, border, signature, watermark, room, floor, scenery, cast shadow, glow, gradient, transparency or checkerboard.
+~~~
+
+Self-review: Blue face, chunky ivory rim and oak stalk read at 64 px and match the red knob; complete stalk base meets row 255; visually flat near-magenta rather than exact #FF00FF, matte core R243–253 G1–17 B242–252 with zero pixels beyond tolerance 24; no lettering; sprite, not a tile.
+
+
+## dec_organ_key_gold.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure (or object), full body, facing the viewer, centred, feet (or base) at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+
+Exactly the same organ stop knob but with a bright gold face. Single object, front view, centred, base at the bottom edge. No lettering.
+
+Edit reference image 1, dec_organ_key_red.png, the exact 256x256 canonical organ stop knob. Change only the big red circular face to bright gold. Preserve this exact chunky round bone-ivory rim, thick charcoal outlines, short dark peat-brown oak stalk, wood facets, front view, proportions, highlights, framing, canvas scale and position. Keep the same broad rough-painted angular facets on the face, replacing its red tones by saturated warm golden-yellow tones with restrained pale yellow highlights and ochre-gold painted facets. The face is a plain bold gold colour, clearly distinct from the bone-ivory rim, no checks, pattern or glyphs. Do not change the ivory rim or the stalk, redraw the object, shift it, resize it or add any objects. The complete square-cut stalk base stays at the bottom edge, with no empty row underneath. Square 1:1 production game sprite to be saved at 256x256, with a clear silhouette at 64 pixels. Preserve the visually flat opaque magenta #FF00FF background, including every corner and gap; clear matte pixels must be within 24 of RGB(255,0,255) on each channel. All painting stays inside the outlined knob and stalk. No text, lettering, numbers, musical notation, symbols, labels, logo, border, signature, watermark, room, floor, scenery, cast shadow, glow, gradient, transparency or checkerboard.
+~~~
+
+Self-review: Bright gold face, chunky ivory rim and oak stalk read at 64 px and match the red knob; complete stalk base meets row 255; visually flat near-magenta rather than exact #FF00FF, matte core R244–253 G1–19 B241–252 with zero pixels beyond tolerance 24; no lettering; sprite, not a tile.
+
+
+## dec_organ_key_green.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure (or object), full body, facing the viewer, centred, feet (or base) at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+
+Exactly the same organ stop knob but with a bright moss-green face. Single object, front view, centred, base at the bottom edge. No lettering.
+
+Edit reference image 1, dec_organ_key_red.png, the exact 256x256 canonical organ stop knob. Change only the big red circular face to bright moss green. Preserve this exact chunky round bone-ivory rim, thick charcoal outlines, short dark peat-brown oak stalk, wood facets, front view, proportions, highlights, framing, canvas scale and position. Keep the same broad rough-painted angular facets on the face, replacing its red tones by saturated bright moss-green tones with restrained pale yellow-green highlights and darker moss-green painted facets. The face is a plain bold green colour, no checks, pattern or glyphs. Do not change the ivory rim or the stalk, redraw the object, shift it, resize it or add any objects. The complete square-cut stalk base stays at the bottom edge, with no empty row underneath. Square 1:1 production game sprite to be saved at 256x256, with a clear silhouette at 64 pixels. Preserve the visually flat opaque magenta #FF00FF background, including every corner and gap; clear matte pixels must be within 24 of RGB(255,0,255) on each channel. All painting stays inside the outlined knob and stalk. No text, lettering, numbers, musical notation, symbols, labels, logo, border, signature, watermark, room, floor, scenery, cast shadow, glow, gradient, transparency or checkerboard.
+~~~
+
+Self-review: Bright moss-green face, chunky ivory rim and oak stalk read at 64 px and match the red knob; complete stalk base meets row 255; visually flat near-magenta rather than exact #FF00FF, matte core R243–253 G1–17 B240–252 with zero pixels beyond tolerance 24; no lettering; sprite, not a tile.
+
+
+## dec_compressor.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure (or object), full body, facing the viewer, centred, feet (or base) at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+
+A rusty Victorian organ air compressor: a squat riveted iron tank with a big flywheel, a brass pressure gauge, a big red lever and pipes, slightly comic. Single object, front view, centred, base at the bottom edge.
+
+Square 1:1 production game sprite to be saved at 256x256. Match Bogle Castle's existing source art: thick charcoal outlines, broad angular rough-painted colour facets, simple chunky forms readable at 64 pixels. Keep the complete object and all its parts inside the frame, with a small clear magenta margin above and at both sides. The lowest complete uncut base touches the very bottom row without an empty row underneath. The background is a visually flat opaque magenta #FF00FF digital matte, including every corner and gap; all clear background pixels must be within 24 of RGB(255,0,255) on each channel. Confine painting and shading to the outlined object. No scenery, floor, cast shadow, diffuse glow, background texture, gradients, transparency, checkerboard, text, lettering, numbers, logo, border, signature or watermark.
+One complete compact mechanical assembly: a broad squat horizontal rusty iron-blue cylindrical air tank with chunky rivets on short sturdy feet, a large clearly readable dark iron spoked flywheel at its left, a round brass pressure gauge rising above the tank, one big tartan-red lever at the right, and a few stout bent iron pipes connecting the parts. The gauge has a plain bone-white dial with a single dark needle and a few simple radial tick marks, absolutely no letters or numerals. Broad peat-brown and torch-orange rust patches, restrained pale metal facets and warm brass highlights matching the organ pipes and painted iron-brazier art. Keep the shapes broad and mildly comical rather than fine realistic machinery. The flywheel's holes show the same flat magenta. Front view with just enough depth to read the rounded tank. Complete flywheel, gauge, lever, pipe ends and all feet visible, lowest uncut foot soles meeting the bottom edge. No motor labels, maker plates, lettering, steam, smoke, sparks, separate tools, people, extra machines or organ console.
+~~~
+
+Self-review: Compressor, flywheel, gauge and red lever read at 64 px; complete feet meet row 255; visually flat near-magenta rather than exact #FF00FF, matte core R241–253 G0–16 B240–253 with zero pixels beyond tolerance 24; no lettering; sprite, not a tile.
+
+
+## pick_key_brass.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure (or object), full body, facing the viewer, centred, feet (or base) at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+
+A big ornate brass key with a thistle-shaped bow, gleaming. Single object, centred, small, at the bottom edge.
+
+Square 1:1 production game sprite to be saved at 256x256. Match Bogle Castle's existing source art: thick charcoal outlines, broad angular rough-painted colour facets, simple chunky forms readable at 64 pixels. Keep the complete object and all its parts inside the frame, with a small clear magenta margin above and at both sides. The lowest complete uncut base touches the very bottom row without an empty row underneath. The background is a visually flat opaque magenta #FF00FF digital matte, including every corner and gap; all clear background pixels must be within 24 of RGB(255,0,255) on each channel. Confine painting and shading to the outlined object. No scenery, floor, cast shadow, diffuse glow, background texture, gradients, transparency, checkerboard, text, lettering, numbers, logo, border, signature or watermark.
+One complete chunky antique Scottish castle key in warm polished brass, with an unmistakable thistle-shaped bow: a broad rounded thistle flower head with a few simple crown-like spikes above a pair of broad spiky leaf lobes, an open central bow hole, a stout straight shaft and two big squared teeth. A gentle upper-left to lower-right diagonal like the existing Bogle Castle silver key, but entirely brass, without tartan wrapping. Simple bold thistle silhouette readable at 64 pixels, thick charcoal outline, broad ochre-gold painted facets and a few pale buttery-yellow gleaming highlights, matching the organ's painted brass pipes. Keep ornament large and sparse, not fine filigree. The whole key is one small pickup object with generous magenta at the sides and above; its complete lowest tip touches the bottom row. No extra key, key ring, ribbon, jewels, detached sparkle marks, letters, numerals, runes, symbols, hands, pedestal or shadow.
+~~~
+
+Self-review: Gleaming brass key, thistle bow, open bow hole and two teeth read at 64 px; complete lowest tip meets row 255; visually flat near-magenta rather than exact #FF00FF, matte core R246–254 G0–17 B243–252 with zero pixels beyond tolerance 24; no lettering; sprite, not a tile.
+
+
+## tex_kirk_stone.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+seamless tileable texture, edges wrap left-right and top-bottom, orthographic straight-on view, no perspective.
+
+Seamless tileable wall texture: warm honey-and-grey sandstone ashlar blocks of an old Scottish kirk, chunky courses, thick mortar, a few moss accents.
+
+Square 1:1 edge-to-edge game wall texture to be saved at 256x256, with broad simple shapes readable at 64 pixels. Match the existing Bogle Castle granite and chapel wall textures: broad angular painted facets, thick irregular charcoal mortar outlines, about four staggered courses of large chunky sandstone ashlar blocks. Warm honey-beige and bone-grey faces with cool granite-grey facets, only a few small moss-green accents in joints. Create a genuinely continuous periodic running-bond wall rather than a finished stone panel. The top and bottom boundaries both cut through matching middle portions of the SAME stone course; pale sandstone faces touch both edges, with the four main mortar joints inside at 12.5%, 37.5%, 62.5% and 87.5% height. Match the cut stone positions, colours and broad facets across top-bottom; similarly match cut blocks and joints at left-right. No dark outside perimeter or horizontal border stripe. Uniform flat frontal brightness. Fill every pixel with continuing masonry. No carvings, cross motifs, window, door, arch, plaque, scenery, perspective, cast shadow, vignette, lettering, numbers, text, signature, watermark, magenta or fine photographic noise.
+~~~
+
+Self-review: Honey-grey ashlar and moss read at 64 px; the 3×3 source preview repeats without an obvious perimeter stripe, with opposite-edge mean RGB differences 4.94 left-right and 11.15 top-bottom; no text or magenta; baked tile review remains with the lead.
+
+
+## tex_stained_glass.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+seamless tileable texture, edges wrap left-right and top-bottom, orthographic straight-on view, no perspective.
+
+Seamless tileable wall texture: a tall narrow pointed-arch stained-glass kirk window set in sandstone, the glass in bold jewel colours (tartan red, loch blue, gold, moss green) in a simple thistle pattern with thick black leading. The window fills the middle; sandstone at the sides must tile left-right; top and bottom must tile too.
+
+Square 1:1 edge-to-edge game wall texture to be saved at 256x256. One tall narrow Gothic pointed-arch window occupies the middle of a warm honey-and-grey Scottish kirk sandstone wall. A single simple large heraldic thistle in jewel-coloured glass, a gold and tartan-red flower above moss-green spiky leaves against loch-blue panes, with thick chunky charcoal-black leading. Broad coloured panes and simple stone facets readable at 64 pixels, matching Bogle Castle's chunky hand-painted masonry and purple thistle tapestry art. No perspective or dramatic lighting, no transmitted light rays, no glow on the stone. Keep the entire pointed arch and flat sill inside the tile, surrounded on every side by continuing sandstone. CRITICAL REPEAT: both top and bottom outer boundaries cut through matching pale sandstone block faces, same stone colours and horizontal positions; do not put dark horizontal mortar or a frame along either outside boundary. Left and right outer strips likewise are matching continuous sandstone block halves and joints. The same wall must join cleanly across all four edges when repeated; no outer enclosing rectangle or border. The window is set into the flat wall surface. No room, church interior, sky, people, saints, faces, cross symbol, writing, musical notes, runes, numbers, text, signature, watermark, cast shadow, vignette or magenta.
+~~~
+
+Self-review: Pointed window, jewel colours and thistle read at 64 px; no text or magenta; left-right source join is unobtrusive (mean RGB difference 6.36), but the top-bottom masonry join remains more visible in the 3×3 source preview (22.12) and needs lead review or refinement.
+
+
+## tex_crypt_door.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+seamless tileable texture, edges wrap left-right and top-bottom, orthographic straight-on view, no perspective.
+
+A heavy arched oak crypt door with black iron bands and big rivets, a carved Celtic knot in the middle, filling the whole square, seen straight on.
+
+Square 1:1 edge-to-edge game wall texture to be saved at 256x256. One broad heavy round-arched peat-brown oak crypt door fills almost the whole square, with chunky wide vertical oak planks, two broad black iron horizontal straps, big widely spaced round iron rivets and a large simple interlaced Celtic rope knot carved across the middle planks. The knot is purely a broad looping stone-age ornament, no letters or runes. Match Bogle Castle's existing oak-panel and cell-door textures: thick charcoal contours, broad angular hand-painted wood facets, sparse large grain strokes, simple iron-blue highlights, friendly spooky 1990s painted game style. A narrow warm grey sandstone surround fills the corners outside the arched top and continues as narrow strips at the sides and below the door. All four OUTER edges of the square are continuing sandstone rather than an image frame: matching cut stone colours, facets and joints across left-right and top-bottom, with the door's complete arch, full wooden base, iron bands and knot slightly inset from every canvas edge. Thus repeated tiles meet sandstone to sandstone at all joins while the heavy arched oak door dominates the square. Uniform flat frontal brightness. No perspective, threshold projecting in depth, floor, room, scenery, shadows, vignette, outer border, skulls, figures, lock labels, epitaphs, text, lettering, numbers, signature, watermark, magenta or photographic fine detail.
+~~~
+
+Self-review: Arched oak door, iron bands, rivets and Celtic knot read at 64 px; no text or magenta; the 3×3 source preview exposes discontinuities in the sandstone surround, especially top-bottom (mean RGB differences 21.53 left-right and 37.52 top-bottom), so seamless wrapping needs refinement.
