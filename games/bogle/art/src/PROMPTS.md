@@ -3766,3 +3766,496 @@ Square 1:1 edge-to-edge game wall texture to be saved at 256x256. One broad heav
 ~~~
 
 Self-review: Arched oak door, iron bands, rivets and Celtic knot read at 64 px; no text or magenta; the 3×3 source preview exposes discontinuities in the sandstone surround, especially top-bottom (mean RGB differences 21.53 left-right and 37.52 top-bottom), so seamless wrapping needs refinement.
+
+
+## spr_deer_idle.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure/object, full body, facing the viewer, centred, feet/base at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+A wild-eyed mad Highland red deer stag with huge antlers, shaggy russet coat, bulging googly eyes and a manic grin, standing, comic not scary. Single figure, full body, facing the viewer.
+
+Square 1:1 production sprite matching Bogle Castle's existing chunky charcoal outlines and broad angular hand-painted facets. Clear silhouette at 64 pixels. The complete antlers, legs and all outlines fit inside the canvas, with a small clear margin above and at the sides; the lowest complete uncut hoof touches the bottom edge. Visually flat opaque magenta #FF00FF matte, including corners and leg gaps; every clear matte pixel within 24 of RGB(255,0,255) on each channel. Confine painting to the outlined deer. No scenery, ground plane, cast shadow, diffuse glow, gradient, transparency, checkerboard, text, lettering, numbers, logo, signature or border.
+~~~
+
+Self-review: Complete huge antlers, googly eyes, manic grin and shaggy russet silhouette read at 64 px; complete figure unclipped, lowest hoof leaves 2 px below; visually flat near-magenta rather than exact #FF00FF, matte core R245–254 G0–17 B243–253 with 0 pixels beyond tolerance 24 (two-pixel silhouette boundary excluded); no text or lettering; sprite, not a tile.
+
+
+## spr_deer_walk1.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure/object, full body, facing the viewer, centred, feet/base at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+The same mad stag (same antlers, coat, googly eyes) trotting towards the viewer, left foreleg raised. Single figure, full body, facing the viewer.
+
+Reference image 1 is spr_deer_idle.png, the canonical 256x256 stag. Preserve this exact deer: its huge broad pale-gold branching antlers, shaggy russet-orange coat with broad cream throat and chest, tan muzzle, black nose, bulging ivory googly eyes, manic toothy grin, slender shaggy legs and chunky charcoal cloven hooves. Keep the same colours, proportions, thick charcoal outlines and angular painted facets. Change only the requested animation pose and expression.
+Raise the deer's anatomical left foreleg, on the viewer's RIGHT, bent forward in a clear trot; the other forehoof remains down.
+
+Square 1:1 production sprite matching Bogle Castle's existing chunky charcoal outlines and broad angular hand-painted facets. Clear silhouette at 64 pixels. The complete antlers, legs and all outlines fit inside the canvas, with a small clear margin above and at the sides; the lowest complete uncut hoof touches the bottom edge. Visually flat opaque magenta #FF00FF matte, including corners and leg gaps; every clear matte pixel within 24 of RGB(255,0,255) on each channel. Confine painting to the outlined deer. No scenery, ground plane, cast shadow, diffuse glow, gradient, transparency, checkerboard, text, lettering, numbers, logo, signature or border.
+~~~
+
+Self-review: The same stag and raised anatomical left foreleg (viewer right) read at 64 px; complete figure unclipped, lowest hoof leaves 1 px below; visually flat near-magenta rather than exact #FF00FF, matte core R245–254 G1–19 B243–252 with 0 pixels beyond tolerance 24 (two-pixel silhouette boundary excluded); no text or lettering; sprite, not a tile.
+
+
+## spr_deer_walk2.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure/object, full body, facing the viewer, centred, feet/base at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+The same mad stag trotting towards the viewer, right foreleg raised. Single figure, full body, facing the viewer.
+
+Reference image 1 is spr_deer_idle.png, the canonical 256x256 stag. Preserve this exact deer: its huge broad pale-gold branching antlers, shaggy russet-orange coat with broad cream throat and chest, tan muzzle, black nose, bulging ivory googly eyes, manic toothy grin, slender shaggy legs and chunky charcoal cloven hooves. Keep the same colours, proportions, thick charcoal outlines and angular painted facets. Change only the requested animation pose and expression.
+Raise the deer's anatomical right foreleg, on the viewer's LEFT, bent forward in a clear trot; the other forehoof remains down.
+
+Square 1:1 production sprite matching Bogle Castle's existing chunky charcoal outlines and broad angular hand-painted facets. Clear silhouette at 64 pixels. The complete antlers, legs and all outlines fit inside the canvas, with a small clear margin above and at the sides; the lowest complete uncut hoof touches the bottom edge. Visually flat opaque magenta #FF00FF matte, including corners and leg gaps; every clear matte pixel within 24 of RGB(255,0,255) on each channel. Confine painting to the outlined deer. No scenery, ground plane, cast shadow, diffuse glow, gradient, transparency, checkerboard, text, lettering, numbers, logo, signature or border.
+~~~
+
+Self-review: The same stag and raised anatomical right foreleg (viewer left) read at 64 px; complete figure unclipped, lowest hoof leaves 1 px below; visually flat near-magenta rather than exact #FF00FF, matte core R246–254 G1–17 B243–252 with 0 pixels beyond tolerance 24 (two-pixel silhouette boundary excluded); no text or lettering; sprite, not a tile.
+
+
+## spr_deer_charge.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure/object, full body, facing the viewer, centred, feet/base at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+The same mad stag charging straight at the viewer, head lowered, antlers forward, steam snorting from its nostrils. Single figure, full body, facing the viewer.
+
+Reference image 1 is spr_deer_idle.png, the canonical 256x256 stag. Preserve this exact deer: its huge broad pale-gold branching antlers, shaggy russet-orange coat with broad cream throat and chest, tan muzzle, black nose, bulging ivory googly eyes, manic toothy grin, slender shaggy legs and chunky charcoal cloven hooves. Keep the same colours, proportions, thick charcoal outlines and angular painted facets. Change only the requested animation pose and expression.
+Lower the head and angle the same antlers forward in an unmistakable comic charge. Draw nostril steam as a few small opaque bone-white curls with dark outlines; every curl stays wholly inside the canvas, no diffuse haze.
+
+Square 1:1 production sprite matching Bogle Castle's existing chunky charcoal outlines and broad angular hand-painted facets. Clear silhouette at 64 pixels. The complete antlers, legs and all outlines fit inside the canvas, with a small clear margin above and at the sides; the lowest complete uncut hoof touches the bottom edge. Visually flat opaque magenta #FF00FF matte, including corners and leg gaps; every clear matte pixel within 24 of RGB(255,0,255) on each channel. Confine painting to the outlined deer. No scenery, ground plane, cast shadow, diffuse glow, gradient, transparency, checkerboard, text, lettering, numbers, logo, signature or border.
+~~~
+
+Self-review: Lowered head, forward antlers, charging legs and outlined nostril-steam puffs read at 64 px; complete figure unclipped, lowest hoof leaves 3 px below; visually flat near-magenta rather than exact #FF00FF, matte core R243–253 G1–16 B240–252 with 0 pixels beyond tolerance 24 (two-pixel silhouette boundary excluded); no text or lettering; sprite, not a tile.
+
+
+## spr_deer_pain.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure/object, full body, facing the viewer, centred, feet/base at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+The same mad stag flinching, eyes crossed, tongue out, antlers askew. Single figure, full body, facing the viewer.
+
+Reference image 1 is spr_deer_idle.png, the canonical 256x256 stag. Preserve this exact deer: its huge broad pale-gold branching antlers, shaggy russet-orange coat with broad cream throat and chest, tan muzzle, black nose, bulging ivory googly eyes, manic toothy grin, slender shaggy legs and chunky charcoal cloven hooves. Keep the same colours, proportions, thick charcoal outlines and angular painted facets. Change only the requested animation pose and expression.
+Comic pain flinch: both pupils point inward in crossed eyes, the tongue sticks out clearly, and the same huge antlers tilt askew with the recoiling head. No blood, wounds or gore.
+
+Square 1:1 production sprite matching Bogle Castle's existing chunky charcoal outlines and broad angular hand-painted facets. Clear silhouette at 64 pixels. The complete antlers, legs and all outlines fit inside the canvas, with a small clear margin above and at the sides; the lowest complete uncut hoof touches the bottom edge. Visually flat opaque magenta #FF00FF matte, including corners and leg gaps; every clear matte pixel within 24 of RGB(255,0,255) on each channel. Confine painting to the outlined deer. No scenery, ground plane, cast shadow, diffuse glow, gradient, transparency, checkerboard, text, lettering, numbers, logo, signature or border.
+~~~
+
+Self-review: The same stag's crossed eyes, dangling tongue, flinch and tilted antlers read at 64 px; complete figure unclipped, lowest hoof leaves 2 px below; visually flat near-magenta rather than exact #FF00FF, matte core R244–254 G1–18 B243–252 with 0 pixels beyond tolerance 24 (two-pixel silhouette boundary excluded); no text or lettering; sprite, not a tile.
+
+
+## spr_deer_death.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure/object, full body, facing the viewer, centred, feet/base at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+
+The same mad stag flat on its back, legs in the air, cartoon stars round its head, antlers tangled. Single figure, base at the bottom edge.
+
+Reference image 1 is spr_deer_idle.png, the canonical 256x256 stag. Preserve this exact deer: its huge broad pale-gold branching antlers, shaggy russet-orange coat with broad cream throat and chest, tan muzzle, black nose, bulging ivory googly eyes, manic toothy grin, slender shaggy legs and chunky charcoal cloven hooves. Keep the same colours, proportions, thick charcoal outlines and angular painted facets. Change only the requested animation pose and expression.
+
+One complete harmless cartoon defeated stag, lying belly-up with its russet back against the bottom edge, all four bent legs sticking up, head tipped to the side, crossed dazed googly eyes and tongue flopping out, huge antlers comically tangled together beside its head. A few small chunky gold cartoon stars around its head, clearly separate from the antlers. Wide low fallen silhouette, with all legs, ears, antler tips, stars and outlines completely within the square. This is one deer only, no second animal, no blood, injury, gore or skeleton.
+
+Square 1:1 production sprite matching Bogle Castle's existing chunky charcoal outlines and broad angular hand-painted facets. Clear silhouette at 64 pixels. Keep small clear margins above and at both sides; the lowest complete uncut back touches the very bottom edge. Visually flat opaque magenta #FF00FF matte, including corners and every gap; all clear matte pixels within 24 of RGB(255,0,255) on each channel. Confine painting to the outlined stag and small outlined stars. No scenery, floor, ground plane, cast shadow, diffuse glow, gradient, background texture, transparency, checkerboard, text, lettering, numbers, logo, signature, watermark or border.
+~~~
+
+Self-review: Silhouette, tangled antlers and dazed stars read at 64 px; no text or lettering; visually flat near-magenta rather than exact #FF00FF, matte core R244–254 G1–17 B243–252 with zero pixels beyond tolerance 24 (two-pixel silhouette boundary excluded); the lowest back leaves a 14 px bottom gap, so anchoring needs correction; sprite, not a tile.
+
+
+Attempt 2
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure/object, full body, facing the viewer, centred, feet/base at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+
+The same mad stag flat on its back, legs in the air, cartoon stars round its head, antlers tangled. Single figure, base at the bottom edge.
+
+Edit the supplied 256x256 spr_deer_death.png only to correct bottom anchoring. Preserve the exact complete existing defeated stag, dazed eyes and tongue, tangled pale-gold antlers, all four upward legs, chunky charcoal hooves, russet-orange coat, cream belly and small gold stars, with the same scale, colours, pose, silhouette, painted facets and outlines. The current sprite has a 14-pixel empty magenta strip beneath the lowest back. Translate the entire existing stag-and-stars group straight DOWN by that amount so the lowest dark fur outline of its complete back meets the bottommost row of the square. Do not enlarge, rotate, redesign, or add objects. Leave all antler tips, hoof tips and stars fully within the canvas. There must be ZERO empty magenta rows under the lowest complete back: the back touches the bottom canvas edge, uncut, with no ground or cast shadow. Fill the newly exposed space above with the same magenta matte. One complete harmless silly belly-up deer, no blood, injury or gore.
+
+Square 1:1 production sprite, broad simple forms that read at 64 pixels. Visually flat opaque magenta #FF00FF matte everywhere outside the stag and stars, including corners and every gap; every clear matte pixel within 24 of RGB(255,0,255) on each channel. Preserve painting only within the dark outlined subject. No ground plane, scenery, floor, cast shadow, diffuse glow, gradient, background texture, transparency, checkerboard, text, lettering, numbers, logo, signature, watermark or border.
+~~~
+
+Self-review: Belly-up stag, tangled antlers, raised hooves and dazed stars read at 64 px, and the character matches idle; visually flat near-magenta rather than exact #FF00FF, matte core R245–253 G1–18 B243–252 with zero pixels beyond tolerance 24 (two-pixel silhouette boundary excluded); no text or lettering; the alignment edit did not close the 14 px bottom gap, so anchoring remains incorrect; sprite, not a tile.
+
+
+## dec_thistle_tuft.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure/object, full body, facing the viewer, centred, feet/base at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+
+A small low tuft of spiky green Scottish thistle leaves just poking out of the ground, no flower yet, innocent-looking. Single object, small, base at the bottom edge.
+
+Square 1:1 production game sprite to be saved at 256x256. One compact low rosette of six to eight broad deeply serrated moss-green thistle leaves with yellow-green angular highlights, dark loch-green shaded facets and thick charcoal outlines. Match Bogle Castle's existing hand-painted thistle-in-a-pot sprite's broad chunky leaf shapes, but this wild plant has no pot. The leaves spread out in a squat innocent-looking fan, with a tiny peat-brown root crown hidden between their bases. This is the dormant first stage of one thistle enemy: no flower, purple bud, stem, eyes, mouth or face yet. Make the whole tuft small and low, about half the canvas width and one quarter of its height, centred at the bottom with generous clear magenta above and at the sides. The lowest complete uncut root crown and leaves touch the bottom edge; show the whole leaf silhouette with no clipping. No soil mound, grass carpet, earth patch, surrounding foliage, scenery, container or second plant.
+
+Broad simple shapes and a clear silhouette at 64 pixels, with shading confined to the dark outlined leaves. Visually flat opaque magenta #FF00FF matte everywhere outside the tuft, including corners and every gap; every clear matte pixel within 24 of RGB(255,0,255) on each channel. No ground plane, cast shadow, diffuse glow, gradient, textured background, transparency, checkerboard, text, lettering, numbers, logo, signature, watermark or border.
+~~~
+
+Self-review: Small low spiky rosette reads at 64 px, with no bud, flower or face; full leaf silhouette is unclipped and the complete root crown leaves a 2 px lower margin; visually flat near-magenta rather than exact #FF00FF, matte core R246–254 G1–18 B243–252 with zero pixels beyond tolerance 24 (two-pixel silhouette boundary excluded); no text or lettering; sprite, not a tile.
+
+
+## spr_thistle_up1.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure/object, full body, facing the viewer, centred, feet/base at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+
+The same thistle shooting up out of the ground: a short spiky stem with leaves and a closed purple bud. Single object, base at the bottom edge.
+
+Reference image 1 is dec_thistle_tuft.png, the canonical dormant wild thistle. Preserve its compact basal rosette of broad deeply serrated moss-green leaves, yellow-green angular highlights, dark loch-green shadow facets and thick charcoal outlines, at the same bottom-centre position and roughly the same spread. Grow ONE short sturdy spiky green stem upward from its root crown, bearing two small jagged side leaves and one plump CLOSED heather-purple thistle bud at the top. The closed bud is an oval with a green prickly flower cup, tightly folded purple petals just showing above it; it has no open fluffy flower fan and no face yet. It looks like this same dormant tuft has just sprung partway up. The whole plant is medium-height, roughly half the canvas height, with the bud reaching the middle and plenty of magenta above. This is one continuous rooted plant only, no pot, no container, no soil mound, no grass carpet, no detached leaves or surrounding foliage.
+
+Square 1:1 production sprite to be saved at 256x256. Match Bogle Castle's broad angular hand-painted colour facets, simple chunky shapes and bold charcoal outlines, readable at 64 pixels. The whole stem, bud, leaves and root crown fit within the frame; small clear margins at the sides and above. The lowest complete uncut root crown must touch the bottommost canvas row, with zero empty rows beneath it. Visually flat opaque magenta #FF00FF matte including corners and every leaf gap; all clear matte pixels within 24 of RGB(255,0,255) on each channel. Confine shading and paint texture inside the plant's outlines. No ground plane, floor, scenery, cast shadow, diffuse glow, gradient, background texture, transparency, checkerboard, text, lettering, numbers, logo, signature, watermark or border.
+~~~
+
+Self-review: Same basal rosette with a short prickly stem and closed purple bud reads at 64 px; full plant is unclipped and the complete root crown leaves a 2 px lower margin; visually flat near-magenta rather than exact #FF00FF, matte core R244–254 G1–17 B241–252 with zero pixels beyond tolerance 24 (two-pixel silhouette boundary excluded); no text or lettering; sprite, not a tile.
+
+
+## spr_thistle_up2.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure/object, full body, facing the viewer, centred, feet/base at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+
+The same thistle fully grown and angry: a tall spiky stem bristling with sharp prickles, a big purple thistle flower head with a cross face. Single object, base at the bottom edge.
+
+Reference image 1 is spr_thistle_up1.png, the canonical growing wild thistle. Preserve the same bottom-centre rosette and root crown, broad deeply serrated moss-green leaves, yellow-green angular highlights, dark loch-green shadow facets, charcoal outlines and broad painted facets. Grow its single upright green stem taller, add several large plainly visible sharp green prickles and staggered serrated side leaves, and open the closed bud into ONE big heather-purple thistle flower head. A Scottish thistle bloom with a broad bristly brushlike crown of pointed purple petals above the same round prickly green cup, matching the existing Bogle Castle potted thistle's purple flower. On the front of the purple flower head give it a clear comic cross face: two large narrowed bone-white eyes, heavy down-slanting charcoal brows and a small grumpy frowning mouth. The expression is comically annoyed and friendly-spooky. Bold lavender highlights and deep heather-purple facets, no fine fuzzy noise. Tall and upright, reaching near the top of the square with clear magenta above the complete petal tips. The root rosette retains its previous width and placement. One continuous plant, one stem, one flower head; no pot, no container, no soil mound, no grass carpet, no second plant or detached leaves.
+
+Square 1:1 production game sprite to be saved at 256x256, broad simple forms and a strong silhouette readable at 64 pixels. All petals, prickles, leaves and outlines fit wholly inside the frame with small clear margins above and at both sides. The lowest complete uncut root crown must meet the bottommost canvas row with zero empty rows beneath it. Visually flat opaque magenta #FF00FF matte outside the plant, including all corners and leaf gaps; every clear matte pixel within 24 of RGB(255,0,255) on each channel. Confine all painting and shading inside the dark plant outline. No ground plane, scenery, floor, cast shadow, diffuse glow, gradient, background texture, transparency, checkerboard, text, lettering, numbers, logo, signature, watermark or border.
+~~~
+
+Self-review: Tall prickly stem, open purple thistle bloom and cross face read at 64 px; basal rosette and palette match the earlier stages, full plant is unclipped and the complete root crown leaves a 1 px lower margin; visually flat near-magenta rather than exact #FF00FF, matte core R246–254 G0–16 B243–252 with zero pixels beyond tolerance 24 (two-pixel silhouette boundary excluded); no text or lettering; sprite, not a tile.
+
+
+## spr_thistle_prod.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure/object, full body, facing the viewer, centred, feet/base at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+
+The same fully grown angry thistle lunging forward to prod, prickles flared, flower head jabbing at the viewer. Single object, base at the bottom edge.
+
+Reference image 1 is spr_thistle_up2.png. Preserve this exact thistle: its single prickly moss-green stem, broad serrated basal leaves, yellow-green painted facets, round green flower cup, large spiky heather-purple petals with lavender highlights, narrowed ivory eyes, heavy charcoal brows and cross frown. Change only to an unmistakable attack pose: bend its stem forward in a comic lunge, bring the angry purple flower head toward the viewer and flare its sharp green prickles outward. Keep its root crown in the same bottom-centre position. One continuous plant, no detached objects or extra flowers. Match the reference's chunky dark outlines and broad painted facets.
+
+Square 1:1 game sprite for the established 256x256 source-art set, simple silhouette readable at 64 pixels. Keep every petal, leaf tip, prickle and outline inside the canvas. The complete lowest root crown meets the bottommost row, with zero empty rows beneath it; no cropped roots or outlines. Flat opaque magenta matte in every outside region and gap; every clear background pixel within 24 of RGB(255,0,255) per channel. Confine paint texture to the outlined plant. No pot, soil patch, ground plane, scenery, shadow, glow, gradient, transparency, checkerboard, text, lettering, numbers, signature, watermark or border.
+~~~
+
+Self-review: Silhouette and forward-jabbing cross flower read at 64 px; matches the existing thistle, fully unclipped with a 1 px lower margin; visually flat near-magenta, not exact #FF00FF (corners within tolerance 24 per channel); no text; sprite, not a tile.
+
+
+## dec_tree.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure/object, full body, facing the viewer, centred, feet/base at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+
+A tall gnarled old Caledonian Scots pine, twisted trunk, dark-green clumps of needles, roots at the bottom, a slightly menacing knot face in the bark. Single object, front view, tall and narrow, base at the bottom edge.
+
+Square 1:1 production game sprite for Bogle Castle's established 256x256 source-art set. One complete old Scots pine, a tall narrow silhouette nearly the full canvas height, with an uneven crown of a few chunky dark moss-green and loch-green needle clumps, simple lighter green painted facets and sparse jagged needle tips. Its long twisted peat-brown trunk has warm ochre angular bark plates, broad charcoal grooves, a few crooked boughs and a small slightly menacing comic knot face: two narrow dark knothole eyes and one crooked hollow smile formed naturally by the bark. Affectionate and silly, not realistic horror. Broad splayed woody roots form the base. Match the existing Bogle Castle sprites' thick charcoal outlines, big readable shapes and broad hand-painted facets, with restrained detail that remains clear at 64 pixels.
+
+Show every branch, needle clump, root and outline inside the square with clear magenta margins at top and sides. Centre the standing pine; lowest complete uncut root meets the bottommost canvas row with zero empty rows below. Flat opaque magenta #FF00FF matte in every outside region and branch gap; every clear background pixel within 24 of RGB(255,0,255) per channel. Confine paint texture to the tree. No soil mound, grass patch, scenery, ground plane, cast shadow, diffuse glow, gradient, transparency, checkerboard, text, lettering, numbers, signature, watermark or border.
+~~~
+
+Self-review: Tall gnarled pine and bark-knot face read at 64 px, roots meet the bottom edge and the whole tree is unclipped; visually flat near-magenta, not exact #FF00FF, matte core R244–254 G0–17 B242–253 with zero pixels beyond tolerance 24 (two-pixel silhouette boundary excluded); no text; sprite, not a tile.
+
+
+## spr_tree_fall1.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure/object, full body, facing the viewer, centred, feet/base at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+
+The same gnarled pine starting to topple sideways to the right, roots lifting, about 30 degrees off vertical. Single object, base at the bottom edge.
+
+Reference image 1 is dec_tree.png, the exact standing pine and authoritative object identity. Preserve this same old Caledonian Scots pine: its long twisted peat-brown trunk with warm ochre bark plates, charcoal creases, narrow dark knothole eyes and crooked hollow bark grin, crooked boughs, irregular small dark-green needle clumps, broad roots, proportions, colours and painted outline style. Change only its falling pose. Lean the WHOLE tree about 30 degrees clockwise from upright: the crown travels toward the viewer's RIGHT and the root base remains toward the lower left, with some roots lifting visibly. The main trunk is a clear leaning diagonal, not vertical, not yet lying flat. No face redesign, no leaves replacing needles, no second trunk.
+
+Square 1:1 production animation sprite for the established 256x256 source-art set, broad simple silhouette readable at 64 pixels. Fit the entire leaning pine, crown, branches, roots and every outline inside the square; reposition the whole tree slightly to the left as needed for the rightward fall, without clipping anything. The lowest complete root touches the bottommost canvas row, zero empty rows underneath. Clear magenta above and to the sides. Visually flat opaque magenta #FF00FF matte including every branch gap; all clear background pixels within 24 of RGB(255,0,255) per channel. Keep painting inside the outlined tree. No earth clods, soil mound, ground plane, scenery, cast shadow, diffuse glow, gradient, transparency, checkerboard, text, lettering, numbers, signature, watermark or border.
+~~~
+
+Self-review: The same pine clearly leans about 30 degrees to the right with roots lifting, and its silhouette reads at 64 px; full tree unclipped, lowest root leaves 1 px below; visually flat near-magenta, not exact #FF00FF, matte core R243–253 G0–17 B242–252 with zero pixels beyond tolerance 24 (two-pixel silhouette boundary excluded); no text; sprite, not a tile.
+
+
+## spr_tree_fall2.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure/object, full body, facing the viewer, centred, feet/base at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+
+The same pine nearly flat, at about 70 degrees, crashing down to the right, needles flying. Single object, base at the bottom edge.
+
+Reference image 1 is dec_tree.png, the exact standing pine and authoritative object identity. Reference image 2 is spr_tree_fall1.png, the preceding fall frame. Preserve the same long twisted peat-brown trunk, warm ochre bark plates, charcoal grooves, two dark knothole eyes and crooked hollow bark grin, crooked boughs, irregular clumps of dark Scots pine needles, splayed woody roots, proportions, colours, chunky outlines and broad painted facets. Advance the fall from image 2 to about 70 degrees clockwise FROM VERTICAL, so its main trunk is now only about 20 degrees ABOVE HORIZONTAL. The lifted root mass is at the LEFT and the crown crashes toward the RIGHT. An unmistakably nearly flat diagonal, much lower than the earlier frame, with the trunk stretching left-to-right across the lower part of the square. Show a few small opaque dark-green needle tufts flying close above the branches, with crisp dark outlines, all inside the canvas. Same complete pine, no replacement sapling, no extra trunk, no leafy deciduous foliage.
+
+Square 1:1 production animation sprite for the established 256x256 source-art set, readable at 64 pixels. Show all roots, branches, crown, needle tufts and outlines fully inside the frame. Place the whole falling pine across the lower canvas with roots near the left and crown near the right, leaving clear magenta above; preserve the tree's identity and length while fitting it without cropping. Its lowest complete root or branch meets the bottommost row with zero empty rows beneath. Flat opaque magenta #FF00FF matte everywhere outside the tree and every branch gap, all clear background pixels within 24 of RGB(255,0,255) per channel. Paint texture only inside the tree and outlined needle tufts. No impact cloud, soil, scenery, ground plane, cast shadow, diffuse glow, gradient, transparency, checkerboard, text, lettering, numbers, signature, watermark or border.
+~~~
+
+Self-review: The same pine is nearly horizontal (about 70 degrees from vertical), roots left and crown right with flying needles, clear at 64 px; full silhouette unclipped, lowest root leaves 2 px below; visually flat near-magenta, not exact #FF00FF, matte core R246–254 G0–18 B243–252 with zero pixels beyond tolerance 24 (two-pixel silhouette boundary excluded); no text; sprite, not a tile.
+
+
+## dec_tree_fallen.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure/object, full body, facing the viewer, centred, feet/base at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+
+The same pine lying flat on the ground as a long log with broken branches and needles, roots at the left. Single object, wide and low, base at the bottom edge.
+
+Reference image 1 is dec_tree.png, the exact standing pine and authoritative identity. Reference image 2 is spr_tree_fall2.png, its nearly horizontal falling frame. Finish this same tree's fall: it now lies completely horizontal, no longer tilted or airborne. Its broad gnarled root mass is on the LEFT, and the long twisted peat-brown trunk runs horizontally to the RIGHT. Preserve the warm ochre angular bark plates, charcoal grooves, knothole eyes and crooked hollow bark grin, recognisable crooked boughs, dark-green Scots pine needle clumps, colours, proportions and chunky charcoal-outlined painted style. A few of the thin side branches are snapped into short woody stubs, and some attached dark-green needle tufts lie along the low fallen branches; a few small fallen needle pieces may rest closely beside the log at the same base level. No pieces floating above the log. Harmless comic fallen tree, no animals or people. The log is still this entire uprooted pine with roots, remaining branches and needles, not cut firewood.
+
+Square 1:1 production sprite for Bogle Castle's established 256x256 source-art set. A wide low horizontal silhouette across the BOTTOM of the square, roots near the left edge and crown tip near the right, generous clear magenta above. All roots, branch tips, needle tufts and outlines fit inside the canvas with small clear side margins. The lowest complete root or resting branch touches the bottommost canvas row, no empty rows beneath, and no clipped outlines. Simple broad forms readable at 64 pixels. Visually flat opaque magenta #FF00FF matte in every outside region and gap; every clear background pixel within 24 of RGB(255,0,255) per channel. Only the tree and its few needle pieces are drawn: the ground itself remains magenta, no soil mound, grass patch, ground plane, scenery, cast shadow, diffuse glow, gradient, transparency, checkerboard, text, lettering, numbers, signature, watermark or border.
+~~~
+
+Self-review: Wide low horizontal log, broken branches, needles and left-hand roots read at 64 px and match the standing pine; full silhouette unclipped, but a 4 px bottom gap remains; visually flat near-magenta, not exact #FF00FF, matte core R245–254 G0–17 B242–252 with zero pixels beyond tolerance 24 (two-pixel silhouette boundary excluded); no text; sprite, not a tile.
+
+
+## dec_signpost.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure/object, full body, facing the viewer, centred, feet/base at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+
+A rough wooden signpost: a post with one plank sign nailed on, blank weathered wood with no lettering. Single object, base at the bottom edge.
+
+Square 1:1 production game sprite for Bogle Castle's established 256x256 source-art set. One upright chunky peat-brown wooden post with exactly one broad horizontal weathered oak plank nailed across its upper part by two large dark iron nail heads. Broad ochre angular wood facets, a few thick grain grooves, slightly chipped uneven plank ends and bold charcoal outlines match the existing gnarled Scots pine sprite and painted oak-panel texture. The entire front face of the plank is blank unmarked wood: no arrows, symbols, writing, carved marks resembling letters or numbers. Large simple forms readable at 64 pixels. Show the complete post and plank with clear top and side margins, centred; the complete uncut post base touches the bottommost canvas row with zero empty rows below. Visually flat opaque magenta #FF00FF matte everywhere outside the object, every clear background pixel within 24 of RGB(255,0,255) per channel. All paint texture stays inside the wood outline. No ground, dirt mound, grass, scenery, cast shadow, glow, gradient, background texture, transparency, checkerboard, text, lettering, numbers, signature, watermark or border.
+~~~
+
+Self-review: Blank single-plank sign and post read at 64 px; complete base meets the bottom edge, no lettering; visually flat near-magenta rather than exact #FF00FF, matte core R245–254 G1–16 B242–252 with zero pixels beyond tolerance 24 per channel (two-pixel silhouette boundary excluded); sprite, not a tile.
+
+
+## dec_castle_bell.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure/object, full body, facing the viewer, centred, feet/base at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+
+A grand brass bell-pull and door bell hanging from an iron bracket, with a tasselled tartan pull-cord. Single object, base at the bottom edge.
+
+Square 1:1 production dressing sprite for Bogle Castle's established 256x256 source-art set. One complete self-contained doorbell assembly: a broad grand flared brass bell hangs from one short chunky curled charcoal-black iron bracket above it, with a visible dark clapper and a long red tartan pull-cord descending below the bell to a large simple tassel. The tartan uses broad red, dark loch-blue and muted gold checks. Warm muted golden brass with broad pale-gold hand-painted facets, thick charcoal outlines and simplified iron-blue metal facets match the existing Bogle Castle brass organ pipes, brass key and iron brazier. Friendly-spooky Scottish castle prop; simple large silhouette readable at 64 pixels. Front view, complete iron bracket, bell rim and tassel inside the square, small clear magenta margins at top and sides. The lowest complete uncut tassel tip is the object's base and meets the bottommost canvas row with zero empty rows beneath. Visually flat opaque magenta #FF00FF matte in all outside regions and gaps, every clear background pixel within 24 of RGB(255,0,255) on each channel. Painting confined to the object. No wall, door, mounting scene, second bell, ground plane, scenery, cast shadow, glow, gradient, transparency, checkerboard, text, lettering, numbers, crest, signature, watermark or border.
+~~~
+
+Self-review: Brass bell, iron bracket and tasselled tartan cord read at 64 px; complete tassel meets the bottom edge, no text; visually flat near-magenta rather than exact #FF00FF, matte core R246–254 G1–16 B243–253 with zero pixels beyond tolerance 24 per channel (two-pixel silhouette boundary excluded); sprite, not a tile.
+
+
+## dec_grandfather_clock.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure/object, full body, facing the viewer, centred, feet/base at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+
+A tall dark-oak grandfather clock with a brass pendulum visible behind a glass door, a moon dial face, slightly sinister. Single object, front view, tall and narrow, base at the bottom edge.
+
+Square 1:1 production dressing sprite for Bogle Castle's established 256x256 source-art set. One complete tall narrow old grandfather clock, dark peat-brown oak case with a chunky curved pediment, simple broad wooden mouldings and a stepped base. Upper dial is a large readable pale-bone circle with dark pointing hands and simple plain tick marks ONLY, with a small moon-phase crescent motif above the dial; absolutely no numerals, Roman numerals, letters, words or inscriptions anywhere. Two slightly drooping upper wooden corners give a subtle comic sinister expression without adding a human face. A large muted-gold brass pendulum bob and rod are clearly visible through the single long glass door below the dial, with a few broad pale loch-blue glass reflection facets. Match Bogle Castle's existing dark oak organ, warm golden brass pipes and carved wooden art: thick charcoal outlines, broad angular hand-painted facets, restrained details and a strong silhouette readable at 64 pixels. Show the entire pediment, case and base inside the square, small clear magenta margins at top and sides. The lowest complete uncut base meets the bottommost row, with zero empty rows beneath. Visually flat opaque magenta #FF00FF matte outside the clock, all clear background pixels within 24 of RGB(255,0,255) on each channel. All paint texture stays inside the outlined clock. No wall, room, floor, scenery, cast shadow, glow, gradient, transparency, checkerboard, extra objects, text, lettering, numbers, signature, watermark or border.
+~~~
+
+Self-review: Tall oak case, moon dial and brass pendulum read at 64 px with no letters or numerals; base meets the bottom edge, but the finial also touches the top edge with no clear top margin; visually flat near-magenta rather than exact #FF00FF, matte core R245–254 G1–17 B243–252 with zero pixels beyond tolerance 24 per channel (two-pixel silhouette boundary excluded); sprite, not a tile.
+
+
+## tex_bark.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+seamless tileable texture, edges wrap left-right and top-bottom, orthographic straight-on view, no perspective.
+
+Seamless tileable wall texture: a dense wall of overlapping dark Scots pine trunks and rough bark, deep shadows between them, a forest edge you cannot pass.
+
+Square 1:1 edge-to-edge repeating game wall texture for Bogle Castle, generated square and saved at 256x256. This is a cropped section through an infinite periodic surface of densely packed vertical Scots pine trunks, not a picture of a forest scene. Five broad closely overlapping trunks fill the complete square, with large irregular peat-brown and dark ochre bark plates, sparse chunky angular grain grooves and narrow deep charcoal and loch-green crevices between them. Match the existing gnarled Scots pine sprite's angular ochre bark plates and bold charcoal contours, with the broad simple hand-painted facets and restrained detail of the castle's granite and oak-panel textures. Large bark shapes remain readable at 64 pixels. No leaves, crowns, roots, tree silhouettes, sky, horizon, ground, landscape, path, faces or perspective.
+
+Make the pattern genuinely continuous across ALL four opposite edges: every trunk continues straight through the top and bottom at exactly the same horizontal position, width and bark colour; bark plates and grooves crossing the bottom resume in the same position at the top. Left and right cut through matching halves of the same broad trunk, identical trunk surface and bark facets, with no double-width crevice at the join. The periodic surface carries on beyond every edge. No outside frame, dark perimeter line, top or bottom cap, central vignette, lighting gradient or directional cast shadows. The deep dark spaces are narrow flat painted crevices, not cast shadows. Uniform frontal painted brightness. No magenta, letters, lettering, numbers, symbols, signature, watermark or border.
+~~~
+
+Self-review: Dense Scots-pine trunks and rough bark read at 64 px; no text or magenta; trunks continue in the 3×3 source repeat, with a small left-right bark-facet mismatch (mean RGB edge differences 14.18 left-right, 6.72 top-bottom); final baked tile review remains with the lead.
+
+
+## tex_hedge.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+seamless tileable texture, edges wrap left-right and top-bottom, orthographic straight-on view, no perspective.
+
+Seamless tileable wall texture: a thick tangled dark-green hedge of gorse and bramble with a few yellow gorse flowers.
+
+Square 1:1 edge-to-edge repeating game wall texture for Bogle Castle, generated square and saved at 256x256. A cropped section through an infinite periodic dense hedge surface, an impassable forest barrier. Large interlocking clumps of dark moss-green gorse needles and broad spiky loch-green bramble leaves, tangled thick peat-brown thorny stems, a few simple bright golden-yellow gorse flowers distributed sparsely among the green. Thick charcoal outlines, broad angular hand-painted yellow-green and dark-green facets, large simplified leaf and thorn forms match Bogle Castle's existing Scots pine needles, thistle sprites and thistle tapestry. Restrain fine twig noise: leaves and yellow blooms must still read at 64 pixels. Flat frontal wall surface, completely filled by foliage with dark painted crevices between leaves; no sky, horizon, forest scene, ground, path, pot, central isolated bush, flowers of other colours, fruit, faces or perspective.
+
+Continuous seamless periodic repeat across ALL four edges: any bramble stem, foliage clump, leaf or flower cut by one edge resumes with the identical shape, colour and position at its opposite edge. Match top and bottom foliage colours and stem crossings; match left and right likewise. Broad foliage masses continue beyond every boundary. Avoid a finished panel composition: no edge darkening, outer rim of leaves, perimeter outline, corner emphasis, blank margin, border or frame. Uniform flat painted brightness, no directional light, cast shadows, vignette or gradient. No magenta, text, lettering, numbers, symbols, signature or watermark.
+~~~
+
+Self-review: Tangled dark-green gorse, thorny brambles and yellow flowers read at 64 px; no text or magenta; the 3×3 source repeat has unobtrusive joins (mean RGB edge differences 8.61 left-right, 7.41 top-bottom); final baked tile review remains with the lead.
+
+
+## tex_earth_tunnel.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+seamless tileable texture, edges wrap left-right and top-bottom, orthographic straight-on view, no perspective.
+Square 1:1 edge-to-edge repeating game wall texture for Bogle Castle, generated square and saved at 256x256.
+Seamless tileable wall texture: a rough hand-dug earth tunnel wall, packed brown soil with roots, stones and pick marks, a few timber props.
+A cropped swatch of an infinite periodic hand-dug earth WALL, completely filling the square. Broad irregular packed peat-brown soil clods with warm ochre angular facets, thick charcoal contours, a few chunky muted granite-grey stones, several stout dark brown winding roots embedded in the soil, and sparse broad shallow pick marks. A few narrow rough-hewn dark oak vertical timber props, unevenly spaced but repeating, continue beyond the top and bottom edges. Keep the soil dominant; no masonry, bricks, plank wall or tunnel entrance. Match the already-inspected Bogle Castle bark, peat-and-straw and dungeon-brick reference images: chunky dark outlines, broad flat rough-painted facets, earthy muted colours and simple large material shapes readable at 64 pixels. Restrain fine noise and tiny roots.
+CRITICAL SEAMLESS REPEAT: the top and bottom cut through matching parts of the SAME soil clods, roots and timber props; every prop, root, stone and facet crossing one edge resumes at the identical location, width, colour and shape on its opposite edge. Match left and right soil and root crossings the same way. All four boundaries are crops through a continuous wall, with no outside cap, horizontal beam, perimeter line, edge darkening or panel frame. Uniform flat frontal painted brightness, no directional lighting, cast shadows, vignette or gradient. No perspective, floor, ceiling, sky, tunnel opening, scenery, isolated object, tools, people, faces, foliage, straw, magenta, text, lettering, numerals, symbols, signature, watermark or border.
+~~~
+
+Self-review: Packed earth, roots, stones, pick marks and timber props read at 64 px and match the existing painted textures; opaque RGB, no magenta or lettering; the 3×3 source repeat has unobtrusive joins (mean RGB edge differences 5.51 left-right, 6.81 top-bottom); final baked tile review remains with the lead.
