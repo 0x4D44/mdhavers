@@ -172,14 +172,7 @@ dae bogle_sprites(g, fb, w, h, visible, drawsegs, cosine, sine) {
         gin contains(g, "projectiles") {
             fer projectile in g["projectiles"] {
                 gin projectile["active"] {
-                    ken kind = 6
-                    gin projectile["kind"] == "wail" {
-                        kind = 7
-                    }
-                    gin projectile["kind"] == "sizzle" {
-                        kind = 8
-                    }
-                    shove(actors, {"kind": kind, "sector": projectile["sector"], "x": projectile["x"], "y": projectile["y"], "z": projectile["z"], "active": aye, "state": "idle"})
+                    shove(actors, {"kind": bogle_projectile_kind(projectile), "sector": projectile["sector"], "x": projectile["x"], "y": projectile["y"], "z": projectile["z"], "active": aye, "state": "idle"})
                 }
             }
         }
@@ -279,7 +272,7 @@ dae bogle_sprites(g, fb, w, h, visible, drawsegs, cosine, sine) {
                 mirror = actor["dx"] * sine - actor["dy"] * cosine < 0
             }
             texture = art[name]
-            fullbright = kind == 4 or kind == 32 or kind == 37 or kind == 39 or kind == 40 or (kind == 47 an actor["state"] == "spark") or (bogle_is_pickup(kind) an bogle_pickup_glint(g["tics"]))
+            fullbright = kind == 4 or kind == 32 or kind == 37 or kind == 39 or kind == 40 or (kind == 47 an actor["state"] == "spark") or (kind == 51 an bogle_organ_stop_lit(g, actor["flags"])) or (bogle_is_pickup(kind) an bogle_pickup_glint(g["tics"]))
         } ither {
             texture = g["sprite_tex"][kind - 2]
             fullbright = g["sprite_fullbright"][kind - 2]
@@ -975,6 +968,21 @@ dae bogle_horizon(g, w, h) {
         gie (h - bogle_hud_height(w, h)) / 2
     }
     gie h / 2
+}
+
+# Projectiles draw through render slots 6-9: a Mars bar, a wail, a sizzle
+# and Ailsa's spanner.
+dae bogle_projectile_kind(projectile) {
+    gin projectile["kind"] == "wail" {
+        gie 7
+    }
+    gin projectile["kind"] == "sizzle" {
+        gie 8
+    }
+    gin projectile["kind"] == "spanner" {
+        gie 9
+    }
+    gie 6
 }
 
 # Enemy heights in map units against a 41-unit eye. Sprites are 2:3, so each

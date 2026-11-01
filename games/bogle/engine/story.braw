@@ -77,8 +77,8 @@ dae story_talk_tick(g, keys) {
 # The kirkyard: the organ's tune opens the crypt (link tag 5). Stops are
 # thing flags 1 red, 2 blue, 3 gold, 4 green; the tune is red, gold, blue,
 # green. g["story"]: air (the compressor runs), tune (notes right so far),
-# open (the crypt door is open).
-ken KIRK_TUNE = [1, 3, 2, 4]
+# open (the crypt door is open). KIRK_TUNE lives in kinds.braw, where the
+# renderer reads it to light the stops played so far.
 ken KIRK_CRYPT = 5
 
 dae kirk_use(g, a) {

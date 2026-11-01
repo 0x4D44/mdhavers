@@ -17,6 +17,24 @@ dae bogle_is_story_thing(kind) {
     gie kind >= 40 an kind <= 59
 }
 
+# The kirkyard organ's tune, as stop flags: red, gold, blue, green.
+ken KIRK_TUNE = [1, 3, 2, 4]
+
+# An organ stop shows pulled out once the tune so far has played it; the
+# whole tune, played, leaves all four out.
+dae bogle_organ_stop_lit(g, flags) {
+    gin nae contains(g, "story") or nae contains(g["story"], "tune") {
+        gie nae
+    }
+    ken s = g["story"]
+    fer i in 0..s["tune"] {
+        gin KIRK_TUNE[i] == flags {
+            gie aye
+        }
+    }
+    gie nae
+}
+
 # What weapons strike: monsters and protected actors.
 dae bogle_is_target(kind) {
     gie bogle_is_monster(kind) or bogle_is_protected(kind)

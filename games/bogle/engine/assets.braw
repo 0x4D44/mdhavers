@@ -107,7 +107,7 @@ dae bogle_gameplay_assets() {
         art["dec_stag_head"] = bogle_asset("dec_stag_head", 64, 96)
         art["dec_thistle_pot"] = bogle_asset("dec_thistle_pot", 64, 96)
         # The kirkyard (story art batch 1).
-        fer name in ["spr_wullie_idle", "spr_wullie_walk1", "spr_wullie_walk2", "dec_grave", "dec_lamp_post", "dec_organ", "dec_organ_key_red", "dec_organ_key_blue", "dec_organ_key_gold", "dec_organ_key_green", "dec_compressor", "pick_key_brass"] {
+        fer name in ["spr_wullie_idle", "spr_wullie_walk1", "spr_wullie_walk2", "dec_grave", "dec_lamp_post", "dec_organ", "dec_organ_key_red", "dec_organ_key_blue", "dec_organ_key_gold", "dec_organ_key_green", "dec_compressor", "pick_key_brass", "dec_organ_key_red_on", "dec_organ_key_blue_on", "dec_organ_key_gold_on", "dec_organ_key_green_on", "dec_compressor_on"] {
             art[name] = bogle_asset(name, 64, 96)
         }
         # The Wood o' Dreich (story art batch 2).
@@ -139,6 +139,7 @@ dae bogle_gameplay_assets() {
         art["pick_shortbread"] = bogle_asset("pick_shortbread", 64, 96)
         art["prj_mars_bar"] = bogle_asset("prj_mars_bar", 64, 96)
         art["prj_mars_splat"] = bogle_asset("prj_mars_splat", 64, 96)
+        art["prj_spanner"] = bogle_asset("prj_spanner", 64, 96)
         art["prj_wail"] = bogle_asset("prj_wail", 64, 96)
         art["spr_gamekeeper_charge"] = bogle_asset("spr_gamekeeper_charge", 64, 96)
         art["spr_gamekeeper_death1"] = bogle_asset("spr_gamekeeper_death1", 64, 96)
@@ -248,6 +249,8 @@ dae bogle_actor_art(g, actor) {
         name = "prj_wail"
     } ither gin kind == 8 {
         name = "prj_mars_splat"
+    } ither gin kind == 9 {
+        name = "prj_spanner"
     } ither gin kind >= 10 an kind <= 21 {
         name = ["pick_oatcake", "pick_haggis_plate", "pick_girder_juice", "pick_girder_bottle", "pick_shortbread", "pick_mars_box", "pick_powder_shot", "pick_blunderbuss", "pick_bagpipes", "pick_key_tartan", "pick_key_silver", "dec_banner"][kind - 10]
     } ither gin bogle_is_pickup(kind) {
@@ -261,8 +264,14 @@ dae bogle_actor_art(g, actor) {
         name = "dec_grave"
     } ither gin kind == 51 {
         name = ["dec_organ_key_red", "dec_organ_key_blue", "dec_organ_key_gold", "dec_organ_key_green"][(actor["flags"] + 3) % 4]
+        gin bogle_organ_stop_lit(g, actor["flags"]) {
+            name = name + "_on"
+        }
     } ither gin kind == 52 {
         name = "dec_compressor"
+        gin state == "on" {
+            name = "dec_compressor_on"
+        }
     } ither gin kind == 56 {
         name = "dec_organ"
     } ither gin kind == 43 {

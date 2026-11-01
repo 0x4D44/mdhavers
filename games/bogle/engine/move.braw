@@ -173,6 +173,22 @@ dae body_blocker(g, x, y) {
             }
         }
     }
+    # The slumped contraption stays where it fell, as solid as the dressing.
+    # Only the player's body carries the actors.
+    gin contains(g, "actors") {
+        fer a in g["actors"] {
+            gin a["active"] an a["kind"] == 49 an a["state"] == "slumped" an g["z"] < a["z"] + 56 * 65536 an g["z"] + 56 * 65536 > a["z"] {
+                ken nx = (x - a["x"]) / 256
+                ken ny = (y - a["y"]) / 256
+                gin abs(nx) < 8192 an abs(ny) < 8192 an nx * nx + ny * ny < 67108864 {
+                    gin nx == 0 an ny == 0 {
+                        nx = 1
+                    }
+                    gie [aye, nx, ny]
+                }
+            }
+        }
+    }
     gie [nae, 0, 0]
 }
 

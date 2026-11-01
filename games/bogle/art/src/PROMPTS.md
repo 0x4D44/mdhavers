@@ -5014,3 +5014,158 @@ Square 1:1 edge-to-edge game wall source texture for Bogle Castle, to be saved a
 Self-review: Riveted moss-green steel, copper pipes and brass valves read at 64 px and match the existing painted laboratory machines; opaque RGB, no magenta or lettering; pipes connect in the 3×3 source repeat, with a slight top-bottom panel join (mean RGB edge differences 4.23 left-right and 18.36 top-bottom); final baked tiling review remains with the lead; session stops at five generated images total, counting retries.
 
 
+
+
+## dec_compressor_on.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure/object, full body, facing the viewer, centred, feet/base at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+
+SPRITE (object). Exactly the same rusty Victorian organ air compressor as games/bogle/art/src/dec_compressor.png (same squat riveted iron tank, flywheel, brass gauge, pipes, same framing and size), but now running: the big red lever thrown the other way, the flywheel blurred with motion lines, cheerful puffs of white steam from the pipe joints, the gauge needle in the green. Single object, front view, centred, base at the bottom edge.
+
+Edit reference image 1, dec_compressor.png: preserve its exact square framing, camera, scale, tank, feet, rivets, pipework, painted rust facets, brass and charcoal outlines and their original positions. Keep both complete foot soles on the bottommost row, with zero movement or rescaling of the machine. Rotate the single red handle downward to the other side of its existing brass pivot at viewer right; remove its old upright handle. Show the same left flywheel spinning with a few crisp curved motion strokes and slightly blurred spokes while preserving its size and position. Add small cheerful opaque white-and-pale-blue outlined steam puffs from two pipe joints, fully contained within the original canvas; no fog. On the same brass gauge, place the black needle clearly inside a green sector, without letters or numbers. Maintain all clear magenta corners and gaps. Square 1:1 production sprite to be saved at 256x256. Visually flat opaque #FF00FF matte; clear background within 24 of RGB(255,0,255) per channel. No extra objects, floor, ground shadow, diffuse background glow, gradient, text, lettering, labels, numerals, logo, border, signature or watermark.
+~~~
+
+Self-review: Running compressor, reversed red lever, spinning flywheel, white steam and green gauge read at 64 px; machine scale and reference framing match closely, but feet stop at row 254, one pixel above the reference anchor; visually flat near-magenta rather than exact #FF00FF, matte core R240–250 G1–21 B240–251 with zero pixels beyond tolerance 24, no lettering.
+
+
+## dec_organ_key_red_on.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure/object, full body, facing the viewer, centred, feet/base at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+
+SPRITE (object). Exactly the same organ stop knob as games/bogle/art/src/dec_organ_key_red.png (same chunky ivory rim, same tartan-red face, same dark oak stalk, same framing), but pulled out: the stalk visibly longer and the red face glowing brightly with a soft halo and two little musical-note sparkles. Single object, front view, centred, base at the bottom edge. No lettering.
+
+Edit reference image 1, dec_organ_key_red.png, into its activated state. Preserve the exact square camera, circular front-facing ivory rim, charcoal outlines, broad rough-painted facets, colour identity, horizontal position, large circular face diameter and flat square-cut oak base at the bottommost row. This is the same knob, not a new design. Keep original scale and overall framing, with the base in precisely its original position. Pull its round head upward just a few pixels within the existing top margin and extend the exposed dark-oak neck, showing a longer pulled-out stalk, without shrinking the head or cropping the rim. Make the red face brightly luminous with warm pale red highlights and a small soft red halo hugging the ivory rim. Add exactly two small crisp warm-red musical-note-shaped sparkles in the existing magenta side margins, one on each side, fully inside the frame. These are pictorial sparkles, no written notation or lettering. Retain broad bold shapes readable at 64 pixels. Square 1:1 production sprite, final 256x256. Clear background beyond the small halo and sparkles stays visually flat opaque #FF00FF, within 24 of RGB(255,0,255) per channel. No floor, cast shadow, scenery, extra knobs, letters, words, labels, numerals, logo, border, signature, watermark, transparency or checkerboard.
+~~~
+
+Self-review: Glowing red face, longer stalk and two musical sparkles read at 64 px; visually flat near-magenta with a small painted red halo, not exact #FF00FF; base stays at row 255 but the head shrank and its lower rim rose too far, so reference framing needs a retry; no lettering.
+
+Attempt 2
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure/object, full body, facing the viewer, centred, feet/base at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+
+SPRITE (object). Exactly the same organ stop knob as games/bogle/art/src/dec_organ_key_red.png (same chunky ivory rim, same tartan-red face, same dark oak stalk, same framing), but pulled out: the stalk visibly longer and the red face glowing brightly with a soft halo and two little musical-note sparkles. Single object, front view, centred, base at the bottom edge. No lettering.
+
+Image 1 is the original 256x256 OFF sprite and is the precise geometry reference and edit target. Change only its illumination, add two small musical-note sparkles, and pull the head upwards by FOUR pixels, exposing just FOUR pixels more dark oak stalk. This very small extension is intentional. LOCK the original LARGE ivory rim and red face at their original size: outer circular diameter 194 pixels, horizontally x=30 through x=223 in the final 256x256 image. Its new top is y=1 and its lower edge y=194. Do not shrink the circle to make a longer stalk. Preserve the original broad square-cut oak foot at exactly its original x position and y=255 bottom anchor; preserve the entire original oak base and collar design, all original wood facets and widths. Keep the flat frontal camera. The circular knob should still fill three quarters of the image width. Brighten the red face with warm luminous red facets and a pale warm reflection; a narrow soft red halo may hug the rim. Add just TWO tiny pictorial musical-note sparkles, one in the empty left side margin and one in the empty right side margin, no words or lettering. Preserve the existing original charcoal outlines, ivory facets, wood colours and painted style. Nothing touches or clips at the top or sides. Clear magenta background away from those foreground effects must remain visually flat opaque pure #FF00FF, within 24 of RGB(255,0,255) on each channel. No diffuse glow across the matte. Square sprite, final 256x256. No scenery, floor, cast shadow, additional objects, text, letters, numerals, labels, logo, border, signature, watermark, transparency or checkerboard.
+~~~
+
+Self-review: Bright red face, slightly longer oak stalk and two musical sparkles read at 64 px; large rim and bottom-row base now match reference scale and framing closely; visually flat near-magenta rather than exact #FF00FF, matte core R241–251 G2–21 B232–251 with zero pixels beyond tolerance 24, no lettering.
+
+
+## dec_organ_key_blue_on.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure/object, full body, facing the viewer, centred, feet/base at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+
+SPRITE (object). Exactly the same pulled-out glowing stop as the red "on" one but matching games/bogle/art/src/dec_organ_key_blue.png: loch-blue face glowing with a soft halo and two little musical-note sparkles. Single object, front view, centred, base at the bottom edge. No lettering.
+
+Edit reference image 1, dec_organ_key_red_on.png, by changing ONLY its luminous red circular face, red halo and two warm musical-note sparkles to luminous loch blue and pale cyan. Reference image 2, dec_organ_key_blue.png, supplies the exact required loch-blue colour identity and the original OFF framing to match. Preserve reference 1's entire geometry: same large 194-pixel ivory rim, circular face size and position, slightly extended dark oak stalk, square-cut oak base exactly on row 255, charcoal outlines, broad rough-painted facets, all ivory and wood colours, same camera, framing and canvas scale. This is an activated colour variant of that exact knob, not a redesign. Preserve the two tiny pictorial musical-note sparkles in their existing positions, recoloured pale cyan with a small blue halo. Make the plain face strongly luminous saturated loch blue with a broad icy pale-cyan highlight, blue painted facets, and a narrow soft blue halo hugging the rim. No red or orange remains in the face or sparkles. Keep the ivory rim and oak base unchanged; do not shrink the face, enlarge the margins, move the head, lengthen the stalk again, or move the base. Square production sprite, final 256x256, silhouette readable at 64 pixels. Outside the tiny foreground halos and sparkles, preserve the visually flat opaque #FF00FF matte, clear background within 24 of RGB(255,0,255) per channel. No diffuse background haze, floor, ground shadow, scenery, text, lettering, labels, numbers, logo, border, signature, watermark, transparency or checkerboard.
+~~~
+
+Self-review: Luminous loch-blue face, extended oak stalk and two cyan musical sparkles read at 64 px; ivory rim, camera, scale and bottom-row base closely match the reference and red on-state; visually flat near-magenta rather than exact #FF00FF, matte core R236–252 G1–21 B241–251 with zero pixels beyond tolerance 24, no lettering.
+
+
+## dec_organ_key_gold_on.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure/object, full body, facing the viewer, centred, feet/base at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+
+SPRITE (object). Exactly the same pulled-out glowing stop but matching games/bogle/art/src/dec_organ_key_gold.png: gold face glowing with a soft halo and two little musical-note sparkles. Single object, front view, centred, base at the bottom edge. No lettering.
+
+Edit reference image 1, dec_organ_key_red_on.png, by changing ONLY its luminous red circular face, red halo and two warm musical-note sparkles to luminous golden yellow and pale warm gold. Reference image 2, dec_organ_key_gold.png, supplies the exact required gold colour identity and the original OFF framing to match. Preserve reference 1's entire geometry: same large 194-pixel ivory rim, circular face size and position, slightly extended dark oak stalk, square-cut oak base exactly on row 255, charcoal outlines, broad rough-painted facets, all ivory and wood colours, same camera, framing and canvas scale. This is an activated colour variant of that exact knob, not a redesign. Preserve the two tiny pictorial musical-note sparkles in their existing positions, recoloured pale golden yellow with a small gold halo. Make the plain face strongly luminous saturated golden yellow with a broad pale lemon-white highlight, warm golden painted facets, and a narrow soft gold halo hugging the rim. The face must remain clearly golden yellow and distinct from the ivory rim. No red or blue remains in the face or sparkles. Keep the ivory rim and oak base unchanged; do not shrink the face, enlarge the margins, move the head, lengthen the stalk again, or move the base. Square production sprite, final 256x256, silhouette readable at 64 pixels. Outside the tiny foreground halos and sparkles, preserve the visually flat opaque #FF00FF matte, clear background within 24 of RGB(255,0,255) per channel. No diffuse background haze, floor, ground shadow, scenery, text, lettering, labels, numbers, logo, border, signature, watermark, transparency or checkerboard.
+~~~
+
+Self-review: Luminous gold face, extended oak stalk and two golden musical sparkles read at 64 px; ivory rim, camera, scale and bottom-row base closely match the reference and red on-state; visually flat near-magenta rather than exact #FF00FF, matte core R242–252 G3–21 B238–252 with zero pixels beyond tolerance 24, no lettering; session stops at five generations including the red framing retry.
+
+
+## dec_organ_key_green_on.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure/object, full body, facing the viewer, centred, feet/base at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+
+SPRITE (object). Exactly the same pulled-out glowing stop but matching games/bogle/art/src/dec_organ_key_green.png: moss-green face glowing with a soft halo and two little musical-note sparkles. Single object, front view, centred, base at the bottom edge. No lettering.
+
+Edit reference image 1, dec_organ_key_red_on.png, by changing ONLY its luminous red circular face, red halo and two warm musical-note sparkles to luminous moss green and pale spring green. Reference image 2, dec_organ_key_green.png, supplies the exact required moss-green colour identity and the original OFF framing to match. Preserve reference 1's entire geometry: same large 194-pixel ivory rim, circular face size and position, slightly extended dark oak stalk, square-cut oak base exactly on row 255, charcoal outlines, broad rough-painted facets, all ivory and wood colours, same camera, framing and canvas scale. This is an activated colour variant of that exact knob, not a redesign. Preserve the two tiny pictorial musical-note sparkles in their existing positions, recoloured pale yellow-green with a small green halo. Make the plain face strongly luminous saturated moss green with a broad pale lime-white highlight, green painted facets, and a narrow soft green halo hugging the rim. The face must remain clearly moss green and distinct from the ivory rim. No red or blue remains in the face or sparkles. Keep the ivory rim and oak base unchanged; do not shrink the face, enlarge the margins, move the head, lengthen the stalk again, or move the base. Square production sprite, final 256x256, silhouette readable at 64 pixels. Outside the tiny foreground halos and sparkles, preserve the visually flat opaque #FF00FF matte, clear background within 24 of RGB(255,0,255) per channel. No diffuse background haze, floor, ground shadow, scenery, text, lettering, labels, numbers, logo, border, signature, watermark, transparency or checkerboard.
+~~~
+
+Self-review: Luminous moss-green face, extended oak stalk and two green musical sparkles read at 64 px; ivory rim, camera, scale and bottom-row oak base closely match the references; visually flat near-magenta rather than exact #FF00FF, all four measured corner patches within tolerance 24; no lettering.
+
+
+## prj_spanner.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure/object, full body, facing the viewer, centred, feet/base at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+
+SPRITE (projectile). Princess Ailsa's big steel adjustable spanner (the one in games/bogle/art/src/spr_ailsa_idle.png) spinning through the air, seen side-on, tilted diagonally, with comic curved motion streaks behind it. Single object, small, centred in the frame like games/bogle/art/src/prj_mars_bar.png. No lettering.
+
+Reference image 1, spr_ailsa_idle.png, supplies the EXACT spanner design: a chunky steel-grey wrench with broad dark charcoal outline, broad open adjustable jaw and a short stout handle ending in a second smaller open jaw, simple pale steel facets, no hand, no character. Isolate that same prop and show it in flight, tilted diagonally from lower left to upper right, broad jaw at upper right. Preserve the recognizable broad crescent-shaped open jaws and the original steel colours and bold painted style; no redesign into a sword, pipe wrench, hammer or thin tool. Reference image 2, prj_mars_bar.png, supplies only square projectile framing, diagonal orientation, relative scale, clear margins and centred position, not subject or colour. The complete spanner, both open jaws and all outlines are inside the canvas with clear magenta on all four sides. Object occupies about 80 percent of image height and 60 percent of image width, like the projectile reference. Add two or three short chunky comic curved motion streaks behind its left side, painted cool steel-grey with dark outlines, suggesting a spinning throw; leave clean magenta gaps between tool and streaks. This airborne projectile is centred vertically, not resting on a ground plane: base rule means the lowest complete object outline is visible, with the same clear lower margin as the projectile reference. Match the broad hand-painted facets and dark outlines of the existing sprite art so the adjustable jaw and spinning silhouette read at 64 pixels. Square 1:1 production sprite, final 256x256. Clear background is visually flat opaque pure #FF00FF, within 24 of RGB(255,0,255) per channel, including the open jaws and gaps around motion streaks. No character, hands, floor, ground shadow, glow, scenery, text, letters, labels, numerals, logo, border, signature, watermark, transparency or checkerboard.
+~~~
+
+Self-review: Complete steel spanner with both open jaws and two curved motion streaks reads at 64 px; matches Ailsa's prop and the projectile reference's centred diagonal framing with clear margins; visually flat near-magenta rather than exact #FF00FF, matte core R244-253 G1-16 B242-252 with zero pixels beyond tolerance 24; no lettering.
+
+## Lead note: the "on" variants
+
+The baker crops each sprite to its opaque bounds, so the steam puffs and music-note sparkles widened the five "on" variants and shrank them in game. The lead clipped `dec_compressor_on.png` and the four `dec_organ_key_*_on.png` to their "off" counterpart's baked bounds (pixels outside set to #FF00FF), so each pair swaps in place. The lit stops also draw full-bright in game, which carries the glow the clipped sparkles gave.

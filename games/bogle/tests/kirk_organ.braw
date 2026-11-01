@@ -48,7 +48,28 @@ dae org_stop(g, colour) {
     org_press(g)
 }
 
+# The sprites: which stops show pulled out, and the compressor running.
+ken stop_flags = {"red": 1, "blue": 2, "gold": 3, "green": 4}
+dae org_art(g, kind, flags) {
+    fer a in g["actors"] {
+        gin a["kind"] == kind an (kind != 51 or a["flags"] == flags) {
+            gie bogle_actor_art(g, a)
+        }
+    }
+    gie "none"
+}
+dae org_lit(g) {
+    ken lit = []
+    fer colour in ["red", "blue", "gold", "green"] {
+        gin org_art(g, 51, stop_flags[colour]) == "dec_organ_key_" + colour + "_on" {
+            shove(lit, colour)
+        }
+    }
+    gie lit
+}
+
 mak_siccar g["objective"] == "FIND THE BRASS KEY"
+mak_siccar org_lit(g) == [] an org_art(g, 52, 0) == "dec_compressor"
 fer colour in ["red", "gold", "blue", "green"] {
     org_stop(g, colour)
     mak_siccar g["message"] == "Wheeze. Nae air." an g["story"]["tune"] == 0
@@ -69,29 +90,34 @@ mak_siccar g["story"]["air"] an g["talk"] != naething an g["objective"] == "PLAY
 org_read(g)
 org_press(g)
 mak_siccar g["message"] == "It's runnin' fine." an g["talk"] == naething
-blether "ok the sheet music shows the tune; the compressor starts the air once"
+mak_siccar org_art(g, 52, 0) == "dec_compressor_on" an org_lit(g) == []
+blether "ok the sheet music shows the tune; the compressor starts the air once, an runs"
 
 org_stop(g, "red")
 mak_siccar g["story"]["tune"] == 1 an g["message"] == "Paaarp! RED."
+mak_siccar org_lit(g) == ["red"]
 org_stop(g, "blue")
 mak_siccar g["story"]["tune"] == 0 an g["message"] == "BLAAURGH! A sour chord. Start again."
+mak_siccar org_lit(g) == []
 org_stop(g, "red")
 org_stop(g, "gold")
 org_stop(g, "gold")
 mak_siccar g["story"]["tune"] == 0 an nae g["story"]["open"] an org_crypt(g) == "closed"
-blether "ok a wrang stop plays a sour chord an resets the tune"
+blether "ok a wrang stop plays a sour chord an resets the tune, an the stops it lit"
 
 org_stop(g, "red")
 mak_siccar g["story"]["tune"] == 1 an g["message"] == "Paaarp! RED."
 org_stop(g, "red")
 mak_siccar g["story"]["tune"] == 1 an g["message"] == "BLAAURGH! A sour chord. Start again."
-fer colour in ["gold", "blue", "green"] {
-    org_stop(g, colour)
-}
+org_stop(g, "gold")
+org_stop(g, "blue")
+mak_siccar org_lit(g) == ["red", "blue", "gold"]
+org_stop(g, "green")
 mak_siccar g["story"]["open"] an g["talk"] != naething an g["talk"]["lines"][1] == "Somewhere below, the crypt door creaks open."
 org_read(g)
 mak_siccar org_crypt(g) == "opening" or org_crypt(g) == "open"
 mak_siccar g["objective"] == "DOON INTAE THE CRYPT"
+mak_siccar org_lit(g) == ["red", "blue", "gold", "green"]
 blether "ok a sour red starts the tune at one; red, red, gold, blue, green opens the crypt door"
 
 g["message"] = ""

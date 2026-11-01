@@ -93,6 +93,8 @@ la_wait(g, 2)
 mak_siccar len(g["projectiles"]) == 1 an g["projectiles"][0]["kind"] == "spanner"
 la_wait(g, 60)
 mak_siccar laird["health"] == hp - 12
+mak_siccar bogle_projectile_kind({"kind": "spanner"}) == 9 an bogle_actor_art(g, {"kind": 9, "state": "idle"}) == "prj_spanner"
+mak_siccar bogle_projectile_kind({"kind": "mars"}) == 6
 g = la_game()
 laird = la_actor(g, 49)
 ailsa = la_actor(g, 48)
@@ -111,7 +113,7 @@ fer i in 0..20 {
     projectiles_tick(g)
 }
 mak_siccar laird["health"] == 894 an len(g["projectiles"]) == 0
-blether "ok Ailsa's spanner hurts only the contraption"
+blether "ok Ailsa's spanner hurts only the contraption, an draws as a spanner"
 
 # The steam blast: 14 and a shove, then a breather before the next.
 g = new_game(load_map("games/bogle/data/lab.map"))
@@ -186,7 +188,16 @@ fer i in 0..35 {
     weapons_tick(g, aye)
 }
 mak_siccar laird["state"] == "slumped" an laird["vx"] == 0
-blether "ok the slumped contraption bides, hurtless an unhurt"
+# It is in the way: walking at it stops a body's width short.
+la_player(g, laird["x"] / 65536 - 64, laird["y"] / 65536)
+move_body(g, 64 * 65536, 0)
+mak_siccar laird["x"] - g["x"] >= 31 * 65536
+# While it fights it is not: the old rule for every actor.
+laird["state"] = "chase"
+la_player(g, laird["x"] / 65536 - 64, laird["y"] / 65536)
+move_body(g, 64 * 65536, 0)
+mak_siccar laird["x"] - g["x"] < 31 * 65536
+blether "ok the slumped contraption bides, hurtless an unhurt, an in the way"
 
 # The contraption keeps tae the arena when the player leaves it.
 g = new_game(load_map("games/bogle/data/lab.map"))
