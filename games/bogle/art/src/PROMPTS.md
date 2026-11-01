@@ -4674,3 +4674,343 @@ Edit reference image 1, the current 256x256 tex_panel_corridor.png. Preserve its
 ~~~
 
 Self-review: Dark oak wainscot, faded tartan and picture rail read at 64 px and match the painted set; opaque RGB with no magenta or lettering; matching flat oak trim fixes vertical wrapping (mean RGB edge differences 6.38 left-right and 0.57 top-bottom); final baked tile review remains with the lead.
+
+
+## dec_doorway_lit.png
+
+Attempt 2
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure/object, full object, facing the viewer, centred, feet/base at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+
+An open doorway seen straight on with warm yellow light spilling out, the silhouette of a nosy resident peering out with a candle. Single object, base at the bottom edge.
+
+Edit reference image 1, the current 256x256 dec_doorway_lit.png. Preserve this exact rounded granite arch, each stone, moss fleck, open oak door, dark iron hinges and ring, warm yellow opening, comically nosy long-nosed resident in a floppy nightcap, candle, hand, thick charcoal outlines and broad painted facets. Correct ONLY the bottom anchoring. The current complete doorway has a three-pixel magenta strip below the stone threshold. The row of large foundation stones must sit directly AGAINST THE IMAGE'S LOWER FRAME BOUNDARY: extend their front faces downward through that narrow strip and give the stones FLAT UNDERSIDES whose complete dark outline coincides exactly with the BOTTOM EDGE of the square. The flat bottom outline of the stone foundation must occupy the bottommost canvas row over the entire broad width of the threshold. There must be NO horizontal magenta strip underneath. Magenta stays beside the threshold at both sides, never below it. This is an edge-anchored game doorway sprite, not a floating object with a surrounding margin. Keep the whole arch top and both side jamb outlines inside the frame with their current clear magenta margins; do not crop the arch, widen the doorway or introduce any floor beneath it. Preserve all other content, scale, identity, lighting and colours. Square 1:1 final source-art image saved at 256x256, complete threshold anchored on the bottommost row, no lower margin. Opaque visually flat magenta #FF00FF outside the outlined doorway, all clear matte pixels within 24 of RGB(255,0,255) per channel. Confine yellow light entirely inside the opening and threshold. No surrounding wall, scenery, ground surface, cast shadow, diffuse glow, halo, gradient, transparency, checkerboard, additional objects, extra figures, text, letters, numerals, symbols, signature, watermark or image border.
+~~~
+
+Self-review: Stone arch, open door, warm light, nosy resident and candle read at 64 px; complete threshold now meets row 255 with no bottom gap and clear top/side margins; visually flat near-magenta rather than exact #FF00FF, matte core R244–253 G1–19 B242–252 with zero pixels beyond tolerance 24 per channel (two-pixel silhouette boundary excluded); no lettering; sprite, not a tile; this session stops at five generated images total, counting retries.
+
+
+## spr_ailsa_strapped.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure/object, full body, facing the viewer, centred, feet/base at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+The real Princess Ailsa: a fierce young Scottish princess with wild red hair, freckles, a tartan gown with rolled-up sleeves and a spanner in her belt, strapped upright to a big brass-and-copper laboratory rig with dials and tubes, scowling and unimpressed. Single figure on the rig, full body, facing the viewer, base at the bottom edge.
+
+Square 1:1 production game sprite, to be reduced to 256x256. Ailsa is an adult young woman, with the same warm freckled face, big blue eyes, copper-red hair, small three-point silver tiara with a green stone, moss-green fitted bodice and broad red tartan skirt crossed by dark green, charcoal and muted-gold bands as the existing Bogle Castle princess clone, but this is the lively real princess: unruly long copper hair, fierce furrowed brows, an annoyed closed-mouth scowl and sleeves rolled up over her forearms. One large iron-grey open-ended spanner is tucked visibly into her brown belt. Two broad harmless brown restraint straps hold her upright across waist and upper torso against a chunky brass backplate. Her hands remain visible beside her waist. The whole laboratory rig is one compact connected brass-and-copper contraption: two upright pipes, large simple glass tubes with cyan liquid, two big cream pressure dials with plain black pointers and no numerals or lettering, rivets and a broad low iron footplate. Show one complete woman on one complete rig, no other people. Chunky charcoal outlines and broad angular hand-painted colour facets, sparse simple readable details matching the existing princess, gamekeeper and compressor sprites. Include every hair tip, tiara, pipe, hand, skirt and base without clipping. Leave clear magenta top and side margins. The complete flat dark bottom of the rig's footplate lies exactly on the BOTTOMMOST ROW, with zero empty magenta rows beneath; retain the whole base outline. Outside the silhouette and in every gap use an opaque visually flat pure #FF00FF chroma-key matte, with all clear background pixels within 24 of RGB(255,0,255) per channel. Brushwork stays inside the subject. No floor, scenery, cast shadows, atmospheric glow, gradient, transparency, checkerboard, text, lettering, numbers, symbols, logo, border, signature or watermark.
+~~~
+
+Self-review: Fierce freckled red-haired princess, belt spanner, restraint straps, brass rig and cyan tubes read at 64 px and match the existing painted sprites; complete silhouette has a 1 px bottom gap; visually flat near-magenta rather than exact #FF00FF, accepted under the lead's per-channel tolerance 24; no text or lettering; sprite, not a tile.
+
+
+## spr_ailsa_idle.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure/object, full body, facing the viewer, centred, feet/base at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+The same real Princess Ailsa, freed, standing ready to fight, a big spanner in her hand, determined grin. Single figure, full body, facing the viewer.
+
+Reference image 1 is spr_ailsa_strapped.png, the established real Princess Ailsa, used for character identity and painted style. Keep this exact adult young Scottish woman: unruly long copper-red hair, freckled warm face, big blue eyes, little silver three-point tiara with a green stone, moss-green fitted bodice, red tartan gown crossed by broad dark-green and charcoal bands with sparse muted-gold lines, rolled-up sleeves, brown belt and brown shoes. She is now FREE of every restraint and laboratory rig: one standing figure only. Her right hand (viewer left) holds the same big chunky iron-grey open-ended spanner upright beside her shoulder. Left hand clenched on her hip, feet planted apart, shoulders squared, fierce confident determined grin, lively matching eyebrows. Preserve proportions, colours, chunky charcoal outlines, broad angular hand-painted facets and exaggerated friendly comic style. No machinery or straps. Entire tiara, wild hair, spanner, hands, gown and both shoes inside a square 1:1 canvas, clear small magenta top and side margins. The complete flat uncut soles of both shoes occupy the BOTTOMMOST ROW: no empty magenta strip beneath, no cropped toes or heels. Production game sprite to be reduced to 256x256, big shapes readable at 64 pixels. Use an opaque visually flat pure #FF00FF chroma-key background in all corners and gaps, all clear matte pixels within 24 of RGB(255,0,255) per channel. Confine painted shading to the character. No text, lettering, numbers, symbols, labels, other people, scene, floor, ground shadow, glow, gradient, transparency, checkerboard, border, signature or watermark.
+~~~
+
+Self-review: Same freckled red-haired princess, tartan gown, raised spanner and determined grin read at 64 px; complete silhouette has a 1 px bottom gap; visually flat near-magenta rather than exact #FF00FF, matte core R243–253 G0–16 B241–252 with zero pixels beyond tolerance 24 per channel (two-pixel boundary excluded); no lettering; sprite, not a tile.
+
+
+## spr_ailsa_throw.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure/object, full body, facing the viewer, centred, feet/base at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+The same Princess Ailsa throwing her spanner overarm, mid-throw, fierce shout. Single figure, full body, facing the viewer.
+
+Reference image 1 is spr_ailsa_idle.png, the canonical freed real Princess Ailsa. Keep this exact adult young Scottish princess: freckled warm face, big blue eyes, unruly long copper-red curls, small silver three-point tiara with its green stone, moss-green bodice, rolled-up sleeves, brown belt, full tartan-red gown crossed by broad dark-green and charcoal bands with sparse muted-gold lines, brown shoes. Preserve the face, costume, proportions, colours, chunky charcoal outlines and broad angular hand-painted facets. Change only to a dynamic OVERARM THROW aimed directly at the viewer: her right elbow (viewer left) high beside her head, right forearm whipping forward over her shoulder, fingers opening to release the same large iron-grey open-ended spanner just ahead of that hand. One spanner only, close to the hand, clearly detached or just leaving the fingertips; strong readable overarm gesture. Her left arm extends outward for balance, planted feet wide, torso twisting slightly while face and body still face the viewer. Fierce open-mouth comic shout with clenched eyebrows, no speech bubble or words. Hair swings in big readable locks, tartan skirt shifts with the action. No rig or restraints. Single complete character and one thrown spanner on a square 1:1 canvas, to be saved at 256x256, readable at 64 pixels. Keep all tiara points, hair, elbows, fingers, spanner tips, skirt and complete shoes inside the frame, with clear magenta top and side margins. The whole uncut dark sole of her lowest planted shoe must TOUCH THE BOTTOMMOST ROW, with no empty magenta rows beneath, no cropping. Visually flat opaque pure #FF00FF chroma-key matte outside the character and spanner, including every gap, all clear background pixels within 24 of RGB(255,0,255) per channel. Painting only inside outlined subjects. No motion-blur haze, scenery, floor, shadow, glow, gradient, transparency, checkerboard, text, lettering, numbers, symbols, logo, border, signature or watermark.
+~~~
+
+Self-review: Matching Ailsa throws one spanner overarm with a fierce shout, clear at 64 px; complete shoes meet row 255 with clear top and side margins; visually flat near-magenta rather than exact #FF00FF, matte core R242–253 G0–20 B242–252 with zero pixels beyond tolerance 24 per channel (two-pixel boundary excluded); no lettering; sprite, not a tile.
+
+
+## spr_laird_idle.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure/object, full body, facing the viewer, centred, feet/base at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+Laird Angus McDreichBottom in his steam-powered contraption: a pompous red-faced mad-scientist laird with a huge ginger moustache, monocle and tam o' shanter, sitting in the cockpit of a hulking riveted brass-and-iron walking machine on two stomping legs, with smokestacks, pipes, pressure gauges and two clamp arms. Big figure, full body, facing the viewer, feet at the bottom edge.
+
+Square 1:1 Bogle Castle production boss sprite, to be saved at 256x256. One complete connected comic walking-machine-and-pilot figure. Laird Angus is an older stocky Scottish man with a round ruddy red face, enormous curled bright ginger moustache, heavy ginger eyebrows, one round brass monocle, and a peat-brown tam o' shanter with a tartan-red band and red pompom. His large proud head and sneering grin are clearly visible above an open waist-high central cockpit; he wears a dark moss-green coat with rolled-up cream sleeves and grips two chunky brass control handles. The hulking machine has a broad rounded boiler torso made of worn brass plates crossed by dark iron straps, sparse huge rivets, one large simple round cream pressure gauge at the centre with a black pointer but no numerals, a small red valve and a short front steam nozzle. Two stout iron smokestacks rise behind the cockpit, with copper pipes and a few moss-green fittings. Two thick articulated clamp arms hang at its sides, ending in simple open two-jaw iron pincers. Exactly two short articulated iron legs support the boiler, with chunky round knee hinges and two enormous flat stomping boots. Idle stance with both mechanical feet planted, arms loose, the Laird pompously upright. Match the existing compressor's brass and copper, dark iron, broad orange-brown weathered painted facets, massive simple rivets and charcoal outlines; use large readable parts rather than fine engineering detail. The face and huge ginger moustache must remain expressive at 64 pixels. Show the entire tam, stack tips, clamps, pipes and all boot outlines within the square with clear magenta top and side margins. The complete uncut flat soles of both stomping boots TOUCH THE BOTTOMMOST ROW with no empty magenta strip below. Opaque visually flat pure #FF00FF matte outside the connected figure and in all gaps between arms, pipes and legs, all clear background pixels within 24 of RGB(255,0,255) per channel. All painted texture stays inside the silhouette. No environment, floor, ground shadow, glow, fog, gradient, transparency, checkerboard, lettering, text, gauge numerals, labels, symbols, logo, border, signature or watermark.
+~~~
+
+Self-review: Pompous ginger-moustached Laird, monocle, tam, brass boiler, two clamp arms and two stomping legs read at 64 px and match the existing metals; top and side outlines touch canvas edges and a 1 px bottom gap remains, so framing needs correction; visually flat near-magenta rather than exact #FF00FF, matte core R243–253 G0–17 B240–253 with zero pixels beyond tolerance 24 per channel (two-pixel boundary excluded); no lettering; sprite, not a tile.
+
+
+## spr_laird_walk1.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure/object, full body, facing the viewer, centred, feet/base at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+The same Laird in the same steam contraption stomping towards the viewer, left mechanical leg raised, puffs of smoke from the stacks. Big figure, facing the viewer, feet at the bottom edge.
+
+Reference image 1 is spr_laird_idle.png, the canonical Laird Angus McDreichBottom and his steam walking machine. Keep this exact older round red-faced man, enormous curled ginger moustache and eyebrows, round monocle, peat-brown tam o' shanter with red band and pompom, green coat and cream sleeves, gripping the two brass cockpit controls with a pompous grin. Keep the identical broad rounded worn-brass boiler torso, dark iron bands and huge rivets, central cream gauge with a plain black pointer and no numerals, red valve at viewer left and short front steam nozzle below, two dark smokestacks, copper pipes, two articulated clamp arms with open two-jaw pincers, two thick short iron legs and wide flat stomping boots. Preserve the machine's exact design, materials, colours, massive comic proportions, charcoal outlines and broad angular hand-painted facets. Change the pose to walking straight TOWARD THE VIEWER: the machine's anatomical LEFT leg, on the viewer's RIGHT, is lifted and bent at the knee with its big boot coming forward and held clearly ABOVE the bottom edge. Its anatomical RIGHT leg, on the viewer's LEFT, bears the weight on one planted boot. Two clamp arms swing slightly, the torso bobs with the step. Add a few compact opaque light-grey smoke puffs rising from both stack mouths, each crisp outlined and separated from the background by clean edges; no diffuse smoke haze. The Laird's huge moustache, monocle and grin stay plainly visible. Exactly one pilot, two mechanical legs and two clamp arms, no other figure.
+FRAMING CORRECTION relative to the reference: the current idle image touches the top and both side edges. REDUCE THE COMPLETE MACHINE AND ALL SMOKE to occupy only about 88 percent of the canvas width and 94 percent of its height. Place its lowest uncut PLANTED RIGHT BOOT SOLE on the BOTTOMMOST ROW, while leaving clearly visible empty magenta margins of at least 10 pixels at BOTH SIDES and at least 8 pixels ABOVE ALL SMOKE when reduced to 256x256. The raised left boot ends noticeably higher, about one boot-height above the bottom. Keep every pincer tip, pipe, smoke puff, hat, knee and boot outline fully INSIDE the square. No side or top contact, no cropping, no empty magenta row beneath the planted sole. Square 1:1 production sprite to be saved at 256x256, big simple forms readable at 64 pixels. Opaque visually flat pure #FF00FF matte outside the character, machine and smoke and in every gap; all clear background pixels within 24 of RGB(255,0,255) per channel. Brushwork only inside the outlined subject. No floor, environment, ground shadow, glow, gradient, transparency, checkerboard, motion-blur haze, text, lettering, numbers, gauge numerals, symbols, labels, logo, border, signature or watermark.
+~~~
+
+Self-review: Same Laird and contraption stomp forward with anatomical left boot raised (viewer right) and crisp stack-smoke puffs, readable at 64 px; side and top framing is improved, but the planted sole ends at row 250, leaving a 5 px bottom gap; visually flat near-magenta rather than exact #FF00FF, matte core R244–254 G0–18 B241–253 with zero pixels beyond tolerance 24 per channel (two-pixel boundary excluded); no lettering; sprite, not a tile; session stops at five generated images total.
+
+
+## spr_laird_walk2.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure/object, full body, facing the viewer, centred, feet/base at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+The same Laird in the same steam contraption stomping towards the viewer, right mechanical leg raised. Big figure, facing the viewer, feet at the bottom edge.
+
+Reference image 1 is spr_laird_walk1.png, the exact character, machine and painted style reference. Make the opposite walking frame. Preserve this same round red-faced older Scottish laird, huge curled ginger moustache, ginger eyebrows, round monocle, brown tam o' shanter with red band and pompom, green coat, cream sleeves and hands on the two cockpit controls. Keep the same broad worn brass boiler, dark iron straps, huge rivets, central cream pressure dial with a plain black pointer and NO numerals, small red valve, short front nozzle, twin smokestacks, copper pipes, two articulated clamp arms with open two-jaw pincers, two chunky jointed iron legs and wide flat boots. Exactly one pilot, two arms and two legs. Change only the walking pose: anatomical RIGHT mechanical leg on the VIEWER'S LEFT is raised high and bent forward at the knee; anatomical LEFT leg on the VIEWER'S RIGHT is planted, its complete sole touching the bottommost image row. Arms swing gently in the opposite phase to reference; small opaque outlined grey smoke puffs emerge from both stacks. The image must visibly alternate with reference walk1, with the opposite boot lifted. One square 1:1 source sprite, chunky simple components readable at 64 pixels. Make the whole machine and all smoke slightly smaller than reference to leave at least 8 pixels of clear magenta above and on both sides at 256x256. Align the lowest uncut planted boot sole exactly at the bottom edge: zero magenta rows underneath it. Keep all pincer tips, stacks, smoke, hat and boots entirely inside the square, with no clipping. Opaque visually flat pure magenta matte in all empty areas and gaps, within 24 of RGB(255,0,255) on each channel; painted texture only inside the outlined figure. No lettering, text, numbers, gauge numerals, labels, symbols, logo, floor, shadow, haze, glow, transparency, border or watermark.
+~~~
+
+Self-review: The same Laird and machine clearly alternate with walk1, anatomical right boot raised at viewer left; silhouette and smoke read at 64 px, no lettering, complete unclipped outlines with clear top/side margins; planted sole leaves a 4 px bottom gap, so anchoring needs correction; visually flat near-magenta rather than exact #FF00FF, matte core RGB ranges [(244, 253), (0, 17), (240, 252)], 0 pixels beyond tolerance 24 per channel (two-pixel silhouette boundary excluded); sprite, not a tile.
+
+
+## spr_laird_blast.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure/object, full body, facing the viewer, centred, feet/base at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+The same Laird contraption blasting a big jet of white steam straight at the viewer from a front nozzle, the Laird cackling. Big figure, facing the viewer, feet at the bottom edge.
+
+Reference image 1 is spr_laird_walk2.png, the exact character, machine, material and painted style reference. Preserve the same older round ruddy-faced Scottish laird, giant curled ginger moustache and eyebrows, one round brass monocle, brown tam o' shanter with red pompom and red band, dark moss-green coat and rolled cream sleeves, hands on the brass cockpit controls. Keep the same broad rounded brass boiler with iron straps and large rivets, cream round pressure dial with plain black pointer and NO numerals, red valve on viewer left, short round front nozzle below the dial, two dark smokestacks with copper pipes, two clamp arms with two-jaw iron pincers, and exactly two jointed short iron legs ending in broad stomping boots. Change only to the attack frame: both legs braced and both boots planted; pincers spread, Laird leaning forward and cackling with an open delighted mouth, his face and huge moustache clearly visible above the boiler. A BIG jet of white steam blasts directly TOWARD THE VIEWER from that front nozzle. Show the steam as one bold foreshortened curling white-and-pale-loch-blue jet, narrow at the connected nozzle, expanding into three broad rounded white cloud lobes in the central lower foreground. Steam overlaps part of the lower boiler but keeps both feet and the Laird's head clear. Opaque outlined steam shapes with broad painted pale-blue facets, no diffuse fog, no transparency, no glow and no background spill. Match the reference exactly in comic proportions, weathered brass and iron, chunky charcoal outlines and broad painted facets. Square 1:1 sprite readable at 64 pixels. Leave clear magenta margins above all smoke and beside both pincers, at least 8 pixels in the 256x256 source. Align both uncut boot soles exactly WITH the bottom edge, with zero magenta rows beneath the soles: the image ends on their contact line. Keep all parts and effects unclipped. Flat opaque magenta outside the figure and effects, all clear background within 24 of RGB(255,0,255) per channel, brushwork inside the silhouette only. No text or lettering anywhere, no gauge numerals, labels, symbols, motion lettering, floor, shadow, scenery, border, signature or watermark.
+~~~
+
+Self-review: Cackling Laird, matching machine and strong forward white steam jet read at 64 px; no lettering; steam cloud meets and is clipped by the bottom edge and the boot soles leave a small gap, so effect size and framing need correction; visually flat near-magenta rather than exact #FF00FF, matte core RGB ranges [(242, 253), (0, 21), (242, 253)], 0 pixels beyond tolerance 24 per channel (two-pixel silhouette boundary excluded); sprite, not a tile.
+
+
+## spr_laird_blast.png
+
+Attempt 2
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure/object, full body, facing the viewer, centred, feet/base at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+The same Laird contraption blasting a big jet of white steam straight at the viewer from a front nozzle, the Laird cackling. Big figure, facing the viewer, feet at the bottom edge.
+
+Edit the reference spr_laird_blast.png to correct ONLY the composition and steam size. Preserve this exact cackling red-faced ginger-moustached laird, monocle, brown tam with red pompom, green coat, cream sleeves, cockpit controls, round worn-brass boiler, dark iron bands, cream pressure dial without numerals, red valve, front nozzle, copper pipes, two stacks, two iron clamp arms, two mechanical legs and huge boots. Preserve the exact colours, chunky dark outlines and hand-painted material facets. The existing steam cloud runs off the bottom of the image: REPLACE it with a shorter smaller completely enclosed white steam jet aimed towards the viewer, starting at the same front nozzle but expanding into a rounded white-and-pale-blue cloud centred BETWEEN THE KNEES. The complete steam cloud, including its dark outline, must END A FULL BOOT-HEIGHT ABOVE THE BOTTOM EDGE, with visible magenta below the steam between the two boots. This is an opaque compact forward jet, not a floor cloud. Keep both huge boots completely visible and separated from the steam. Extend the braced legs down so that both complete uncut boot soles TOUCH the bottommost row, no magenta gap underneath. The boots are the ONLY objects that touch the bottom edge. Zoom the rest of the machine out slightly to leave 12 pixels of magenta at BOTH side edges and 10 pixels above both smoke puffs in the final 256x256 square. Keep all pincer tips, smoke, hat, steam and soles within the image. Do not enlarge the character into the margins again. No clipping. No floor, ground shadow, background glow, fog, text, lettering, labels, numbers, gauge numerals, border, signature or watermark. Keep outside matte visually flat pure #FF00FF, with clear background within 24 of RGB(255,0,255) on each channel. Broad simple components readable at 64 pixels.
+~~~
+
+Self-review: Cackling Laird and matching machine read at 64 px; compact forward steam jet is now completely unclipped with visible magenta below, both boots and pincers remain visible, no lettering; boot anchoring still needs correction; visually flat near-magenta rather than exact #FF00FF, matte core RGB ranges [(242, 252), (1, 20), (239, 251)], 0 pixels beyond tolerance 24 per channel (two-pixel silhouette boundary excluded); foreground bounds (4, 9, 252, 249), 7 px bottom gap; sprite, not a tile.
+
+
+## spr_laird_vent.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure/object, full body, facing the viewer, centred, feet/base at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+The same contraption overheated: steam venting from every seam and valve, gauges red, the Laird coughing and flapping his hand. Big figure, facing the viewer, feet at the bottom edge.
+
+Reference image 1 is spr_laird_walk2.png. Preserve that exact red-faced older Scottish laird with enormous curled ginger moustache and eyebrows, one brass monocle, peat-brown tam with red band and pompom, green coat and cream sleeves. Preserve the exact broad worn-brass boiler with dark iron straps and huge rivets, central round pressure gauge, small red valve on viewer left, front nozzle, two dark smokestacks, copper pipes, two iron clamp arms with open pincers and exactly two jointed mechanical legs ending in broad heavy boots. Change to one unmistakable overheated recovery pose: both boots planted, boiler hunched slightly forward, clamp arms hanging limp, pressure gauge face flushed RED with a plain black pointer at its extreme, no numbers or lettering. Bright white-and-pale-blue steam bursts outward from the boiler seams, pipe joints, red valve and stack tops in several compact crisp opaque outlined puffs. These steam puffs remain separate, small and fully inside the image, with gaps between them; they do not hide the Laird or turn into a continuous cloud. The Laird coughs into his raised right forearm, eyes squeezed shut, while his left open hand flaps beside his head to waft away steam, fingers clear and comically panicked. Keep the whole moustache, monocle and hat identifiable. Broad charcoal outlines and rough angular painted brass and iron facets match reference. One square 1:1 game sprite readable at 64 pixels. Entire figure including every steam puff fits with at least 10 pixels of magenta above and beside it in a 256x256 image. The lowest complete boot soles MUST lie flush on the very bottom edge of the square: bottom row is occupied by the boots, zero empty magenta rows beneath them; avoid a floating figure. No outline clipped at any side. Use opaque visually flat pure #FF00FF for all outside areas and gaps, clear background within 24 of RGB(255,0,255) per channel; no alpha haze, glow, gradient or shadow. No floor or scenery. No text, lettering, gauge numerals, labels, symbols, motion words, logos, border, signature or watermark.
+~~~
+
+Self-review: Matching Laird coughs into his forearm and flaps his other hand; red gauge, limp clamps and many crisp steam vents read at 64 px, complete unclipped silhouette and no lettering; boot anchoring still needs correction; visually flat near-magenta rather than exact #FF00FF, matte core RGB ranges [(243, 253), (0, 17), (240, 252)], 0 pixels beyond tolerance 24 per channel (two-pixel silhouette boundary excluded); foreground bounds (11, 8, 244, 252), 4 px bottom gap; sprite, not a tile.
+
+
+## spr_laird_slumped.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure/object, full body, facing the viewer, centred, feet/base at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+The same contraption broken down and slumped, legs folded, smoke wisps, a hatch open on its chest with a sparking glass personality core inside, the Laird dazed with his monocle dangling. Big figure, facing the viewer, base at the bottom edge.
+
+Reference image 1 is spr_laird_walk2.png, the exact laird, steam machine, metals and painted style. Preserve the same red-faced older Scottish laird with enormous curled ginger moustache, ginger eyebrows, brown tam o' shanter with red band and pompom, green coat and cream sleeves, inside the same open cockpit. Preserve the exact broad round worn-brass boiler, dark iron bands and massive rivets, central cream pressure gauge with plain black pointer and no numerals, small red valve, short front nozzle, twin iron smokestacks and copper pipes, two articulated iron clamp arms with two-jaw pincers, and exactly two jointed iron legs and broad boots. Change the state to a harmless comic defeat: machine collapsed down into a LOW WIDE SLUMP, boiler tilted slightly, both knees folded outward and boots flat and splayed toward the viewer, both clamp arms drooping with pincers resting beside the low boiler. One smokestack is crooked. Several short crisp opaque grey smoke wisps emerge from the stacks and a broken pipe. The Laird slumps forward in the cockpit, eyes unfocused and mouth slack, dazed but uninjured; his one brass monocle dangles clearly from its chain beside his cheek. No blood, wounds or gore. Add ONE large open hinged access hatch on the lower front of the chest, immediately below the pressure gauge and beside the front nozzle: the brass hatch door swings open to viewer right, revealing a dark iron recess containing a big glass personality-core sphere held by a chunky brass ring. The glass sphere is pale cyan with a warm gold centre and two or three short crisp blue lightning zigzags entirely inside the open chest. Make the open hatch and sparking round glass core very obvious at 64 pixels. Keep all sparks within the machine silhouette, no diffuse light or haze on magenta. Same chunky charcoal outlines and broad weathered painted brass, copper, iron and cloth facets as reference. Square 1:1 production sprite, complete connected pilot-and-machine silhouette with a clear magenta margin above and at both sides. Position the lowest complete base of the folded machine FLUSH WITH THE BOTTOM IMAGE EDGE. At 256x256 the base occupies row 255; there must be zero magenta rows below that base. Use the bottom edge as the sprite anchor, not as an empty framing margin. Keep all boots, pincers, hatch, smoke and hat fully visible with no clipped outlines. Outside silhouette and in gaps: flat opaque pure magenta #FF00FF, every clear background pixel within 24 of RGB(255,0,255) on each channel. No ground, floor, cast shadow, scenery, gradient, transparency, text, lettering, labels, gauge numbers, symbols, logos, border, signature or watermark.
+~~~
+
+Self-review: Same Laird and machine slump with folded legs, dazed face and dangling monocle; open chest hatch and sparking cyan glass core read at 64 px, whole silhouette unclipped with no lettering; base anchoring still needs correction; visually flat near-magenta rather than exact #FF00FF, matte core RGB ranges [(242, 253), (0, 18), (241, 252)], 0 pixels beyond tolerance 24 per channel (two-pixel silhouette boundary excluded); foreground bounds (3, 4, 255, 254), 2 px bottom gap; sprite, not a tile.
+
+
+## dec_computer.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure/object, full body, facing the viewer, centred, feet/base at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+A big retro-futurist mad-scientist computer console: brass and green-painted steel, reel-to-reel tapes, rows of blinking lights, a small round green screen showing a single glowing eye. Single object, front view, base at the bottom edge. No lettering.
+
+One square 1:1 production game object sprite, intended to be reduced to 256x256. A squat wide moss-green riveted cabinet with rounded brass corners and short stout feet, two large cream reel-to-reel tape spools across the upper panel, a small circular green cathode-ray screen in the middle showing ONE large bright green iris with a black pupil, and three short orderly rows of large red, amber and green indicator bulbs and chunky plain switches below. A few short copper pipes and oversized brass rivets complete the silly steampunk machine. Use thick charcoal outlines and broad rough painted metal facets, warm tarnished brass, worn moss-green paint and iron-grey chips, matching the existing Bogle Castle compressor and laboratory rig art. Big simple components, readable silhouette and eye at 64 pixels. Screen glow stays strictly inside its circular brass rim, with no halo on the background. No keyboard letters, tape labels, numbers, symbols or gauge marks. Whole single console completely visible with clear magenta margins above and on both sides, at least 12 pixels at 256x256. The complete flat bottom soles of its feet lie exactly along the BOTTOMMOST ROW: no empty magenta strip underneath, no clipping. Outside and in all gaps use an opaque visually flat pure magenta matte, within 24 of RGB(255,0,255) on each channel. All brushwork inside the console silhouette. No floor, cast shadow, background texture, gradient, transparency, checkerboard, text, lettering, labels, logos, border, signature or watermark.
+~~~
+
+Self-review: Reel-to-reel console, rows of red/amber/green lights and single green eye read at 64 px and match the existing painted metals; no lettering, complete silhouette unclipped, but feet leave a 1 px bottom gap that needs anchoring correction; visually flat near-magenta rather than exact #FF00FF, matte core R242–253 G0–19 B242–253 with zero pixels outside tolerance 24 per channel (two-pixel silhouette boundary excluded); sprite, not a tile.
+
+
+## dec_lever_off.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure/object, full body, facing the viewer, centred, feet/base at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+A big laboratory release lever on a riveted iron base, handle up, a red knob. Single object, base at the bottom edge.
+
+One square 1:1 game object sprite. A single chunky industrial steampunk release lever, one long iron handle rising UP from a large round brass pivot to a large bright tartan-red spherical knob near the top of the image. The handle is upright, angled slightly toward the viewer's left; make its UP state unmistakable. Pivot supported by two squat dark iron cheek brackets on a broad heavy rectangular blue-grey riveted iron plinth. Four oversized brass mounting bolts at the plinth corners, worn iron chips, a few broad copper-brown rust marks. On the front face of the plinth at viewer right is ONE small circular dark green indicator lamp in a brass rim, currently UNLIT, a flat dark moss-green lens with no glow. A short horizontal brass inset slot beneath the pivot is blank. No writing, numbers, symbols, labels or markings. Match Bogle Castle's compressor and lab-machine art: thick charcoal outlines, broad rough hand-painted weathered metal facets, exaggerated simple proportions, warm brass with brown shadows and pale gold highlights, blue-grey iron. Entire object fully visible on magenta, centred with wide clear top and side margins. The complete front bottom edge of the plinth MUST sit directly on the BOTTOMMOST PIXEL ROW: zero magenta rows below the base, no floating gap, no cropped outline. Big simple silhouette readable at 64 pixels, no busy fine detail. Opaque visually flat pure #FF00FF matte outside the object and in every bracket gap, clear background within 24 of RGB(255,0,255) per channel. Painting only inside the object's outline. No floor, ground shadow, scenery, glow, gradient, transparency, checkerboard, text, lettering, logo, border, signature or watermark.
+~~~
+
+Self-review: Upright red-knob lever, iron base, brass pivot and unlit green lamp read at 64 px; complete unclipped base reaches row 255 with no bottom gap, no lettering; visually flat near-magenta rather than exact #FF00FF, matte core R246–254 G1–17 B244–252 with zero pixels outside tolerance 24 per channel (two-pixel silhouette boundary excluded); sprite, not a tile.
+
+
+## dec_lever_on.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure/object, full body, facing the viewer, centred, feet/base at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+The same laboratory release lever pulled down, handle down, a green lamp lit on its base. Single object, base at the bottom edge.
+
+Edit reference image 1, dec_lever_off.png, to create the ON state of the identical device. Preserve the EXACT heavy blue-grey iron plinth, four brass mounting bolts, copper-brown rust chips, blank brass inset slot, two cheek brackets, large brass pivot, thick charcoal outlines and broad rough painted metal facets, their original proportions, camera angle, colours and precise placement. Do not move or rescale the base: its uncut bottom edge already touches the last image row and must stay there. Keep the single red spherical knob and the same iron handle, but ROTATE THAT ONE HANDLE DOWN from its pivot toward the VIEWER'S RIGHT. The long handle now points diagonally DOWN-RIGHT, with the red knob clearly LOWER THAN THE BRASS PIVOT, beside the right side of the plinth, fully visible and not touching the bottom or side edges. This is one lever, one knob, the opposite state from the upright reference; remove the entire old upright shaft and knob and replace their former area with flat magenta. Leave the bracket and brass pivot in place. Switch on the existing small circular green lamp on the front face of the plinth: make its lens bright luminous lime green with a small pale green highlight and dark green rim; any glow stays inside the brass lamp housing, with no spill onto magenta. Keep all hardware complete and unclipped. One square 1:1 game object sprite to be saved at 256x256, big simple forms readable at 64 pixels. Outside the single device and in all gaps, opaque visually flat pure #FF00FF matte with clear background within 24 of RGB(255,0,255) per channel. Brushwork only inside the device silhouette. No second handle, extra knobs, arrow, text, lettering, numbers, labels, symbols, logo, floor, ground shadow, scenery, gradient, haze, transparency, checkerboard, border, signature or watermark.
+~~~
+
+Self-review: Same lever hardware now has its single red knob below the pivot at viewer right and its green lamp lit, clearly distinct from off at 64 px; no lettering, complete silhouette unclipped, but base leaves a 1 px bottom gap that needs anchoring correction; visually flat near-magenta rather than exact #FF00FF, matte core R245–254 G1–19 B243–252 with zero pixels outside tolerance 24 per channel (two-pixel silhouette boundary excluded); sprite, not a tile.
+
+
+## pick_good_core.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure/object, full body, facing the viewer, centred, feet/base at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+A glowing glass personality core sphere in a brass cage, warm golden light and a little smiling face inside. Single object, small, base at the bottom edge.
+
+One square 1:1 Bogle Castle pickup sprite. A small friendly round personality core, a large pale ghost-cyan glass sphere held securely in a chunky tarnished golden-brass cage: two curved brass vertical ribs, one broad equatorial brass ring, a small round cap and a low squat circular brass pedestal with three short feet. The sphere and cage form ONE connected complete object. Through the clear front glass, show one little kind smiling golden face floating in a warm amber core: two simple dark round eyes and one large upturned curved smile, readable at 64 pixels. No human head, no neck, no hair. Broad pale-cyan glass reflection facets around the edges, warm golden-yellow light painted entirely INSIDE the sphere. Keep the face unobstructed by the cage ribs. Broad hand-painted facets, thick charcoal outlines, weathered ochre and pale gold brass with brown crevices, pale loch-blue and bone-white glass highlights, matching Bogle Castle's brass laboratory rig, compressor and Laird personality-core machinery. Make the pickup compact and instantly recognisable; no wires, loose parts, sparks, scenery or extra objects. Keep the entire sphere, cage, cap and feet inside the canvas, with generous clear magenta above and on both sides. The entire uncut flat pedestal bottom MUST touch the BOTTOMMOST PIXEL ROW with zero empty magenta rows below; feet and base are fully visible, not cropped. Opaque visually flat pure #FF00FF outside the complete object and in all cage gaps, all clear background within 24 of RGB(255,0,255) per channel. No golden glow or halo on magenta; all light stays inside the glass. No ground, floor, cast shadow, gradient, transparency, checkerboard, lettering, text, numbers, labels, logos, border, signature or watermark.
+~~~
+
+Self-review: Smiling warm golden face, cyan glass sphere and brass cage read at 64 px and match the existing painted metals; no lettering or background glow, complete silhouette unclipped, but pedestal leaves a 3 px bottom gap that needs anchoring correction; visually flat near-magenta rather than exact #FF00FF, matte core R245–254 G1–16 B242–253 with zero pixels outside tolerance 24 per channel (two-pixel silhouette boundary excluded); sprite, not a tile.
+
+
+## tex_lab_wall.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+seamless tileable texture, edges wrap left-right and top-bottom, orthographic straight-on view, no perspective.
+Seamless tileable wall texture: a mad-scientist laboratory wall of riveted green-painted steel panels with copper pipes and brass valves running across.
+
+Square 1:1 edge-to-edge game wall source texture for Bogle Castle, to be saved at 256x256 and readable at 64 pixels. A flat strictly repeating wall surface of broad rectangular moss-green painted steel plates, thick charcoal seams, a few large dark iron rivets, chipped paint revealing blue-grey metal and occasional copper-brown rust facets. Large copper pipes run horizontally straight through both left and right edges at exactly one-quarter and three-quarters of the tile height; one vertical copper pipe passes straight through the top and bottom edges at exactly half the tile width. Thick simple copper sleeves at intersections, two chunky round warm-brass four-spoke valve wheels on the horizontal pipes, one in the upper-left quarter and one in the lower-right quarter, fully contained well away from the tile edges. All pipes and couplings lie flush on the wall in a straight-on orthographic view. No loose objects, screen, door, arch, equipment cabinet, frame or scene. Match Bogle Castle's existing compressor, laboratory rig and riveted doors: broad hand-painted angular metal facets and thick charcoal outlines, warm muted copper and brass over dark moss-green plates, restrained wear without dense fine grain. Uniform flat frontal brightness over the entire surface. The wall continues without a boundary: exact matching plate seam positions, pipe cross-sections and colours on BOTH opposing edges. Both horizontal pipes leave the left edge and enter the right edge at the identical height, width and colour; the vertical pipe enters at the top and leaves at the bottom at the identical x-position, width and colour. Match the green plate colour and seam positions at every top-bottom and left-right join. No outer trim, no perimeter rivet border, no double-width seams at joins, no light-to-dark gradient. Fill every pixel with the repeating wall surface, no magenta, no transparency, no perspective, no floor, no lighting vignette, no cast shadows. No text, lettering, numbers, labels, gauge numerals, symbols, logos, border, signature or watermark.
+~~~
+
+Self-review: Riveted moss-green steel, copper pipes and brass valves read at 64 px and match the existing painted laboratory machines; opaque RGB, no magenta or lettering; pipes connect in the 3×3 source repeat, with a slight top-bottom panel join (mean RGB edge differences 4.23 left-right and 18.36 top-bottom); final baked tiling review remains with the lead; session stops at five generated images total, counting retries.
+
+
