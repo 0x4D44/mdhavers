@@ -57,7 +57,7 @@ dae make_cmap() {
 dae bogle_assets() {
     gin nae contains(bogle_asset_cache, "textures") {
         ken textures = []
-        fer name in ["tex_granite", "tex_flagstone_moss", "tex_slate_under", "tex_dungeon_brick", "tex_oak_panel", "tex_tapestry_thistle", "tex_celtic_lintel", "tex_cell_door", "tex_portcullis", "tex_peat_straw", "tex_bog", "tex_chapel_stone", "tex_fryer_oil", "tex_lever_wall", "tex_loch_water", "tex_cow_wall", "tex_stag_wall", "tex_banner_wall", "tex_exit_gate", "tex_switch_off", "tex_switch_on"] {
+        fer name in ["tex_granite", "tex_flagstone_moss", "tex_slate_under", "tex_dungeon_brick", "tex_oak_panel", "tex_tapestry_thistle", "tex_celtic_lintel", "tex_cell_door", "tex_portcullis", "tex_peat_straw", "tex_bog", "tex_chapel_stone", "tex_fryer_oil", "tex_lever_wall", "tex_loch_water", "tex_cow_wall", "tex_stag_wall", "tex_banner_wall", "tex_exit_gate", "tex_switch_off", "tex_switch_on", "tex_kirk_stone", "tex_stained_glass", "tex_crypt_door"] {
             shove(textures, bogle_asset(name, 64, 64))
         }
         ken sprites = []
@@ -106,6 +106,10 @@ dae bogle_gameplay_assets() {
         art["dec_curling_stone"] = bogle_asset("dec_curling_stone", 64, 96)
         art["dec_stag_head"] = bogle_asset("dec_stag_head", 64, 96)
         art["dec_thistle_pot"] = bogle_asset("dec_thistle_pot", 64, 96)
+        # The kirkyard (story art batch 1).
+        fer name in ["spr_wullie_idle", "spr_wullie_walk1", "spr_wullie_walk2", "dec_grave", "dec_lamp_post", "dec_organ", "dec_organ_key_red", "dec_organ_key_blue", "dec_organ_key_gold", "dec_organ_key_green", "dec_compressor", "pick_key_brass"] {
+            art[name] = bogle_asset(name, 64, 96)
+        }
         art["pick_bagpipes"] = bogle_asset("pick_bagpipes", 64, 96)
         art["pick_blunderbuss"] = bogle_asset("pick_blunderbuss", 64, 96)
         art["pick_girder_bottle"] = bogle_asset("pick_girder_bottle", 64, 96)
@@ -232,11 +236,24 @@ dae bogle_actor_art(g, actor) {
         name = ["pick_oatcake", "pick_haggis_plate", "pick_girder_juice", "pick_girder_bottle", "pick_shortbread", "pick_mars_box", "pick_powder_shot", "pick_blunderbuss", "pick_bagpipes", "pick_key_tartan", "pick_key_silver", "dec_banner"][kind - 10]
     } ither gin bogle_is_pickup(kind) {
         # Placeholders until the story art batches land.
-        name = ["pick_key_silver", "dec_stag_head", "pick_powder_shot"][kind - 22]
+        name = ["pick_key_brass", "dec_stag_head", "pick_powder_shot"][kind - 22]
+    } ither gin kind == 40 {
+        name = "spr_wullie_idle"
+        gin len(g["paths"]) > 0 {
+            name = "spr_wullie_walk" + tae_string(g["tics"] / 9 % 2 + 1)
+        }
+    } ither gin kind == 41 {
+        name = "dec_grave"
+    } ither gin kind == 51 {
+        name = ["dec_organ_key_red", "dec_organ_key_blue", "dec_organ_key_gold", "dec_organ_key_green"][(actor["flags"] + 3) % 4]
+    } ither gin kind == 52 {
+        name = "dec_compressor"
+    } ither gin kind == 56 {
+        name = "dec_organ"
     } ither gin bogle_is_monster(kind) {
         name = "spr_haggis_walk" + tae_string(tick + 1)
-    } ither gin kind >= 30 an kind <= 36 {
-        name = ["dec_stag_head", "dec_armour", "dec_brazier", "dec_thistle_pot", "dec_cow_portrait", "dec_banner", "dec_curling_stone"][kind - 30]
+    } ither gin kind >= 30 an kind <= 37 {
+        name = ["dec_stag_head", "dec_armour", "dec_brazier", "dec_thistle_pot", "dec_cow_portrait", "dec_banner", "dec_curling_stone", "dec_lamp_post"][kind - 30]
         gin kind == 32 an contains(actor, "thing") {
             ken frame = bogle_brazier_frame(g["tics"], actor["thing"])
             gin frame > 0 {

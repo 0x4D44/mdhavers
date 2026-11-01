@@ -1,0 +1,19 @@
+fetch "games/bogle/engine/game"
+
+# Every kirkyard sector is lit above the map's ghostlight, so a ghost can be
+# hurt wherever it drifts, even in the dimmest sector.
+ken m = load_map("games/bogle/data/kirkyard.map")
+ken dimmest = 0
+fer s in 0..len(m["light"]) {
+    mak_siccar m["light"][s] > m["ghostlight"]
+    gin m["light"][s] < m["light"][dimmest] {
+        dimmest = s
+    }
+}
+mak_siccar m["ghostlight"] < 96
+blether "ok every kirkyard sector is lit above its ghostlight"
+
+ken g = new_game(m)
+ken ghost = {"x": 0, "y": 0, "z": 0, "sector": dimmest, "kind": 4, "health": 60, "active": aye, "state": "chase"}
+mak_siccar damage_actor(g, ghost, 10) an ghost["health"] == 50
+blether "ok a ghost in the dimmest kirkyard sector can be hurt"

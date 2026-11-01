@@ -181,10 +181,88 @@ dae ghost_move(g, a, dx, dy) {
     }
 }
 
+# Old Wullie (40) walks his round of path points. He is nearly blind: he
+# sees the player only within 96 units, inside a 60-degree cone ahead of him
+# and with a clear line. After 35 tics of unbroken sight he drains 1 health
+# every 7 tics until the sight breaks. He whistles as he goes.
+dae wullie_sees(g, a) {
+    ken dx = g["x"] - a["x"]
+    ken dy = g["y"] - a["y"]
+    gin actor_distance(a["x"], a["y"], g["x"], g["y"]) > 96 {
+        gie nae
+    }
+    ken off = bogle_angle(bogle_atan2(g["sin"], dx, dy) - a["facing"])
+    gin off > 341 an off < 4096 - 341 {
+        gie nae
+    }
+    gie bogle_sight(g, a["x"], a["y"], a["z"] + 48 * 65536, a["sector"], g["x"], g["y"], g["z"] + 32 * 65536, g["sector"])
+}
+
+dae wullie_tick(g, a) {
+    ken paths = g["paths"]
+    gin len(paths) > 0 {
+        ken point = paths[a["path"] % len(paths)]
+        gin actor_distance(a["x"], a["y"], point["x"], point["y"]) < 8 {
+            a["path"] = (a["path"] + 1) % len(paths)
+            point = paths[a["path"]]
+        }
+        actor_chase(g, a, point["x"], point["y"], 131072)
+    }
+    gin g["tics"] % 35 == 0 an actor_distance(a["x"], a["y"], g["x"], g["y"]) < 384 {
+        bogle_emit_sound(g, "whistle")
+    }
+    gin wullie_sees(g, a) {
+        a["seen"] = a["seen"] + 1
+        gin a["seen"] > 35 an (a["seen"] - 36) % 7 == 0 {
+            hurt_player(g, 1)
+            g["message"] = "Oi! Wha's that?"
+        }
+    } ither {
+        a["seen"] = 0
+    }
+}
+
+# A grave (41) raises a tartan ghost every 280 tics the player spends within
+# 512 of it, while fewer than 3 of its own ghosts walk. Flags 1: a quiet grave.
+dae grave_tick(g, a) {
+    gin bit_an(a["flags"], 1) != 0 or actor_distance(a["x"], a["y"], g["x"], g["y"]) >= 512 {
+        gie naething
+    }
+    a["timer"] = a["timer"] + 1
+    gin a["timer"] < 280 {
+        gie naething
+    }
+    a["timer"] = 0
+    ken risen = 0
+    fer ghost in g["actors"] {
+        gin ghost["active"] an ghost["kind"] == 4 an contains(ghost, "grave") an ghost["grave"] == a["thing"] {
+            risen = risen + 1
+        }
+    }
+    gin risen < 3 {
+        bogle_emit_sound(g, "ghost")
+        shove(g["actors"], {"x": a["x"], "y": a["y"] + 16 * 65536, "z": a["z"], "sector": a["sector"], "angle": 0, "facing": 0, "kind": 4, "flags": 0, "thing": -1, "grave": a["thing"], "health": 60, "state": "chase", "timer": 35, "seen_player": nae, "charge_tics": 0, "vx": 0, "vy": 0, "dx": 0, "dy": 0, "active": aye, "svx": 0, "svy": 0, "kick_tic": -1000})
+    }
+}
+
+dae story_actors_tick(g) {
+    ken count = len(g["actors"])
+    fer i in 0..count {
+        ken a = g["actors"][i]
+        gin a["active"] an a["kind"] == 40 {
+            wullie_tick(g, a)
+        }
+        gin a["active"] an a["kind"] == 41 {
+            grave_tick(g, a)
+        }
+    }
+}
+
 dae ai_tick(g) {
     gin g["health"] <= 0 {
         gie naething
     }
+    story_actors_tick(g)
     fer a in g["actors"] {
         gin a["active"] an bogle_is_monster(a["kind"]) {
             gin a["state"] == "stunned" {

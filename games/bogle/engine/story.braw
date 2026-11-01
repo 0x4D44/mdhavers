@@ -80,7 +80,66 @@ dae story_talk_tick(g, keys) {
     }
 }
 
+# The kirkyard: the organ's tune opens the crypt (link tag 5). Stops are
+# thing flags 1 red, 2 blue, 3 gold, 4 green; the tune is red, gold, blue,
+# green. g["story"]: air (the compressor runs), tune (notes right so far),
+# open (the crypt door is open).
+ken KIRK_TUNE = [1, 3, 2, 4]
+ken KIRK_CRYPT = 5
+
+dae kirk_use(g, a) {
+    ken s = g["story"]
+    gin a["kind"] == 56 {
+        story_say(g, ["A sheet o music on the stand. It says:", "PLAY RED, GOLD, BLUE, GREEN (DINNAE TELL ANYBODY)"])
+        gie aye
+    }
+    gin a["kind"] == 52 {
+        gin s["air"] {
+            g["message"] = "It's runnin' fine."
+        } ither {
+            s["air"] = aye
+            a["state"] = "on"
+            story_say(g, ["The compressor wheezes intae life.", "Air hisses up intae the organ pipes."])
+            story_objective(g, "PLAY THE TUNE")
+        }
+        gie aye
+    }
+    gin a["kind"] == 51 {
+        gin s["open"] {
+            gie aye
+        }
+        gin nae s["air"] {
+            g["message"] = "Wheeze. Nae air."
+            gie aye
+        }
+        ken colour = ["RED", "BLUE", "GOLD", "GREEN"][(a["flags"] + 3) % 4]
+        gin a["flags"] == KIRK_TUNE[s["tune"]] {
+            s["tune"] = s["tune"] + 1
+            bogle_emit_sound(g, "organ_note")
+            g["message"] = "Paaarp! " + colour + "."
+            gin s["tune"] == len(KIRK_TUNE) {
+                s["open"] = aye
+                bogle_activate(g, KIRK_CRYPT)
+                story_say(g, ["The last note booms roond the kirk.", "Somewhere below, the crypt door creaks open."])
+                story_objective(g, "DOON INTAE THE CRYPT")
+            }
+        } ither {
+            s["tune"] = 0
+            bogle_emit_sound(g, "organ_sour")
+            g["message"] = "BLAAURGH! A sour chord. Start again."
+        }
+        gie aye
+    }
+    gie nae
+}
+
 dae story_init(g) {
+    gin story_id(g) == "kirkyard" {
+        story_objective(g, "FIND THE BRASS KEY")
+        g["story"]["air"] = nae
+        g["story"]["tune"] = 0
+        g["story"]["open"] = nae
+    }
     gin story_id(g) == "test" {
         story_objective(g, "ASK THE COMPUTER")
         g["story"]["countdown"] = 0
@@ -114,6 +173,9 @@ dae story_drain(g) {
 # Once per tic after the actors.
 dae story_tick(g) {
     story_drain(g)
+    gin story_id(g) == "kirkyard" an nae g["story"]["air"] an bit_an(g["keys"], 4) != 0 {
+        story_objective(g, "START THE COMPRESSOR")
+    }
     gin story_id(g) == "test" {
         gin g["story"]["countdown"] > 0 {
             g["story"]["countdown"] = g["story"]["countdown"] - 1
@@ -127,6 +189,9 @@ dae story_tick(g) {
 # E on a story thing. Gives aye when the script used the press; nae lets it
 # fall through to switches, doors and the exit.
 dae story_use(g, a) {
+    gin story_id(g) == "kirkyard" {
+        gie kirk_use(g, a)
+    }
     gin story_id(g) == "test" {
         gin a["kind"] == 50 an nae contains(g["story"], "asked") {
             g["story"]["asked"] = aye
@@ -164,7 +229,7 @@ dae story_use_target(g) {
     ken best = naething
     ken best_d2 = 4097
     fer a in g["actors"] {
-        gin a["active"] an bogle_is_story_thing(a["kind"]) {
+        gin a["active"] an bogle_is_usable(a["kind"]) {
             ken dx = (a["x"] - g["x"]) / 65536
             ken dy = (a["y"] - g["y"]) / 65536
             ken d2 = dx * dx + dy * dy

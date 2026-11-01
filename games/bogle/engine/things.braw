@@ -84,6 +84,12 @@ dae init_things(g) {
             gin kind == 36 {
                 g["stones"][i] = g["actors"][len(g["actors"]) - 1]
             }
+            gin kind == 40 {
+                ken wullie = g["actors"][len(g["actors"]) - 1]
+                wullie["state"] = "walk"
+                wullie["path"] = 0
+                wullie["seen"] = 0
+            }
         }
     }
 }

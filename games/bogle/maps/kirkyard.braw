@@ -1,0 +1,138 @@
+# The Kirkyard, campaign level 1. Run this builder from the repository root.
+# Night: sky ceilings outdoors, low light, brighter pools under the lamp posts.
+# Every sector stays above the map's ghostlight, so the ghosts can be hurt.
+#
+# Layout (x east, y north):
+#   kirkyard x 0..768, y 0..512 (start among the graves); the gravedigger's
+#     shed off the west wall holds the brass key;
+#   kirk door (north) -> nave x 128..768, y 544..864 with two rows of pillars,
+#     Old Wullie's round along the aisles; chancel at the east end with the
+#     organ console and four organ stops; vestry north of the chancel; the
+#     plant room (brass door, lock 3) with the compressor;
+#   crypt door at the nave's west end (link 5, sent only by the organ tune);
+#     stairs down to the tunnel mouth and the exit.
+fetch "games/bogle/maps/cells"
+
+ken kirk = new_map()
+kirk["name"] = "The Kirkyard"
+kirk["story"] = "kirkyard"
+kirk["intro"] = [
+    "Yer uncle was the famous Tartan Tunneller,",
+    "famed for his non-stop boring.",
+    "Efter too mony Christmas Pudding Whiskies",
+    "he let slip that he once dug a secret tunnel",
+    "frae the kirk crypt intae Castle Bogle.",
+    "The Laird has Princess Ailsa. Tonight ye find it.",
+]
+kirk["briefing"] = [
+    "The crypt door opens tae the organ, they say.",
+    "The organ needs air. The compressor is lockit",
+    "in the plant room. The gravedigger has a brass key.",
+    "Mind the graves. Dinnae let Auld Wullie see ye.",
+]
+kirk["require"] = [["keys", 4]]
+kirk["ghostlight"] = 80
+
+# Kirkyard: open sky, moonlit; lamp-post pools in three cells.
+ken lamp_cells = [[0, 0], [2, 3], [5, 2]]
+fer row in 0..4 {
+    fer column in 0..6 {
+        ken light = 104
+        gin contains(lamp_cells, [column, row]) {
+            light = 168
+        }
+        ken x = column * 128
+        ken y = row * 128
+        cell(x, y, x + 128, y + 128, 0, 256, 1, -1, light, 0)
+    }
+}
+# The gravedigger's shed, through a low doorway in the west wall.
+cell(-32, 256, 0, 320, 0, 112, 1, 4, 112, 4)
+cell(-224, 192, -32, 384, 0, 112, 9, 4, 120, 4)
+
+# The kirk door, then the nave: 64-unit cells round two rows of pillars.
+door_cell(384, 512, 448, 544, 0, 160)
+grid(128, 544, 64, 10, 5, [[2, 1], [5, 1], [7, 1], [2, 3], [5, 3], [7, 3]], 0, 192, 11, 4, 136, 21)
+# Chancel, one step up, a 64-unit cell per nave row (one portal per line).
+fer row in 0..5 {
+    ken y = 544 + row * 64
+    cell(768, y, 896, y + 64, 8, 192, 11, 4, 152, 21)
+}
+# Vestry north of the chancel; the brass door to the plant room.
+cell(768, 864, 896, 992, 8, 128, 4, 4, 128, 4)
+door_cell(896, 896, 928, 960, 8, 112, 3)
+cell(928, 864, 1056, 992, 8, 112, 2, 2, 120, 3)
+
+# The crypt door, stairs down, and the tunnel mouth with its marked panel.
+door_cell(96, 672, 128, 736, 0, 128, 0, 5)
+stair_run(-160, 672, 32, 64, 8, -64, 8, 128, 3, 112, 3)
+cell(-416, 640, -160, 768, -64, 64, 9, 2, 96, 3)
+shove(extra_points, [-416, 672])
+shove(extra_points, [-416, 736])
+
+ken owners = emit(kirk)
+
+# Things. The player starts among the graves, facing the kirk.
+map_thing(kirk, 1, 192, 64, 1024)
+# Graves raise ghosts (flags 1 marks a quiet one, dressing only).
+map_thing(kirk, 41, 96, 224)
+map_thing(kirk, 41, 448, 192)
+map_thing(kirk, 41, 672, 288)
+map_thing(kirk, 41, 224, 288, 0, 1)
+map_thing(kirk, 41, 320, 352, 0, 1)
+map_thing(kirk, 41, 544, 352, 0, 1)
+map_thing(kirk, 41, 608, 128, 0, 1)
+map_thing(kirk, 41, 96, 352, 0, 1)
+map_thing(kirk, 37, 64, 64)
+map_thing(kirk, 37, 320, 448)
+map_thing(kirk, 37, 704, 320)
+map_thing(kirk, 15, 320, 96)
+map_thing(kirk, 10, 704, 64)
+map_thing(kirk, 10, 64, 448)
+# The shed: the brass key at the back, a plate and shortbread.
+map_thing(kirk, 22, -192, 352)
+map_thing(kirk, 11, -192, 224)
+map_thing(kirk, 14, -96, 224)
+# Old Wullie and his round of the aisles.
+map_thing(kirk, 40, 160, 576)
+map_thing(kirk, 60, 160, 576, 0, 1)
+map_thing(kirk, 60, 736, 576, 0, 2)
+map_thing(kirk, 60, 736, 832, 0, 3)
+map_thing(kirk, 60, 160, 832, 0, 4)
+map_thing(kirk, 10, 320, 704)
+# Chancel: the console between the stops (flags 1 red, 2 blue, 3 gold, 4 green).
+map_thing(kirk, 56, 872, 704)
+map_thing(kirk, 51, 872, 600, 0, 2)
+map_thing(kirk, 51, 872, 648, 0, 1)
+map_thing(kirk, 51, 872, 760, 0, 4)
+map_thing(kirk, 51, 872, 808, 0, 3)
+# Vestry: the blunderbuss. Plant room: the compressor and powder.
+map_thing(kirk, 17, 832, 960)
+map_thing(kirk, 12, 800, 896)
+map_thing(kirk, 52, 1024, 928)
+map_thing(kirk, 16, 960, 960)
+# Crypt: a last oatcake, and the exit on the tunnel mouth's marked panel.
+map_thing(kirk, 10, -224, 704)
+map_thing(kirk, 21, -408, 704, 0, 2)
+
+ken parsed = validate(kirk)
+check_portals(parsed)
+# The kirk's south front faces the kirkyard; stained glass along the nave's
+# north wall and behind the organ.
+ken specials = [[[0, 512, 768, 512], 21], [[896, 544, 896, 864], 22]]
+ken pictures = [
+    [[256, 864], [192, 864], 22],
+    [[448, 864], [384, 864], 22],
+    [[640, 864], [576, 864], 22],
+    [[-416, 736], [-416, 672], 18],
+]
+kirk["walls"] = cell_walls(parsed, owners, specials, pictures)
+# The crypt door wears its own face on both approaches.
+fer row in kirk["walls"] {
+    ken next = parsed["portal"][parsed["wall_first"][row[0]] + row[1]]
+    gin next >= 0 an parsed["kind"][next] == 1 an parsed["tag"][next] == 5 * 256 {
+        row[2] = 23
+    }
+}
+write(kirk, "games/bogle/data/kirkyard.map")
+blether "kirkyard sectors " + tae_string(len(kirk["sectors"])) + " things " + tae_string(len(kirk["things"])) + " walls " + tae_string(len(kirk["walls"]))

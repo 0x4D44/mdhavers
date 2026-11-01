@@ -1,0 +1,98 @@
+fetch "games/bogle/engine/game"
+
+# The kirkyard organ: nothing but a wheeze before the compressor runs; the
+# right tune (red, gold, blue, green) opens the crypt door; a wrong stop
+# resets the tune; presses after the crypt opens change nothing.
+ken g = new_game(load_map("games/bogle/data/kirkyard.map"))
+
+dae org_at(g, x, y, angle) {
+    ken m = g["map"]
+    g["x"] = x * 65536
+    g["y"] = y * 65536
+    g["angle"] = angle
+    fer s in 0..len(m["floor_h"]) {
+        gin map_point(m, s, x, y) {
+            g["sector"] = s
+        }
+    }
+    g["z"] = m["floor_h"][g["sector"]] * 65536
+    g["view_z"] = g["z"] + 2686976
+}
+
+dae org_press(g) {
+    tic(g, {"keys": 128, "dx": 0})
+    tic(g, {"keys": 0, "dx": 0})
+}
+
+# Read a talk box through to its end.
+dae org_read(g) {
+    whiles g["talk"] != naething {
+        org_press(g)
+    }
+}
+
+dae org_crypt(g) {
+    fer d in g["doors"] {
+        gin g["map"]["tag"][d["sector"]] == 5 * 256 {
+            gie d["state"]
+        }
+    }
+    gie "none"
+}
+
+# The stops along the chancel's east wall, by colour.
+ken stops = {"red": 648, "blue": 600, "gold": 808, "green": 760}
+dae org_stop(g, colour) {
+    org_at(g, 848, stops[colour], 0)
+    org_press(g)
+}
+
+mak_siccar g["objective"] == "FIND THE BRASS KEY"
+fer colour in ["red", "gold", "blue", "green"] {
+    org_stop(g, colour)
+    mak_siccar g["message"] == "Wheeze. Nae air." an g["story"]["tune"] == 0
+}
+mak_siccar nae g["story"]["open"] an org_crypt(g) == "closed"
+blether "ok nae air, nae tune: the stops only wheeze afore the compressor"
+
+org_at(g, 848, 704, 0)
+org_press(g)
+mak_siccar g["talk"] != naething an g["talk"]["lines"][1] == "PLAY RED, GOLD, BLUE, GREEN (DINNAE TELL ANYBODY)"
+org_read(g)
+g["keys"] = 4
+org_at(g, 984, 928, 0)
+tic(g, {"keys": 0, "dx": 0})
+mak_siccar g["objective"] == "START THE COMPRESSOR"
+org_press(g)
+mak_siccar g["story"]["air"] an g["talk"] != naething an g["objective"] == "PLAY THE TUNE"
+org_read(g)
+org_press(g)
+mak_siccar g["message"] == "It's runnin' fine." an g["talk"] == naething
+blether "ok the sheet music shows the tune; the compressor starts the air once"
+
+org_stop(g, "red")
+mak_siccar g["story"]["tune"] == 1 an g["message"] == "Paaarp! RED."
+org_stop(g, "blue")
+mak_siccar g["story"]["tune"] == 0 an g["message"] == "BLAAURGH! A sour chord. Start again."
+org_stop(g, "red")
+org_stop(g, "gold")
+org_stop(g, "gold")
+mak_siccar g["story"]["tune"] == 0 an nae g["story"]["open"] an org_crypt(g) == "closed"
+blether "ok a wrang stop plays a sour chord an resets the tune"
+
+fer colour in ["red", "gold", "blue", "green"] {
+    org_stop(g, colour)
+}
+mak_siccar g["story"]["open"] an g["talk"] != naething an g["talk"]["lines"][1] == "Somewhere below, the crypt door creaks open."
+org_read(g)
+mak_siccar org_crypt(g) == "opening" or org_crypt(g) == "open"
+mak_siccar g["objective"] == "DOON INTAE THE CRYPT"
+blether "ok red, gold, blue, green opens the crypt door"
+
+g["message"] = ""
+ken before = tae_string(g["story"])
+fer colour in ["blue", "red", "green", "gold", "red"] {
+    org_stop(g, colour)
+    mak_siccar tae_string(g["story"]) == before an g["talk"] == naething an g["message"] == ""
+}
+blether "ok presses efter the crypt opens change naething"

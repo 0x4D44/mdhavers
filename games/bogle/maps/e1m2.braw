@@ -12,166 +12,8 @@
 #     spirit safe and the exit chamber; the high walkway runs back over the
 #     hall balcony, a drop shortcut into the hub.
 #
-# Rooms are axis-aligned rectangles collected first, then emitted with every
-# other rectangle corner that lies on an edge inserted, so neighbouring cells of
-# different sizes always share exact portal edges (no T junctions).
-fetch "games/bogle/tools/mapbuild"
-
-ken specs = []
-ken extra_points = []
-
-dae cell(x0, y0, x1, y1, floor_h, ceil_h, floor_tex, ceil_tex, light, wall_tex, kind = 0) {
-    shove(specs, {"r": [x0, y0, x1, y1], "f": floor_h, "c": ceil_h, "ft": floor_tex, "ct": ceil_tex, "l": light, "wt": wall_tex, "k": kind, "door": nae, "tag": 0, "link": 0, "stairs": naething})
-}
-
-dae door_cell(x0, y0, x1, y1, floor_h, ceil_h, tag = 0, link = 0) {
-    shove(specs, {"r": [x0, y0, x1, y1], "f": floor_h, "c": ceil_h, "ft": 1, "ct": 2, "l": 160, "wt": 0, "k": 1, "door": aye, "tag": tag, "link": link, "stairs": naething})
-}
-
-# A hidden door faced with wall_tex, the texture of the walls around it.
-# link 0 is a secret found with E; link > 0 is a closet opened by a trigger.
-dae secret_cell(x0, y0, x1, y1, floor_h, ceil_h, wall_tex, link = 0) {
-    shove(specs, {"r": [x0, y0, x1, y1], "f": floor_h, "c": ceil_h, "ft": 1, "ct": 2, "l": 160, "wt": wall_tex, "k": 6, "door": aye, "tag": 0, "link": link, "stairs": naething})
-}
-
-# A lift resting at top_h that lowers to its lowest neighbour when used.
-dae lift_cell(x0, y0, x1, y1, top_h, ceil_h, light, wall_tex, link = 0) {
-    shove(specs, {"r": [x0, y0, x1, y1], "f": top_h, "c": ceil_h, "ft": 4, "ct": 2, "l": light, "wt": wall_tex, "k": 5, "door": nae, "tag": 0, "link": link, "stairs": naething})
-}
-
-# Mark an already collected cell as a walk-over trigger for `link`.
-dae trigger_cell(r, link) {
-    fer spec in specs {
-        gin spec["r"] == r {
-            spec["link"] = link
-        }
-    }
-}
-
-# A staircase rising east, emitted through the shared stairs helper.
-dae stair_run(x, y, width, depth, count, floor_h, rise, ceil_h, floor_tex, light, wall_tex) {
-    shove(specs, {"r": [x, y, x + width * count, y + depth], "f": floor_h, "c": ceil_h, "ft": floor_tex, "ct": 2, "l": light, "wt": wall_tex, "k": 0, "door": nae, "tag": 0, "link": 0, "stairs": [x, y, width, depth, count, floor_h, rise, ceil_h]})
-}
-
-# A grid of cells; holes lists [column, row] cells left solid (pillars, casks, stills).
-dae grid(x0, y0, size, columns, rows, holes, floor_h, ceil_h, floor_tex, ceil_tex, light, wall_tex) {
-    fer row in 0..rows {
-        fer column in 0..columns {
-            gin nae contains(holes, [column, row]) {
-                ken x = x0 + column * size
-                ken y = y0 + row * size
-                cell(x, y, x + size, y + size, floor_h, ceil_h, floor_tex, ceil_tex, light, wall_tex)
-            }
-        }
-    }
-}
-
-dae spec_corners(spec) {
-    ken r = spec["r"]
-    ken points = [[r[0], r[1]], [r[2], r[1]], [r[2], r[3]], [r[0], r[3]]]
-    gin spec["stairs"] != naething {
-        ken s = spec["stairs"]
-        fer i in 1..s[4] {
-            shove(points, [s[0] + i * s[2], s[1]])
-            shove(points, [s[0] + i * s[2], s[1] + s[3]])
-        }
-    }
-    gie points
-}
-
-# Corners of other rectangles strictly inside one edge, ordered along it.
-dae edge_points(all_points, ax, ay, bx, by) {
-    ken values = []
-    fer p in all_points {
-        gin ay == by an p[1] == ay an p[0] > min(ax, bx) an p[0] < max(ax, bx) an nae contains(values, p[0]) {
-            shove(values, p[0])
-        }
-        gin ax == bx an p[0] == ax an p[1] > min(ay, by) an p[1] < max(ay, by) an nae contains(values, p[1]) {
-            shove(values, p[1])
-        }
-    }
-    values = sort(values)
-    ken result = []
-    ken descending = bx < ax or by < ay
-    fer i in 0..len(values) {
-        ken v = values[i]
-        gin descending {
-            v = values[len(values) - 1 - i]
-        }
-        gin ay == by {
-            shove(result, [v, ay])
-        } ither {
-            shove(result, [ax, v])
-        }
-    }
-    gie result
-}
-
-dae rect_polygon(all_points, r) {
-    ken corners = [[r[0], r[1]], [r[2], r[1]], [r[2], r[3]], [r[0], r[3]]]
-    ken polygon = []
-    fer i in 0..4 {
-        ken a = corners[i]
-        ken b = corners[(i + 1) % 4]
-        shove(polygon, a)
-        fer p in edge_points(all_points, a[0], a[1], b[0], b[1]) {
-            shove(polygon, p)
-        }
-    }
-    gie polygon
-}
-
-dae overlap(a, b) {
-    gie a[0] < b[2] an b[0] < a[2] an a[1] < b[3] an b[1] < a[3]
-}
-
-# Returns the builder plus, per sector, its spec (for wall textures).
-dae emit(b) {
-    fer i in 0..len(specs) {
-        fer j in i + 1..len(specs) {
-            map_need(nae overlap(specs[i]["r"], specs[j]["r"]), "overlapping rooms " + tae_string(specs[i]["r"]) + " " + tae_string(specs[j]["r"]))
-        }
-    }
-    ken all_points = []
-    fer p in extra_points {
-        shove(all_points, p)
-    }
-    fer spec in specs {
-        fer p in spec_corners(spec) {
-            shove(all_points, p)
-        }
-    }
-    ken owners = []
-    fer spec in specs {
-        gin spec["stairs"] != naething {
-            ken s = spec["stairs"]
-            ken steps = stairs(b, s[0], s[1], s[2], s[3], s[4], s[5], s[6], s[7])
-            fer index in 0..len(steps) {
-                ken row = b["sectors"][steps[index]]
-                row[2] = spec["ft"]
-                row[4] = spec["l"]
-                b["sectors"][steps[index]] = row
-                ken x = s[0] + index * s[2]
-                ken polygon = rect_polygon(all_points, [x, s[1], x + s[2], s[1] + s[3]])
-                map_need(len(polygon) == 4, "stair step edge has a T junction at " + tae_string(x))
-                shove(owners, spec)
-            }
-        } ither gin spec["k"] == 6 {
-            secret_door(b, rect_polygon(all_points, spec["r"]), spec["f"], spec["c"], spec["link"])
-            shove(owners, spec)
-        } ither gin spec["k"] == 5 {
-            lift(b, rect_polygon(all_points, spec["r"]), spec["f"], spec["c"], spec["link"], spec["ft"], spec["l"])
-            shove(owners, spec)
-        } ither gin spec["door"] {
-            door(b, rect_polygon(all_points, spec["r"]), spec["f"], spec["c"], spec["tag"], spec["link"])
-            shove(owners, spec)
-        } ither {
-            room(b, rect_polygon(all_points, spec["r"]), spec["f"], spec["c"], spec["ft"], spec["ct"], spec["l"], spec["k"], spec["link"] * 256)
-            shove(owners, spec)
-        }
-    }
-    gie owners
-}
+# Rooms are axis-aligned rectangles: see maps/cells.braw.
+fetch "games/bogle/maps/cells"
 
 ken distillery = new_map()
 distillery["name"] = "The Distillery"
@@ -407,28 +249,7 @@ map_thing(distillery, 21, 856, 992, 0, 2)
 # Wall textures per room; walls facing a door keep upper 0 so doors get faces.
 # Tun faces are oak; still faces are fryer-oil copper; three painted panels.
 ken parsed = validate(distillery)
-# The engine tracks portal crossings against each wall's whole line, so one
-# sector must never have two portal walls on the same line.
-fer s in 0..len(parsed["floor_h"]) {
-    ken first = parsed["wall_first"][s]
-    fer i in first..first + parsed["wall_count"][s] {
-        fer j in i + 1..first + parsed["wall_count"][s] {
-            gin parsed["portal"][i] >= 0 an parsed["portal"][j] >= 0 {
-                ken a = parsed["wall_v1"][i]
-                ken b = parsed["wall_v2"][i]
-                ken c1 = map_cross(parsed["vx"][a], parsed["vy"][a], parsed["vx"][b], parsed["vy"][b], parsed["vx"][parsed["wall_v1"][j]], parsed["vy"][parsed["wall_v1"][j]])
-                ken c2 = map_cross(parsed["vx"][a], parsed["vy"][a], parsed["vx"][b], parsed["vy"][b], parsed["vx"][parsed["wall_v2"][j]], parsed["vy"][parsed["wall_v2"][j]])
-                map_need(c1 != 0 or c2 != 0, "collinear portals in sector " + tae_string(s) + " at " + tae_string(parsed["vx"][a]) + "," + tae_string(parsed["vy"][a]))
-            }
-        }
-    }
-}
-dae on_rect_boundary(r, x, y) {
-    gin x < r[0] or x > r[2] or y < r[1] or y > r[3] {
-        gie nae
-    }
-    gie x == r[0] or x == r[2] or y == r[1] or y == r[3]
-}
+check_portals(parsed)
 ken specials = [
     [[256, 256, 384, 384], 4],
     [[-160, 928, -32, 1056], 12],
@@ -439,37 +260,8 @@ ken pictures = [
     [[-288, 1024], [-288, 960], 17],
     [[864, 960], [864, 1024], 18],
 ]
-ken walls = []
-fer s in 0..len(owners) {
-    ken first = parsed["wall_first"][s]
-    fer i in 0..parsed["wall_count"][s] {
-        ken w = first + i
-        ken next = parsed["portal"][w]
-        ken a = [parsed["vx"][parsed["wall_v1"][w]], parsed["vy"][parsed["wall_v1"][w]]]
-        ken z = [parsed["vx"][parsed["wall_v2"][w]], parsed["vy"][parsed["wall_v2"][w]]]
-        ken texture = owners[s]["wt"]
-        gin next < 0 {
-            fer special in specials {
-                gin on_rect_boundary(special[0], a[0], a[1]) an on_rect_boundary(special[0], z[0], z[1]) {
-                    texture = special[1]
-                }
-            }
-            fer picture in pictures {
-                gin a == picture[0] an z == picture[1] {
-                    texture = picture[2]
-                }
-            }
-        }
-        gin texture != 0 an parsed["kind"][s] != 1 {
-            gin next >= 0 an parsed["kind"][next] == 1 {
-                shove(walls, [s, i, 0, texture, texture, 0, 0, 0])
-            } ither {
-                shove(walls, [s, i, texture, texture, texture, 0, 0, 0])
-            }
-        }
-    }
-}
-distillery["walls"] = walls
+distillery["walls"] = cell_walls(parsed, owners, specials, pictures)
+ken walls = distillery["walls"]
 # The dock switch: the 64-unit panel of the dock's south wall.
 fer s in 0..len(owners) {
     ken first = parsed["wall_first"][s]

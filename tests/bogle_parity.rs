@@ -369,3 +369,9 @@ fn e1m1_playthrough_matches_native_rc_modes_and_interpreter_prefix() {
 fn e1m2_playthrough_matches_native_rc_modes_and_interpreter_prefix() {
     check_playthrough("e1m2", 38);
 }
+
+// The kirkyard is the first story level: graves, Old Wullie and the organ.
+#[test]
+fn kirkyard_playthrough_matches_native_rc_modes_and_interpreter_prefix() {
+    check_playthrough("kirkyard", 11);
+}

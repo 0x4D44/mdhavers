@@ -1,0 +1,55 @@
+fetch "games/bogle/engine/game"
+
+# A grave raises a tartan ghost every 280 tics the player spends within 512,
+# while fewer than 3 of its own ghosts walk; a quiet grave (flags 1) never.
+ken room = "BOGMAP 1\nv 0 0\nv 1024 0\nv 1024 512\nv 0 512\ns 0 128 1 2 192 0 0 0 1 2 3\nt 1 300 100 0 0\nt 41 100 100 0 0\nt 41 900 100 0 1\n"
+
+dae grave_ghosts(g, index) {
+    ken count = 0
+    fer a in g["actors"] {
+        gin a["active"] an a["kind"] == 4 an a["grave"] == index {
+            count = count + 1
+        }
+    }
+    gie count
+}
+
+dae grave_run(g, count) {
+    fer i in 0..count {
+        story_actors_tick(g)
+    }
+}
+
+ken g = new_game(map_parse(room))
+ken grave = g["actors"][0]["thing"]
+grave_run(g, 279)
+mak_siccar grave_ghosts(g, grave) == 0
+grave_run(g, 1)
+mak_siccar grave_ghosts(g, grave) == 1 an len(g["actors"]) == 3
+ken ghost = g["actors"][2]
+mak_siccar ghost["health"] == 60 an ghost["state"] == "chase" an ghost["x"] == 100 * 65536 an ghost["y"] == 116 * 65536
+grave_run(g, 560)
+mak_siccar grave_ghosts(g, grave) == 3
+blether "ok a grave raises a ghost every 280 tics"
+
+grave_run(g, 840)
+mak_siccar grave_ghosts(g, grave) == 3 an len(g["actors"]) == 5
+damage_actor(g, ghost, 60)
+mak_siccar grave_ghosts(g, grave) == 2
+grave_run(g, 279)
+mak_siccar grave_ghosts(g, grave) == 2
+grave_run(g, 1)
+mak_siccar grave_ghosts(g, grave) == 3
+blether "ok nae mair than 3 o its ain ghosts; a laid ghost makes room"
+
+g = new_game(map_parse(room))
+g["x"] = 700 * 65536
+g["y"] = 400 * 65536
+grave_run(g, 1400)
+mak_siccar len(g["actors"]) == 2
+g["x"] = 600 * 65536
+g["y"] = 100 * 65536
+grave_run(g, 280)
+mak_siccar grave_ghosts(g, 1) == 1 an grave_ghosts(g, 2) == 0 an len(g["actors"]) == 3
+mak_siccar nae damage_actor(g, g["actors"][0], 500) an g["actors"][0]["active"]
+blether "ok graves sleep wi the player beyond 512, quiet graves never wake, nane can be hurt"

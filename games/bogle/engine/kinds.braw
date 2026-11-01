@@ -26,3 +26,9 @@ dae bogle_is_target(kind) {
 dae bogle_is_walker(kind) {
     gie bogle_is_target(kind) an kind != 4 an kind != 5
 }
+
+# Story things that take E: not Wullie or the graves, so walking past them
+# never steals a press meant for an organ stop.
+dae bogle_is_usable(kind) {
+    gie bogle_is_story_thing(kind) an kind != 40 an kind != 41
+}

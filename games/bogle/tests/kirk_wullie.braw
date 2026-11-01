@@ -1,0 +1,61 @@
+fetch "games/bogle/engine/game"
+
+# Old Wullie sees the player only within 96 units, inside his 60-degree cone
+# and after 35 tics of unbroken sight; then 1 health every 7 tics, only while
+# he sees. Weapons never hurt him. He stands still here (no path points),
+# facing east from (300, 256).
+ken room = "BOGMAP 1\nv 0 0\nv 1024 0\nv 1024 512\nv 0 512\ns 0 128 1 2 192 0 0 0 1 2 3\nt 1 64 64 0 0\nt 40 300 256 0 0\n"
+
+dae wul_game(x, y) {
+    ken g = new_game(map_parse(room))
+    wul_at(g, x, y)
+    gie g
+}
+
+dae wul_at(g, x, y) {
+    g["x"] = x * 65536
+    g["y"] = y * 65536
+}
+
+dae wul_tics(g, count) {
+    fer i in 0..count {
+        tic(g, {"keys": 0, "dx": 0})
+    }
+}
+
+ken g = wul_game(364, 256)
+wul_tics(g, 35)
+mak_siccar g["health"] == 100 an g["actors"][0]["seen"] == 35
+wul_tics(g, 1)
+mak_siccar g["health"] == 99 an g["message"] == "Oi! Wha's that?"
+wul_tics(g, 6)
+mak_siccar g["health"] == 99
+wul_tics(g, 1)
+mak_siccar g["health"] == 98
+blether "ok Wullie sees ye in front an close, efter the grace, 1 every 7 tics"
+
+fer spot in [[236, 256], [410, 256], [345, 301], [345, 211]] {
+    g = wul_game(spot[0], spot[1])
+    wul_tics(g, 120)
+    mak_siccar g["health"] == 100 an g["actors"][0]["seen"] == 0
+}
+blether "ok Wullie disnae see ye behind, beyond 96 or ootside his cone"
+
+g = wul_game(364, 256)
+wul_tics(g, 40)
+mak_siccar g["health"] == 99
+wul_at(g, 236, 256)
+wul_tics(g, 20)
+mak_siccar g["health"] == 99 an g["actors"][0]["seen"] == 0
+wul_at(g, 364, 256)
+wul_tics(g, 35)
+mak_siccar g["health"] == 99
+wul_tics(g, 1)
+mak_siccar g["health"] == 98
+blether "ok the drain stops when sight breaks, an the grace starts again"
+
+mak_siccar nae damage_actor(g, g["actors"][0], 500)
+mak_siccar g["actors"][0]["health"] == 1 an g["actors"][0]["active"] an g["message"] == "Ye cannae shoot Wullie!"
+splash_damage(g, 300 * 65536, 256 * 65536, 0, 0, 96, 200, naething)
+mak_siccar g["actors"][0]["health"] == 1 an g["actors"][0]["active"]
+blether "ok Wullie is never hurt"

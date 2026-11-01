@@ -231,6 +231,10 @@ dae bogle_sprites(g, fb, w, h, visible, drawsegs, cosine, sine) {
             world_height = 2097152
             world_half = 1048576
         }
+        gin dynamic an bogle_is_story_thing(actor["kind"]) {
+            world_height = bogle_story_height(actor["kind"]) * 65536
+            world_half = world_height / 3
+        }
         gin dynamic an (actor["kind"] == 30 or actor["kind"] == 34 or actor["kind"] == 35) {
             world_height = 3145728
             world_half = 1048576
@@ -268,7 +272,7 @@ dae bogle_sprites(g, fb, w, h, visible, drawsegs, cosine, sine) {
                 mirror = view[1]
             }
             texture = art[name]
-            fullbright = kind == 4 or kind == 32 or (bogle_is_pickup(kind) an bogle_pickup_glint(g["tics"]))
+            fullbright = kind == 4 or kind == 32 or kind == 37 or kind == 40 or (bogle_is_pickup(kind) an bogle_pickup_glint(g["tics"]))
         } ither {
             texture = g["sprite_tex"][kind - 2]
             fullbright = g["sprite_fullbright"][kind - 2]
@@ -610,6 +614,8 @@ ken bogle_font = {
     "'": "010010000000000",
     "?": "111001010000010",
     ">": "100010001010100",
+    "(": "010100100100010",
+    ")": "010001001001010",
 }
 
 dae bogle_text(fb, w, h, left, top, text, ink, scale) {
@@ -883,6 +889,23 @@ dae bogle_actor_height(kind) {
     }
     gin kind == 4 {
         gie 60
+    }
+    gie 48
+}
+
+# Story things stand on the floor; their sprites are 2:3 like the actors.
+dae bogle_story_height(kind) {
+    gin kind == 40 {
+        gie 56
+    }
+    gin kind == 41 {
+        gie 40
+    }
+    gin kind == 51 {
+        gie 20
+    }
+    gin kind == 56 {
+        gie 72
     }
     gie 48
 }

@@ -89,6 +89,15 @@ dae bogle_audio_event(mixer, event) {
     gin event == "oof" {
         profile = [3, 4500, 180, 55, 8000, 45, 50]
     }
+    gin event == "whistle" {
+        profile = [3, 3200, 1500, 1900, 3000, 1, 0]
+    }
+    gin event == "organ_note" {
+        profile = [5, 12000, 262, 262, 7000, 1, 0]
+    }
+    gin event == "organ_sour" {
+        profile = [4, 12000, 140, 150, 7000, 3, 160]
+    }
     gin event == "menu" {
         profile = [3, 1900, 800, 1050, 4000, 1, 0]
     }
