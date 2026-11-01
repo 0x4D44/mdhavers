@@ -43,27 +43,43 @@ dae bogle_front_screen(ui, screen) {
     ui["pending_dx"] = 0
 }
 
-# Episode order. Winning a level in this list enters the next one; winning
-# the last (or a map from outside the list) shows the completion screen.
-dae bogle_levels() {
-    gie ["games/bogle/data/e1m1.map", "games/bogle/data/e1m2.map"]
+# Episode order, in the first map's own directory so a level list matches
+# however the map was named (relative or absolute). Winning a level in this
+# list enters the next one; winning the last (or a map from outside the list)
+# shows the completion screen.
+dae bogle_map_dir(path) {
+    ken parts = split(path, "/")
+    ken dir = ""
+    fer i in 0..len(parts) - 1 {
+        dir = dir + parts[i] + "/"
+    }
+    gie dir
 }
 
-# The story campaign. Starting on one of its maps plays it; the classic
-# episode stays for e1m1 and the regression maps.
-dae bogle_campaign_levels() {
+dae bogle_level_paths(dir, names) {
     ken levels = []
-    fer name in ["kirkyard", "forest", "distillery", "tower", "lab"] {
-        shove(levels, "games/bogle/data/" + name + ".map")
+    fer name in names {
+        shove(levels, dir + name + ".map")
     }
     gie levels
 }
 
+dae bogle_levels(dir = "games/bogle/data/") {
+    gie bogle_level_paths(dir, ["e1m1", "e1m2"])
+}
+
+# The story campaign. Starting on one of its maps plays it; the classic
+# episode stays for e1m1 and the regression maps.
+dae bogle_campaign_levels(dir = "games/bogle/data/") {
+    gie bogle_level_paths(dir, ["kirkyard", "forest", "distillery", "tower", "lab"])
+}
+
 dae bogle_levels_for(first_map) {
-    gin contains(bogle_campaign_levels(), first_map) {
-        gie bogle_campaign_levels()
+    ken dir = bogle_map_dir(first_map)
+    gin contains(bogle_campaign_levels(dir), first_map) {
+        gie bogle_campaign_levels(dir)
     }
-    gie bogle_levels()
+    gie bogle_levels(dir)
 }
 
 # Ending tiers by the campaign clock when Ailsa is freed: 0 fast, 1 slow,

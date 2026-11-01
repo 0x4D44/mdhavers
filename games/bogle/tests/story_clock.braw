@@ -16,6 +16,10 @@ ken ui = bogle_front_new("games/bogle/data/storytest.map")
 mak_siccar ui["levels"] == bogle_levels()
 mak_siccar bogle_front_new("games/bogle/data/kirkyard.map")["levels"] == bogle_campaign_levels()
 mak_siccar bogle_campaign_levels()[0] == "games/bogle/data/kirkyard.map" an len(bogle_campaign_levels()) == 5
+# A map named by an absolute path keeps its campaign: the list is built
+# in the first map's own directory.
+ken far = bogle_front_new("/somewhere/games/bogle/data/kirkyard.map")
+mak_siccar far["levels"][1] == "/somewhere/games/bogle/data/forest.map" an bogle_front_next_level(far) == "/somewhere/games/bogle/data/forest.map"
 bogle_front_new_game(ui)
 mak_siccar ui["screen"] == "opening"
 clock_press(ui, 16)
