@@ -4259,3 +4259,229 @@ CRITICAL SEAMLESS REPEAT: the top and bottom cut through matching parts of the S
 ~~~
 
 Self-review: Packed earth, roots, stones, pick marks and timber props read at 64 px and match the existing painted textures; opaque RGB, no magenta or lettering; the 3×3 source repeat has unobtrusive joins (mean RGB edge differences 5.51 left-right, 6.81 top-bottom); final baked tile review remains with the lead.
+
+
+## tex_dyke.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+seamless tileable texture, edges wrap left-right and top-bottom, orthographic straight-on view, no perspective.
+
+Seamless tileable wall texture: an old Scottish kirkyard dry-stone dyke at night: rough rounded grey field stones stacked without mortar, moss and ivy patches, dark gaps between stones.
+
+Square 1:1 edge-to-edge repeating game wall texture, to be saved at 256x256. Match Bogle Castle's existing chunky granite texture: thick charcoal contours and broad hand-painted cool granite-grey facets, sparse moss-green and dark loch-green ivy accents. Three to four irregular interlocking courses of large rounded field stones, laid dry with narrow deep charcoal gaps, absolutely no mortar. Subdued night-time stone colours with uniform flat frontal painted brightness. Large simple stones and ivy leaves readable at 64 pixels, restrained detail. This is a cropped swatch through an infinite repeating stone surface: every stone, gap, moss patch and ivy stem crossing one edge must resume with the same shape, colour and position on its opposite edge, including the top and bottom. No top coping, skyline, ground, landscape, gravestones, complete wall silhouette, perimeter line, edge darkening, vignette, gradient, cast shadow, magenta, text, lettering, numbers, symbols, signature, watermark, border or frame.
+~~~
+
+Self-review: Rounded dry-stacked grey stones, dark unfilled gaps, moss and ivy read at 64 px and match the existing painted granite; no text or magenta; opposite-edge mean RGB differences are 8.60 left-right and 11.21 top-bottom; final baked tiling review remains with the lead.
+
+
+## spr_rat_idle.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure/object, full body, facing the viewer, centred, feet/base at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+
+A fat, scruffy cellar rat with beady red eyes, big yellow buck teeth, a scrap of tartan tied round its neck, sitting up on its haunches, comic. Single figure, full body, facing the viewer, small, feet at the bottom edge.
+
+Square 1:1 production monster sprite for Bogle Castle's established 256x256 source-art set. Character identity for this rat's animation: a very fat squat pear-shaped scruffy peat-brown and granite-grey rat with a lighter warm grey belly, large rounded bare dusty-pink ears, a blunt pink nose, two small beady ruby-red eyes under expressive dark brows, two large rectangular pale-yellow buck teeth, short grey whiskers, short pink paws and a long bare dusty-pink tail curling out on the viewer's right. One small red tartan neckerchief with broad dark loch-blue crossing bands and a few muted-gold checks, knot and short ragged ends to the viewer's left. Sit upright on broad haunches, forepaws held close to the belly, both complete hind feet planted at the bottom edge. Comic grumpy cheeky expression, affectionate and silly, harmless rather than realistic vermin. Match the existing haggis monster's chunky charcoal outline, broad angular hand-painted fur and cloth facets, large simple features readable at 64 pixels, restrained fur tufts, no photographic fine hair. Show the whole rat, ears, whiskers, paws and curled tail fully inside the square with small clear top and side magenta margins. Lowest complete uncut foot sole touches the bottommost canvas row, zero empty rows underneath. Flat opaque pure magenta #FF00FF matte in every outside region and gap: all clear background pixels within 24 of RGB(255,0,255) per channel. Confine brushwork and shading to the outlined rat. No ground plane, contact shadow, floor, scenery, props, other creatures, diffuse glow, gradient, transparency, checkerboard, text, lettering, numbers, signature, watermark or border.
+~~~
+
+Self-review: Fat scruffy rat, beady red eyes, yellow buck teeth, tartan scarf and curled tail read at 64 px; complete figure unclipped with a 1 px bottom margin; visually flat near-magenta rather than exact #FF00FF, matte core R244–253 G0–17 B242–253 with zero pixels beyond tolerance 24 per channel (two-pixel silhouette boundary excluded); no lettering; sprite, not a tile.
+
+
+## spr_rat_walk1.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure/object, full body, facing the viewer, centred, feet/base at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+
+The same fat tartan-scarfed rat scurrying towards the viewer on all fours, left paw forward, teeth bared. Single figure, facing the viewer, small, feet at the bottom edge.
+
+Reference image 1 is spr_rat_idle.png, the canonical 256x256 rat. Preserve this exact character: very fat squat pear-shaped scruffy peat-brown and granite-grey fur, lighter warm grey belly, large rounded dusty-pink bare ears, blunt pink nose, two small beady ruby-red eyes under dark expressive brows, two big rectangular pale-yellow buck teeth, short grey whiskers, four short pink paws, long bare dusty-pink tail, and the small red tartan neckerchief with broad dark loch-blue bands and muted-gold checks, knot and short ends on the viewer's left. Preserve the chunky charcoal outlines, broad angular hand-painted fur facets, proportions and colours. Change the pose to a low fast scurry DIRECTLY TOWARD the viewer on ALL FOUR PAWS: belly lowered, head thrust forward, anatomical LEFT forepaw extended forward and down on the viewer's RIGHT, anatomical right forepaw bent and held back on the viewer's LEFT. The hind paws support the low plump body. Show exactly four limbs, no upright sitting pose. Bare the same two large yellow buck teeth in a cheeky comic snarl. Curl the tail upward on the viewer's right, without hiding or changing the scarf.
+
+Square 1:1 production animation sprite for the established 256x256 source-art set; simple readable silhouette at 64 pixels. Show the whole rat, all ears, whiskers, toes and tail inside the square with small clear magenta margins at top and sides. The complete lowest extended forepaw meets the bottommost canvas row, no empty rows beneath and no clipped toes or outlines. Flat opaque pure magenta #FF00FF matte in every outside region and limb gap; all clear background pixels within 24 of RGB(255,0,255) per channel. Paint texture only inside the rat. No scenery, floor, ground plane, contact shadow, speed lines, dust cloud, other figures, props, diffuse glow, gradient, transparency, checkerboard, text, lettering, numbers, signature, watermark or border. Affectionate comic menace, never gory.
+~~~
+
+Self-review: Same fat tartan-scarfed rat scurries on all fours with anatomical left forepaw forward (viewer right), clear at 64 px; complete figure unclipped with a 2 px bottom margin; visually flat near-magenta rather than exact #FF00FF, matte core R243–253 G1–19 B243–252 with zero pixels beyond tolerance 24 per channel (two-pixel silhouette boundary excluded); no lettering; sprite, not a tile.
+
+
+## spr_rat_walk2.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure/object, full body, facing the viewer, centred, feet/base at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+
+The same rat scurrying towards the viewer on all fours, right paw forward, tail up. Single figure, facing the viewer, small, feet at the bottom edge.
+
+Reference image 1 is spr_rat_idle.png, the canonical rat identity. Reference image 2 is spr_rat_walk1.png, the preceding scurry frame. Preserve this exact very fat scruffy peat-brown and granite-grey rat with a lighter warm grey belly, large dusty-pink rounded bare ears, blunt pink nose, two small beady ruby-red eyes and dark expressive brows, two big rectangular pale-yellow buck teeth, short grey whiskers, four short pink paws, long bare dusty-pink tail and small red tartan neckerchief with dark loch-blue bands and muted-gold checks. Preserve the knot and short scarf ends on the VIEWER'S LEFT and the tail emerging on the VIEWER'S RIGHT; do not mirror the entire rat. Preserve the same chunky charcoal outlines, broad angular hand-painted fur facets, colours, plump proportions, forward-facing head and low all-fours body level from image 2.
+
+Advance to the OPPOSITE step of this low front-facing scurry: the anatomical RIGHT forepaw is now extended far forward and down on the VIEWER'S LEFT; the anatomical left forepaw on the VIEWER'S RIGHT is bent, lifted and held back. Swap the supporting hind-leg step naturally. Exactly four limbs; not sitting up. Tail clearly raised high on the viewer's right, with the same curled tip, wholly inside the square. Same cheeky comic bared yellow buck teeth and forward intent. Make the paw change unmistakable beside image 2 while keeping head and body scale consistent.
+
+Square 1:1 production animation sprite for the established 256x256 source-art set, simple silhouette readable at 64 pixels. The whole rat, all whiskers, ears, toes and tail fit inside the square, clear magenta top and side margins. Complete lowest forward paw touches the bottommost canvas row, zero empty rows beneath, no cropped toes or outlines. Flat opaque pure magenta #FF00FF matte in every outside region and limb gap; all clear background pixels within 24 of RGB(255,0,255) per channel. Paint texture only inside the rat. No ground plane, floor, scenery, contact shadow, speed lines, dust, props, other creatures, diffuse glow, gradient, transparency, checkerboard, text, lettering, numbers, signature, watermark or border. Affectionate and silly, never gory.
+~~~
+
+Self-review: Same rat scurries on all fours with anatomical right forepaw forward (viewer left) and raised tail, clearly alternating with walk1 at 64 px; complete silhouette unclipped and lowest paw meets the bottom edge; visually flat near-magenta rather than exact #FF00FF, matte core R243–253 G1–22 B241–252 with zero pixels beyond tolerance 24 per channel (two-pixel silhouette boundary excluded); no lettering; sprite, not a tile.
+
+
+## spr_rat_death.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single figure/object, full body, facing the viewer, centred, feet/base at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+
+The same rat flat on its back, feet in the air, eyes as little crosses, tartan scarf askew. Single figure, small, base at the bottom edge.
+
+Reference image 1 is spr_rat_idle.png, the canonical 256x256 rat. Preserve this exact fat scruffy peat-brown and granite-grey rat, lighter warm grey round belly, large rounded bare dusty-pink ears, blunt pink nose, two big rectangular pale-yellow buck teeth, short grey whiskers, four short pink paws, long bare dusty-pink tail, and red tartan neckerchief with broad dark loch-blue bands and muted-gold checks. Preserve chunky charcoal outlines and broad angular hand-painted fur and cloth facets, colours and large simple readable features. Change only the pose and expression for a harmless comic defeat frame.
+
+The rat is lying FLAT ON ITS BACK, horizontal across the LOWER part of the square, with its head toward the viewer's LEFT, round haunches toward the RIGHT, belly facing up and toward the viewer. All FOUR little pink paws stick clearly into the air above its round belly, toes curled loosely; absolutely no paws supporting a standing or sitting body. The face remains plainly visible at the left, mouth slack with the same two large yellow buck teeth; replace each red eye with a tiny bold black cartoon cross-shaped closed-eye mark. The tartan scarf is twisted askew around its neck, with the same familiar colours and short ragged ends. Tail curls loosely beside the right haunch. Friendly silly cartoon, no injury, blood, bones or gore.
+
+Square 1:1 production death sprite for the established 256x256 source-art set, strong wide low silhouette readable at 64 pixels. Place this horizontal rat DOWN AT THE BOTTOM OF THE CANVAS: its lowest complete uncut back and shoulder outline must physically touch the BOTTOMMOST pixel row, with ZERO magenta rows beneath it. The back is the sprite's base in this pose; do not vertically centre the horizontal body or leave a floating bottom gap. Keep every ear, whisker, paw, toe and tail tip inside the canvas, clear magenta margins above and to both sides, no clipped outlines. Flat opaque pure magenta #FF00FF matte in all outside regions and limb gaps, all clear background pixels within 24 of RGB(255,0,255) per channel. Paint texture only inside the rat. No floor, ground plane, ground shadow, scenery, props, additional characters, stars, motion lines, diffuse glow, gradient, transparency, checkerboard, text, lettering, numbers, signature, watermark or border. The eye marks are simple cartoon crosses, no lettering anywhere.
+~~~
+
+Self-review: Same rat lies belly-up with four paws raised, crossed eyes and askew tartan scarf, readable at 64 px; complete silhouette unclipped, but a 12 px magenta gap remains beneath its back, so bottom anchoring needs correction; visually flat near-magenta rather than exact #FF00FF, matte core R245–254 G1–17 B243–253 with zero pixels beyond tolerance 24 per channel (two-pixel silhouette boundary excluded); no lettering; sprite, not a tile; no retry because this session reached five generated images.
+
+
+## dec_rubble.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single object, full object, facing the viewer, centred, base at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+A big heap of fallen castle stones, broken beams and dust blocking a passage, a stray wire and a spring sticking out of it. Single object, wide, base at the bottom edge.
+
+Square 1:1 production dressing sprite for Bogle Castle, matching the established 256x256 source-art set. One wide, low, irregular heap of large chunky granite-grey fallen castle blocks and splintered peat-brown oak beams, with a little opaque bone-grey dust nestled between the stones. A single stray dark wire curls up from the heap and one large simple iron-blue coil spring sticks out at a comic angle. Match the existing granite wall texture: broad angular hand-painted cool grey stone facets and thick charcoal contours; match the fallen Scots pine and oak art for the broad warm ochre wood facets and dark grooves. Clear large stones, beams, wire and spring must remain readable at 64 pixels, with restrained small debris. The pile is a passage-blocking obstacle seen from the front, with no passage or surrounding scene drawn. Keep every beam tip, stone, wire end and spring inside the square with clear magenta margins at the top and sides. Place the complete pile LOW on the canvas: the lowest full uncut stone or beam outline physically touches the bottommost pixel row, with zero empty rows beneath; do not vertically centre the low heap. The dust is a few crisp opaque outlined shapes inside the heap, with no diffuse haze over the matte. Visually flat opaque magenta #FF00FF matte outside the whole object and in every gap; all clear background pixels within 24 of RGB(255,0,255) on each channel. Confine painting and shading to the outlined rubble. No ground surface, floor, dirt mound, wall, room, scenery, people, cast shadow, glow, gradient, transparency, checkerboard, text, lettering, numerals, symbols, signature, watermark or border.
+~~~
+
+Self-review: Wide granite-and-beam heap, wire and coil spring read at 64 px and match the existing painted stone and timber; complete silhouette unclipped, but a 1 px magenta gap remains below the base; visually flat near-magenta rather than exact #FF00FF, matte core R241–254 G0–16 B237–253 with zero pixels beyond tolerance 24 per channel (two-pixel silhouette boundary excluded); no lettering; sprite, not a tile.
+
+## tex_scanner_door.png
+
+Attempt 1
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+seamless tileable texture, edges wrap left-right and top-bottom, orthographic straight-on view, no perspective.
+A heavy riveted steel laboratory door in a stone archway, a glowing green retina-scanner eye panel beside it, hazard stripes along the bottom, filling the whole square seen straight on. No lettering.
+
+Square 1:1 edge-to-edge repeating game wall texture for Bogle Castle, generated square and saved at 256x256. One broad closed heavy blue-grey steel laboratory door in a chunky granite-grey rounded stone arch, filling nearly the whole square. Broad iron-blue metal plates, bold charcoal seams, two rows of large round dark rivets, simple warm brass hinges and a plain chunky handle; no glass peephole. A single square dark-metal retina-scanner panel is mounted in the stone immediately beside the door on the viewer's right, with one large simple glowing moss-green and ghost-cyan eye-shaped lens, no text, letters, numbers or display characters. The green brightness stays inside the panel, no light spill onto the stone. A thick horizontal strip of broad diagonal ochre-yellow and charcoal-black hazard stripes runs along the bottom of the steel door, above a narrow stone sill. Match the existing crypt door's thick outlined grey masonry arch and the compressor's broad hand-painted metal facets and chunky rivets. Large simple forms read clearly at 64 pixels, restrained texture detail, uniform flat frontal painted brightness. The narrow outer stone surface continues across all four opposite tile edges: left and right are matching cut halves of repeating stone, top and bottom carry matching granite colours and mortar crossings. Keep the door arch, scanner and hazard strip wholly inside that continuous stone surround so no outer frame or dark perimeter line is introduced. Opposite boundaries are crops through the same periodic stone surface, with identical crossings and colours. No perspective, floor, ceiling, room scene, people, outside cast shadow, vignette, lighting gradient, magenta, lettering, text, numerals, logo, warning symbols, signature, watermark or image border.
+~~~
+
+Self-review: Riveted steel door, stone arch, green scanner eye and bottom hazard stripes read at 64 px and match the existing art; opaque RGB, no lettering; 3×3 source repeat has visible repeated door units and a slight top-bottom masonry join (mean RGB edge differences 11.71 left-right, 18.51 top-bottom); final baked tiling review remains with the lead.
+
+
+## dec_rubble.png
+
+Attempt 2
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single object, full object, facing the viewer, centred, base at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+A big heap of fallen castle stones, broken beams and dust blocking a passage, a stray wire and a spring sticking out of it. Single object, wide, base at the bottom edge.
+
+Square 1:1 production dressing sprite for Bogle Castle, matching the established 256x256 source-art set. One wide, low, irregular heap of large chunky granite-grey fallen castle blocks and splintered peat-brown oak beams, with a little opaque bone-grey dust nestled between the stones. A single stray dark wire curls up from the heap and one large simple iron-blue coil spring sticks out at a comic angle. Match the existing granite wall texture: broad angular hand-painted cool grey stone facets and thick charcoal contours; match the fallen Scots pine and oak art for the broad warm ochre wood facets and dark grooves. Clear large stones, beams, wire and spring must remain readable at 64 pixels, with restrained small debris. The pile is a passage-blocking obstacle seen from the front, with no passage or surrounding scene drawn. Keep every beam tip, stone, wire end and spring inside the square with clear magenta margins at the top and sides. Place the complete pile LOW on the canvas: the lowest full uncut stone or beam outline physically touches the bottommost pixel row, with zero empty rows beneath; do not vertically centre the low heap. The dust is a few crisp opaque outlined shapes inside the heap, with no diffuse haze over the matte. Visually flat opaque magenta #FF00FF matte outside the whole object and in every gap; all clear background pixels within 24 of RGB(255,0,255) on each channel. Confine painting and shading to the outlined rubble. No ground surface, floor, dirt mound, wall, room, scenery, people, cast shadow, glow, gradient, transparency, checkerboard, text, lettering, numerals, symbols, signature, watermark or border.
+
+Edit target: reference image 1 is the current 256x256 dec_rubble.png. Keep this exact rubble heap, every stone, broken beam, wire, coil spring, colours, charcoal outlines, painted facets, scale and horizontal position unchanged. Make only a precise vertical placement correction: translate the entire complete heap DOWN by one pixel in the 256x256 source-art frame so its lowest uncut stone outline reaches the BOTTOMMOST ROW. The bottommost row must contain the heap's dark outline; there must be no continuous magenta row below the heap. Preserve every complete outline without clipping and preserve the square canvas and all other framing. Do not redraw the heap or add anything.
+~~~
+
+Self-review: Granite blocks, broken timber, wire and spring still read at 64 px and preserve the original heap; the alignment edit did not close the 1 px bottom gap; visually flat near-magenta rather than exact #FF00FF, matte core R243–253 G1–19 B241–252 with zero pixels beyond tolerance 24 per channel (two-pixel silhouette boundary excluded); no lettering; sprite, not a tile.
+
+
+## dec_rubble.png
+
+Attempt 3
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single object, full object, facing the viewer, centred, base at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+A big heap of fallen castle stones, broken beams and dust blocking a passage, a stray wire and a spring sticking out of it. Single object, wide, base at the bottom edge.
+
+Reference image 1 is the current 256x256 dec_rubble.png. Preserve its exact heap of grey granite blocks, warm brown splintered beams, small pale dust clumps, curling wire and large iron coil spring, the same 1990s painted facets, colours, broad charcoal outlines and scale. Correct only the bottom alignment. The row of frontmost stones MUST sit directly against the image's lower frame boundary: give two or three of those lowest stones flat undersides whose dark outline coincides with the BOTTOM EDGE of the image. Their bottom outline must occupy the bottommost canvas row over a broad visible width, with the magenta background only above, beside and between objects, never as a horizontal strip beneath the pile. This is an edge-anchored game obstacle, not a floating object with a surrounding margin. A completely flat base line may meet the canvas border; keep the rest of the irregular heap, wire, spring and splintered beam ends complete and unchanged inside the frame. Square canvas, final source saved at 256x256. No ground or floor surface, scene, shadow, extra object, border, letters, text, watermark, transparency or glow. All outside empty regions are opaque visually flat magenta with clear pixels within 24 of RGB(255,0,255) per channel. All painting stays inside the outlined rubble.
+~~~
+
+Self-review: Granite rubble, timber, wire and coil spring read at 64 px; base now reaches row 255 with no magenta gap, but the lowest right-hand stone also reaches the right edge and needs a small side margin; visually flat near-magenta rather than exact #FF00FF, matte core R244–254 G1–16 B244–253 with zero pixels beyond tolerance 24 per channel (two-pixel silhouette boundary excluded); no lettering; sprite, not a tile.
+
+
+## dec_rubble.png
+
+Attempt 4
+
+~~~text
+Cartoonish comic Scottish haunted-castle style, like a hand-painted 1990s shareware game:
+chunky shapes, bold dark outlines, exaggerated friendly-spooky proportions, big readable
+silhouettes that still read at 64 pixels. Palette of granite grey, peat brown, moss green, loch
+blue and heather purple, with bright accents of tartan red, torch orange and ghost cyan. Even,
+flat, frontal lighting; no cast shadows, no vignette, no text, no signature, no border.
+Affectionate and silly, never gory.
+
+single object, full object, facing the viewer, centred, base at the bottom edge, on a flat pure magenta #FF00FF background, no shadow on the ground.
+A big heap of fallen castle stones, broken beams and dust blocking a passage, a stray wire and a spring sticking out of it. Single object, wide, base at the bottom edge.
+
+Edit reference image 1, the current dec_rubble.png. Preserve the exact entire heap, grey granite stones, splintered brown beams, wire and coil spring, little dust clumps, painted colours, chunky charcoal outlines and broad facets. The base correctly touches the bottom edge: preserve that bottom anchoring exactly, with the lowest flat dark stone outlines remaining on the bottommost row and zero magenta rows underneath. Make ONLY a horizontal framing correction: compress the whole heap's width very slightly toward the horizontal centre so both its left and right extremities sit about six pixels inside a 256-pixel-wide canvas. Leave a narrow clear magenta vertical strip at both side edges, including beside the lowest right-hand stone; no stone outline is clipped at the left or right edge. Keep the same height, vertical placement, complete wire and spring, and complete beam tips. Do not add a lower margin or move the base up. Square image, one complete object only; no floor, cast shadow, scenery, extra objects, letters, text, border, signature, watermark, transparency, checkerboard or glow. Visually flat opaque #FF00FF outside the object and in every gap, with all clear background pixels within 24 of RGB(255,0,255) on each channel; paint texture stays inside the object.
+~~~
+
+Self-review: Wide stone-and-timber heap, stray wire and coil spring read at 64 px and match the existing painted art; base reaches row 255 with no gap and complete side outlines have 3 px margins; visually flat near-magenta rather than exact #FF00FF, matte core R243–253 G1–23 B239–252 with zero pixels beyond tolerance 24 per channel (two-pixel silhouette boundary excluded); no lettering; sprite, not a tile; this session stops at five generated images total, counting retries.
