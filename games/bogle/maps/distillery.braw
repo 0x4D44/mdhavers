@@ -1,0 +1,38 @@
+# The Laird's Cellars, campaign level 3. Run this builder from the repository
+# root. E1M2's rooms and key hunt (maps/e1m2_rooms.braw) under Castle Bogle,
+# with the clock shaft's landing (maps/landing.braw) joined west of the
+# loch-side yard: the player lands at the foot of the shaft, the right way is
+# the Laird's private wing (the scanner says no), the left way runs into the
+# cellars. Rats now hold the warehouse aisles and the landing passage, and the
+# spirit safe's gate is the foot of the castle stairs.
+fetch "games/bogle/maps/e1m2_rooms"
+fetch "games/bogle/maps/landing"
+
+ken cellars = new_map()
+cellars["name"] = "The Laird's Cellars"
+cellars["story"] = "distillery"
+cellars["briefing"] = [
+    "Ye land in a heap at the foot o the clock shaft.",
+    "The Laird's cellars run under the castle: a whole distillery.",
+    "The airn key opens the warehouse; the siller key, the still house.",
+    "Fight through tae the castle stairs past the spirit safe.",
+    "Mind the rats.",
+]
+cellars["require"] = [["keys", 3]]
+
+e1m2_rooms()
+landing_cells("distillery")
+ken owners = emit(cellars)
+
+landing_things(cellars, "distillery")
+e1m2_things(cellars, 42)
+# Rats in the passage from the landing.
+map_thing(cellars, 42, -128, -320)
+map_thing(cellars, 42, -224, -392)
+
+ken parsed = validate(cellars)
+check_portals(parsed)
+e1m2_walls(cellars, parsed, owners)
+landing_faces(cellars, parsed)
+write(cellars, "games/bogle/data/distillery.map")
+blether "distillery sectors " + tae_string(len(cellars["sectors"])) + " things " + tae_string(len(cellars["things"])) + " walls " + tae_string(len(cellars["walls"]))

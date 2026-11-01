@@ -217,12 +217,29 @@ dae forest_tick(g) {
     }
 }
 
+# The Laird's Cellars: E1M2's key hunt under the castle. The objective
+# follows the keys (airn 1, siller 2); the spirit safe's gate is the foot of
+# the castle stairs (the exit line is in doors_tick).
+dae cellars_tick(g) {
+    ken keys = bit_an(g["keys"], 3)
+    gin keys == 3 {
+        story_objective(g, "UP THE CASTLE STAIRS")
+    } ither gin keys == 1 {
+        story_objective(g, "FIND THE SILLER KEY")
+    } ither {
+        story_objective(g, "FIND THE AIRN KEY")
+    }
+}
+
 dae story_init(g) {
     gin story_id(g) == "forest" {
         story_objective(g, "FIND A WAY OOT THE WOOD")
         fer flag in ["ghosts", "gap", "door", "slide"] {
             g["story"][flag] = nae
         }
+    }
+    gin story_id(g) == "distillery" {
+        cellars_tick(g)
     }
     gin story_id(g) == "kirkyard" {
         story_objective(g, "FIND THE BRASS KEY")
@@ -271,6 +288,9 @@ dae story_tick(g) {
     }
     gin story_id(g) == "forest" {
         forest_tick(g)
+    }
+    gin story_id(g) == "distillery" {
+        cellars_tick(g)
     }
     gin story_id(g) == "test" {
         gin g["story"]["countdown"] > 0 {

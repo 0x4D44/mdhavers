@@ -1,0 +1,61 @@
+# The foot of the clock shaft under Castle Bogle, where the lobby clock's
+# slide lands: a fork where both ways look open. Shared by the distillery
+# (the first visit) and the lab (the return), as a story-changed room is two
+# authored maps. Collect it with the other cells before emit.
+#
+# Layout (x east, y north; the player lands facing south):
+#   shaft foot x -448..-320, y -288..-160 (player start);
+#   the fork x -448..-320, y -416..-288;
+#   right (west): a passage, a low neck and the LAIRD'S PRIVATE WING steel
+#     door with its retina scanner (lock 4: it opens only for the head), then
+#     a vestibule x -736..-672, y -384..-320, whose west wall the lab opens;
+#   left (east): a passage x -320..0, y -416..-288 to the loch shallows at the
+#     west edge of E1M2's yard. In the `lab` variant it is gone, and rubble
+#     lies against the fork's solid east wall.
+fetch "games/bogle/maps/cells"
+
+ken LANDING_SCANNER = 27
+
+dae landing_cells(variant) {
+    map_need(variant == "distillery" or variant == "lab", "landing variant " + variant)
+    cell(-448, -288, -320, -160, 0, 192, 1, 2, 112, 4)
+    cell(-448, -416, -320, -288, 0, 128, 1, 2, 136, 3)
+    cell(-576, -416, -448, -288, 0, 128, 1, 2, 120, 3)
+    cell(-640, -384, -576, -320, 0, 64, 1, 2, 120, 3)
+    door_cell(-672, -384, -640, -320, 0, 64, 4)
+    cell(-736, -384, -672, -320, 0, 64, 1, 2, 104, 3)
+    gin variant == "distillery" {
+        cell(-320, -416, -192, -288, 0, 128, 1, 2, 120, 3)
+        cell(-192, -416, 0, -288, 0, 128, 1, 2, 152, 3)
+    }
+}
+
+# The player start, and in the lab the rubble that shuts the left way.
+dae landing_things(b, variant) {
+    map_thing(b, 1, -384, -200, 3072)
+    gin variant == "lab" {
+        map_thing(b, 38, -336, -352)
+    }
+}
+
+# The scanner door wears its steel face on both approaches. Call after the
+# walls are set.
+dae landing_faces(b, parsed) {
+    fer s in 0..len(parsed["floor_h"]) {
+        fer i in 0..parsed["wall_count"][s] {
+            ken next = parsed["portal"][parsed["wall_first"][s] + i]
+            gin next >= 0 an parsed["kind"][next] == 1 an parsed["tag"][next] == 4 {
+                ken found = nae
+                fer row in b["walls"] {
+                    gin row[0] == s an row[1] == i {
+                        row[2] = LANDING_SCANNER
+                        found = aye
+                    }
+                }
+                gin nae found {
+                    shove(b["walls"], [s, i, LANDING_SCANNER, 0, 0, 0, 0, 0])
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,267 @@
+# E1M2's rooms, things and walls, shared by e1m2 (the Distillery) and the
+# campaign's distillery (the Laird's Cellars).
+# Sector kinds: 0 normal, 1 door, 2 fryer (hot wash floor), 3 bog, 4 cold water.
+# Door tags: 0 unlocked, 1 iron key, 2 silver key.
+#
+# Layout (x east, y north, 128-unit cells):
+#   loch-side yard (open sky, start) -> mash-tun hall hub with a central tun;
+#   west wing: sunken malting floor, iron key on the kiln gallery ledge;
+#   east wing (iron door): stairs up to a dark bonded warehouse of cask aisles,
+#     silver key in the lit tasting room ambush, loading-dock drop back to the hub;
+#   north wing (silver door): wash back, still house with two copper stills
+#     and hot wash floors, bagpipes on the worm-tub platform, a stair up to the
+#     spirit safe and the exit chamber; the high walkway runs back over the
+#     hall balcony, a drop shortcut into the hub.
+#
+# Rooms are axis-aligned rectangles: see maps/cells.braw.
+fetch "games/bogle/maps/cells"
+
+dae e1m2_rooms() {
+    # Loch-side yard: open sky, bright. Column 0 is the cold loch shallows.
+    fer row in 0..3 {
+        fer column in 0..5 {
+            ken x = column * 128
+            ken y = -416 + row * 128
+            gin column == 0 {
+                cell(x, y, x + 128, y + 128, -8, 160, 14, -1, 232, 0, 4)
+            } ither {
+                cell(x, y, x + 128, y + 128, 0, 160, 1, -1, 240, 0)
+            }
+        }
+    }
+    # Boathouse alcove (optional supplies) behind a secret door in the yard wall.
+    secret_cell(640, -288, 672, -160, 0, 128, 0)
+    cell(672, -288, 768, -160, 0, 128, 4, 4, 112, 4)
+    cell(768, -288, 896, -160, 0, 128, 4, 4, 88, 4)
+    door_cell(256, -32, 384, 0, 0, 160)
+
+    # Mash-tun hall hub: 5x5 cells around a solid oak tun, north row a raised balcony.
+    fer row in 0..5 {
+        fer column in 0..5 {
+            gin nae (column == 2 an row == 2) {
+                ken x = column * 128
+                ken y = row * 128
+                gin row == 4 an column >= 1 an column <= 3 {
+                    cell(x, y, x + 128, y + 128, 64, 256, 4, 2, 208, 3)
+                } ither {
+                    ken light = 176
+                    gin (column + row) % 2 == 1 {
+                        light = 160
+                    }
+                    cell(x, y, x + 128, y + 128, 0, 256, 1, 2, light, 3)
+                }
+            }
+        }
+    }
+
+    # West wing: descending stair to the sunken malting floor, kiln gallery ledge.
+    door_cell(-32, 128, 0, 256, 0, 160)
+    stair_run(-288, 128, 32, 128, 8, -48, 6, 160, 3, 136, 3)
+    fer row in 0..4 {
+        fer column in 0..4 {
+            gin nae ((column == 1 an row == 1) or (column == 2 an row == 3)) {
+                ken x = -800 + column * 128
+                ken y = -128 + row * 128
+                ken light = 112
+                gin column == 0 {
+                    light = 152
+                }
+                cell(x, y, x + 128, y + 128, -48, 112, 9, 2, light, 3)
+            }
+        }
+    }
+    # Kiln column: a dark peat store (optional supplies) up to the gallery stair foot.
+    cell(-928, -128, -800, 0, -48, 96, 9, 2, 72, 3)
+    cell(-928, 0, -800, 128, -48, 112, 9, 2, 184, 3)
+    cell(-928, 128, -800, 256, -48, 112, 9, 2, 184, 3)
+    cell(-928, 256, -800, 384, -48, 112, 9, 2, 144, 3)
+    cell(-928, 384, -800, 512, -48, 112, 9, 2, 128, 3)
+    # The gallery lift: E on its face from the kiln column lowers it to the floor.
+    cell(-800, 416, -672, 512, -48, 112, 9, 2, 128, 4)
+    lift_cell(-672, 416, -544, 512, 16, 112, 152, 4)
+    cell(-544, 384, -416, 512, 16, 112, 4, 2, 136, 4)
+    cell(-416, 384, -288, 512, 16, 112, 4, 2, 160, 4)
+
+    # East wing: iron door, stair up to the bonded warehouse cask aisles.
+    door_cell(640, 384, 672, 512, 0, 160, 1)
+    stair_run(672, 384, 32, 128, 8, 0, 6, 192, 1, 120, 4)
+    ken warehouse_holes = [[0, 1], [0, 2], [1, 2], [2, 2], [3, 2], [1, 4], [3, 4], [3, 3], [2, 0]]
+    fer row in 0..6 {
+        fer column in 0..5 {
+            gin nae contains(warehouse_holes, [column, row]) {
+                ken x = 928 + column * 128
+                ken y = row * 128
+                ken light = 72
+                gin (column == 1 an row == 3) or (column == 4 an row == 1) or (column == 0 an row == 0) {
+                    light = 168
+                }
+                gin row == 5 an column % 2 == 0 {
+                    light = 104
+                }
+                cell(x, y, x + 128, y + 128, 48, 224, 2, 4, light, 4)
+            }
+        }
+    }
+    # Cooperage alcove off the north-east aisle, behind a secret panel.
+    secret_cell(1440, 768, 1568, 800, 48, 160, 4)
+    cell(1440, 800, 1568, 896, 48, 160, 9, 4, 176, 4)
+    # Ambush closet in the cask stack west of the middle aisle: walking into the
+    # aisle cell opens it (link 2) and lets the keeper out.
+    cell(1072, 528, 1152, 624, 48, 224, 2, 4, 56, 4)
+    secret_cell(1152, 528, 1184, 624, 48, 224, 4, 2)
+    trigger_cell([1184, 512, 1312, 640], 2)
+    # Tasting room: lit plinth with the siller key, dark flanking bays.
+    fer row in 0..3 {
+        cell(1568, row * 128, 1696, row * 128 + 128, 48, 192, 1, 4, 160, 6)
+        gin row == 1 {
+            cell(1696, 128, 1824, 256, 64, 192, 4, 4, 224, 6)
+        } ither {
+            cell(1696, row * 128, 1824, row * 128 + 128, 48, 192, 2, 4, 64, 6)
+        }
+    }
+    # Loading dock: a switch on its south wall raises the shutter (link 1) onto
+    # the hall, the airn shortcut.
+    cell(672, 0, 928, 128, 48, 192, 2, 4, 144, 4)
+    door_cell(640, 0, 672, 128, 48, 192, 0, 1)
+    shove(extra_points, [768, 0])
+    shove(extra_points, [832, 0])
+
+    # North wing: silver door, wash back, still house, stair up to the spirit safe.
+    door_cell(-32, 512, 0, 640, 0, 192, 2)
+    cell(-288, 512, -32, 640, 0, 192, 2, 2, 120, 3)
+    cell(-288, 640, -160, 800, 0, 192, 2, 2, 104, 3)
+    fer row in 0..3 {
+        fer column in 0..6 {
+            gin nae (row == 1 an (column == 1 or column == 4)) {
+                ken x = -288 + column * 128
+                ken y = 800 + row * 128
+                gin row == 1 an (column == 2 or column == 3) {
+                    cell(x, y, x + 128, y + 128, 0, 288, 12, 2, 200, 3, 2)
+                } ither {
+                    cell(x, y, x + 128, y + 128, 0, 288, 1, 2, 160, 3)
+                }
+            }
+        }
+    }
+    # Worm-tub platform behind the stills.
+    fer column in 0..3 {
+        ken x = 96 + column * 128
+        cell(x, 1184, x + 128, 1312, 24, 224, 4, 2, 184, 11)
+    }
+    stair_run(480, 800, 32, 128, 8, 0, 8, 224, 1, 168, 11)
+    # Spirit safe at walkway height; the walkway runs back over the hall balcony.
+    cell(736, 800, 864, 928, 64, 224, 11, 2, 200, 11)
+    cell(736, 640, 864, 800, 64, 224, 11, 2, 176, 11)
+    fer column in 0..4 {
+        ken x = 128 + column * 128
+        cell(x, 640, x + 128, 768, 64, 256, 4, 2, 192, 3)
+    }
+    cell(640, 640, 736, 768, 64, 256, 4, 2, 184, 3)
+    # Exit chamber north of the spirit safe, painted gate on its east wall.
+    cell(736, 928, 864, 1056, 64, 192, 11, 2, 224, 11)
+    shove(extra_points, [864, 960])
+    shove(extra_points, [864, 1024])
+    # Wall pictures: a stag head in the hub, a banner in the still house.
+    shove(extra_points, [0, 288])
+    shove(extra_points, [0, 352])
+    shove(extra_points, [-288, 960])
+    shove(extra_points, [-288, 1024])
+}
+
+# Everything but the player start. `pest` is the kind in the two warehouse
+# aisles: haggis (3) in E1M2, rats (42) in the cellars.
+dae e1m2_things(b, pest) {
+    # Yard: a keeper in plain view, midges over the loch, curling stones and braziers.
+    map_thing(b, 2, 480, -128, 2048)
+    map_thing(b, 5, 64, -352)
+    map_thing(b, 10, 576, -384)
+    map_thing(b, 12, 576, -96)
+    map_thing(b, 36, 160, -384)
+    map_thing(b, 36, 176, -96)
+    map_thing(b, 32, 224, -64)
+    map_thing(b, 32, 416, -64)
+    # Boathouse alcove.
+    map_thing(b, 14, 704, -224)
+    map_thing(b, 11, 832, -224)
+    # Hub and balcony (the balcony is reached later from the walkway).
+    map_thing(b, 2, 96, 448, 0)
+    map_thing(b, 12, 64, 64)
+    map_thing(b, 10, 576, 192)
+    map_thing(b, 31, 32, 32)
+    map_thing(b, 13, 192, 576)
+    map_thing(b, 14, 448, 576)
+    # Malting floor: Mars box at the stair foot, two keepers, a ghost on the gallery.
+    map_thing(b, 15, -352, 160)
+    map_thing(b, 2, -736, 64, 0)
+    map_thing(b, 2, -480, -64, 1024)
+    map_thing(b, 4, -480, 448, 3072)
+    map_thing(b, 19, -352, 448)
+    map_thing(b, 10, -736, 320)
+    map_thing(b, 33, -400, -104)
+    map_thing(b, 32, -896, 160)
+    # Peat store (optional).
+    map_thing(b, 11, -880, -96)
+    map_thing(b, 16, -848, -32)
+    # Bonded warehouse: blunderbuss under the lamp beside the entrance.
+    map_thing(b, 17, 1120, 448)
+    map_thing(b, 2, 1120, 704, 0)
+    map_thing(b, 2, 1504, 576, 3072)
+    map_thing(b, pest, 1120, 64)
+    map_thing(b, pest, 1376, 64)
+    map_thing(b, 10, 1248, 576)
+    # Cooperage alcove (optional).
+    map_thing(b, 16, 1504, 832)
+    map_thing(b, 12, 1472, 864)
+    map_thing(b, 32, 1536, 864)
+    map_thing(b, 2, 1112, 576, 0)
+    # Tasting room ambush: keepers wait in the dark bays either side of the key.
+    map_thing(b, 20, 1760, 192)
+    map_thing(b, 2, 1760, 64, 1024)
+    map_thing(b, 2, 1760, 320, 3072)
+    map_thing(b, 16, 1600, 320)
+    map_thing(b, 12, 1600, 64)
+    # A curling stone at the head of the south cask aisle: the aisle runs straight
+    # east into the dark bay, so a kick from the aisle sends it at that keeper.
+    map_thing(b, 36, 1424, 64)
+    # Wash back and still house.
+    map_thing(b, 2, -224, 576, 0)
+    map_thing(b, 10, -96, 544)
+    map_thing(b, 2, -224, 1120, 0)
+    map_thing(b, 2, 416, 864, 2048)
+    map_thing(b, 4, 160, 1120, 3072)
+    map_thing(b, 3, 32, 1120)
+    map_thing(b, 18, 288, 1248)
+    map_thing(b, 11, 160, 1248)
+    map_thing(b, 32, -256, 1152)
+    map_thing(b, 32, 448, 1152)
+    # Spirit safe and exit: a guard, and the trigger on the painted gate face (x 864).
+    map_thing(b, 12, 800, 704)
+    map_thing(b, 2, 784, 1024, 3072)
+    map_thing(b, 21, 856, 992, 0, 2)
+}
+
+dae e1m2_walls(b, parsed, owners) {
+    # Wall textures per room; walls facing a door keep upper 0 so doors get faces.
+    # Tun faces are oak; still faces are fryer-oil copper; three painted panels.
+    ken specials = [
+        [[256, 256, 384, 384], 4],
+        [[-160, 928, -32, 1056], 12],
+        [[224, 928, 352, 1056], 12],
+    ]
+    ken pictures = [
+        [[0, 352], [0, 288], 16],
+        [[-288, 1024], [-288, 960], 17],
+        [[864, 960], [864, 1024], 18],
+    ]
+    b["walls"] = cell_walls(parsed, owners, specials, pictures)
+    # The dock switch: the 64-unit panel of the dock's south wall.
+    fer s in 0..len(owners) {
+        ken first = parsed["wall_first"][s]
+        fer i in 0..parsed["wall_count"][s] {
+            ken w = first + i
+            gin parsed["vx"][parsed["wall_v1"][w]] == 768 an parsed["vy"][parsed["wall_v1"][w]] == 0 an parsed["vx"][parsed["wall_v2"][w]] == 832 an parsed["vy"][parsed["wall_v2"][w]] == 0 {
+                switch_wall(b, s, i, 1)
+            }
+        }
+    }
+}

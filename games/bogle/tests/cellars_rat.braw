@@ -1,0 +1,108 @@
+fetch "games/bogle/engine/game"
+
+# The rat lurks until it sees the player within 384, runs him down at five
+# units a tic, bites 4 within 24 on arrival and then every 18 tics, has 12
+# health and leaves its death frame where it fell. Set in the cellars'
+# landing passage, every other actor put away.
+dae rat_sector(m, x, y) {
+    fer s in 0..len(m["floor_h"]) {
+        gin map_point(m, s, x, y) {
+            gie s
+        }
+    }
+    gie -1
+}
+
+dae rat_game(px, rx) {
+    ken g = new_game(load_map("games/bogle/data/distillery.map"))
+    ken rat = naething
+    fer a in g["actors"] {
+        gin a["kind"] == 42 an rat == naething {
+            rat = a
+        } ither {
+            a["active"] = nae
+        }
+    }
+    rat["x"] = rx * 65536
+    rat["y"] = -352 * 65536
+    rat["sector"] = rat_sector(g["map"], rx, -352)
+    g["x"] = px * 65536
+    g["y"] = -352 * 65536
+    g["sector"] = rat_sector(g["map"], px, -352)
+    g["angle"] = 0
+    gie [g, rat]
+}
+
+dae rat_tic(g) {
+    tic(g, {"keys": 0, "dx": 0})
+}
+
+# Out of reach (400 units off) it lurks; at 280 it wakes and closes fast.
+ken pair = rat_game(-384, 16)
+ken g = pair[0]
+ken rat = pair[1]
+mak_siccar rat["health"] == 12 an rat["state"] == "idle"
+fer i in 0..20 {
+    rat_tic(g)
+}
+mak_siccar rat["state"] == "idle" an rat["x"] == 16 * 65536
+blether "ok the rat lurks till it sees ye near"
+
+pair = rat_game(-300, -20)
+g = pair[0]
+rat = pair[1]
+rat_tic(g)
+mak_siccar rat["state"] == "chase"
+ken before = rat["x"]
+rat_tic(g)
+mak_siccar before - rat["x"] == 5 * 65536
+blether "ok it wakes an runs at five a tic"
+
+ken bites = []
+ken last = g["health"]
+fer i in 0..100 {
+    rat_tic(g)
+    gin g["health"] < last {
+        shove(bites, g["tics"])
+        mak_siccar last - g["health"] == 4
+        mak_siccar actor_distance(rat["x"], rat["y"], g["x"], g["y"]) < 24
+        last = g["health"]
+    }
+}
+mak_siccar len(bites) >= 3
+mak_siccar bites[1] - bites[0] == 18 an bites[2] - bites[1] == 18
+blether "ok it bites 4 on arrival, then every 18 tics: first bite at tic " + tae_string(bites[0])
+
+# Twelve health: a nick leaves it fighting, the next drops it for good.
+pair = rat_game(-300, -20)
+g = pair[0]
+rat = pair[1]
+damage_actor(g, rat, 5)
+mak_siccar rat["active"] an rat["health"] == 7
+damage_actor(g, rat, 7)
+mak_siccar nae rat["active"] an rat["health"] == 0 an rat["state"] == "dead"
+mak_siccar bogle_actor_art(g, rat) == "spr_rat_death"
+ken where = [rat["x"], rat["y"]]
+fer i in 0..40 {
+    rat_tic(g)
+}
+mak_siccar g["health"] == 100 an [rat["x"], rat["y"]] == where
+blether "ok twelve health, an a deid rat bites nae mair"
+
+# The corpse is drawn: the view with it differs from the view without it.
+ken fb = bytes(80 * 50)
+render(g, fb, 80, 50)
+ken with_rat = fb
+rat["kind"] = 38
+rat["state"] = "gone"
+rat["x"] = -400 * 65536
+ken fb2 = bytes(80 * 50)
+render(g, fb2, 80, 50)
+ken same = aye
+fer i in 0..80 * 50 {
+    gin bytes_get(with_rat, i) != bytes_get(fb2, i) {
+        same = nae
+    }
+}
+mak_siccar nae same
+blether "ok the deid rat lies where it fell"

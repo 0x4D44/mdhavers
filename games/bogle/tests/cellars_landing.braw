@@ -1,0 +1,94 @@
+fetch "games/bogle/engine/game"
+fetch "games/bogle/maps/landing"
+
+# The clock shaft landing. In the distillery both ways at the fork are open
+# to the eye, but the right way's steel door (lock 4) refuses without the
+# head and opens with it, and the left way walks through to the yard. The
+# lab variant shuts the left way behind rubble on a solid wall.
+dae land_sector(m, x, y) {
+    fer s in 0..len(m["floor_h"]) {
+        gin map_point(m, s, x, y) {
+            gie s
+        }
+    }
+    gie -1
+}
+
+dae land_at(g, x, y, angle) {
+    g["x"] = x * 65536
+    g["y"] = y * 65536
+    g["sector"] = land_sector(g["map"], x, y)
+    g["angle"] = angle
+}
+
+dae land_walk(g, tics) {
+    fer i in 0..tics {
+        tic(g, {"keys": 1, "dx": 0})
+    }
+}
+
+dae land_scanner(g) {
+    fer d in g["doors"] {
+        gin g["map"]["tag"][d["sector"]] == 4 {
+            gie d
+        }
+    }
+    gie naething
+}
+
+# Facing the steel door from the neck: refused, then opened with the head.
+dae land_door_check(g) {
+    ken door = land_scanner(g)
+    land_at(g, -608, -352, 2048)
+    tic(g, {"keys": 128, "dx": 0})
+    mak_siccar g["message"] == "RETINA NOT RECOGNISED. ARE YE A SALESMAN?" an door["state"] == "closed"
+    tic(g, {"keys": 0, "dx": 0})
+    story_give(g, "head")
+    g["message"] = ""
+    tic(g, {"keys": 128, "dx": 0})
+    mak_siccar door["state"] == "opening" an g["message"] == ""
+}
+
+ken g = new_game(load_map("games/bogle/data/distillery.map"))
+fer a in g["actors"] {
+    a["active"] = nae
+}
+mak_siccar g["sector"] == land_sector(g["map"], -384, -200) an g["angle"] == 3072
+land_door_check(g)
+blether "ok the scanner says no without the head, an opens wi it"
+
+g = new_game(load_map("games/bogle/data/distillery.map"))
+fer a in g["actors"] {
+    a["active"] = nae
+}
+land_at(g, -384, -352, 0)
+land_walk(g, 60)
+mak_siccar g["x"] / 65536 > -150
+land_walk(g, 60)
+mak_siccar g["x"] / 65536 > 0 an g["map"]["kind"][g["sector"]] == 4
+blether "ok the left way runs through tae the loch shallows"
+
+# The lab variant, built from the helper alone.
+ken b = new_map()
+b["name"] = "Landing test"
+landing_cells("lab")
+emit(b)
+landing_things(b, "lab")
+ken parsed = validate(b)
+b["walls"] = []
+landing_faces(b, parsed)
+ken m = map_parse(builder_text(b))
+ken rubble = 0
+fer t in 0..len(m["thing_type"]) {
+    gin m["thing_type"][t] == 38 an m["thing_x"][t] > -352 {
+        rubble = rubble + 1
+    }
+}
+mak_siccar rubble == 1
+g = new_game(m)
+land_at(g, -384, -352, 0)
+land_walk(g, 60)
+mak_siccar g["x"] / 65536 <= -336 an g["x"] / 65536 >= -352
+blether "ok in the lab the rubble shuts the left way"
+land_door_check(g)
+blether "ok in the lab the head opens the scanner"

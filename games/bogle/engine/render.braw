@@ -190,7 +190,9 @@ dae bogle_sprites(g, fb, w, h, visible, drawsegs, cosine, sine) {
     }
     fer actor in actors {
         ken kind = actor["kind"]
-        gin nae actor["active"] or nae contains(visible, actor["sector"]) {
+        # A dead rat stays where it fell.
+        ken corpse = actor["kind"] == 42 an actor["state"] == "dead"
+        gin (nae actor["active"] an nae corpse) or nae contains(visible, actor["sector"]) {
             haud
         }
         gin dynamic {
@@ -894,6 +896,9 @@ dae bogle_actor_height(kind) {
     }
     gin kind == 4 {
         gie 60
+    }
+    gin kind == 42 {
+        gie 30
     }
     gie 48
 }

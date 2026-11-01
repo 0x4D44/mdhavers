@@ -382,3 +382,11 @@ fn kirkyard_playthrough_matches_native_rc_modes_and_interpreter_prefix() {
 fn forest_playthrough_matches_native_rc_modes_and_interpreter_prefix() {
     check_playthrough("forest", 8);
 }
+
+// The Laird's Cellars: the clock shaft landing and its scanner door, then
+// E1M2's rooms with rats, started from the forest's carry
+// (replays/distillery.carry).
+#[test]
+fn distillery_playthrough_matches_native_rc_modes_and_interpreter_prefix() {
+    check_playthrough("distillery", 41);
+}

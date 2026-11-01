@@ -1,0 +1,10 @@
+# Starts the cellars as the campaign does: the player's carry at the end of
+# the forest route (tools/route_forest.braw, replays/forest.txt).
+health 100
+spirit 25
+mars 5
+powder 12
+puff 100
+owned 1 1 1 0
+weapon 3
+clock 2449

@@ -309,6 +309,9 @@ dae doors_tick(g, use) {
                     g["message"] = "Ye've escaped the Gatehouse. Haud on tae yer bonnet."
                     gin bogle_story_map(m) {
                         g["message"] = "On ye go. Haud on tae yer bonnet."
+                        gin m["story"] == "distillery" {
+                            g["message"] = "Up the stair ye go."
+                        }
                     }
                 }
             }

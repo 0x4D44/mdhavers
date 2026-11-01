@@ -340,6 +340,31 @@ dae tree_line_distance(a, x, y) {
     gie isqrt(ex * ex + ey * ey)
 }
 
+# The rat (42) lurks until it sees the player within 384, then runs him down
+# fast (five units a tic) and bites 4 within 24 every 18 tics, the first bite
+# as soon as it arrives.
+dae rat_tick(g, a, distance) {
+    ken near = distance < 24 an bogle_sight(g, a["x"], a["y"], a["z"] + 16 * 65536, a["sector"], g["x"], g["y"], g["z"] + 16 * 65536, g["sector"])
+    gin a["state"] == "idle" {
+        gin distance < 384 an bogle_sight(g, a["x"], a["y"], a["z"] + 16 * 65536, a["sector"], g["x"], g["y"], g["z"] + 32 * 65536, g["sector"]) {
+            a["state"] = "chase"
+            a["timer"] = 18
+        }
+        gie naething
+    }
+    gin a["timer"] < 18 {
+        a["timer"] = a["timer"] + 1
+    }
+    gin near {
+        gin a["timer"] >= 18 {
+            a["timer"] = 0
+            hurt_player(g, 4)
+        }
+    } ither {
+        actor_chase(g, a, g["x"], g["y"], 327680)
+    }
+}
+
 dae story_actors_tick(g) {
     ken count = len(g["actors"])
     fer i in 0..count {
@@ -511,18 +536,8 @@ dae ai_tick(g) {
                 gin kind == 45 {
                     tree_tick(g, a, distance)
                 }
-                # Placeholder for the rat: chase, and bite 4 within 24 every
-                # 18 tics.
                 gin kind == 42 {
-                    a["timer"] = a["timer"] + 1
-                    gin distance < 24 an bogle_sight(g, a["x"], a["y"], a["z"] + 24 * 65536, a["sector"], g["x"], g["y"], g["z"] + 24 * 65536, g["sector"]) {
-                        gin a["timer"] >= 18 {
-                            a["timer"] = 0
-                            hurt_player(g, 4)
-                        }
-                    } ither {
-                        actor_chase(g, a, g["x"], g["y"], 196608)
-                    }
+                    rat_tick(g, a, distance)
                 }
                 gin kind == 5 {
                     gin distance < 256 an (g["tics"] % 7 == 1) {
