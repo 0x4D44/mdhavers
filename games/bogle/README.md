@@ -1,5 +1,40 @@
 # Bogle Castle, stage 5c
 
+## The story
+
+Yer uncle the Tartan Tunneller once dug a secret tunnel frae the kirk crypt
+intae Castle Bogle, and the Laird has Princess Ailsa. New Game shows the
+opening card, then plays five levels in order:
+
+1. **The Kirkyard** (`kirkyard`): fetch the gravedigger's brass key, start the
+   organ's compressor, play the four-stop tune and go doon the crypt. Ghosts
+   rise from the graves; Auld Wullie's lantern round hurts if he sees ye.
+2. **The Wood o' Dreich** (`forest`): the tunnel stops short. Mad deer, thistles
+   that hide as tufts, trees that fall on ye, then the bell at the castle gap.
+3. **The Laird's Cellars** (`distillery`): E1M2's distillery behind a new
+   landing, wi rats; the retina scanner is a dead end for now.
+4. **The Tower** (`tower`): dinnae get seen (the meter isnae plugged in). The
+   green cloaks talk; "Ailsa" at the top is a clone, and leaves her heid.
+5. **The Laird's Laboratory** (`lab`): the heid's ee opens the scanner. Ask the
+   computer, pull the three levers while the Laird's steam contraption hunts
+   ye, then wi Ailsa's spanners beat it and fit the guid core.
+
+One campaign clock counts every gameplay tic of every attempt, restarts and
+deaths included, and stops when Ailsa is freed. Under 25 minutes ye mairry
+her and hae seeven bairns (yin a clone); under 60, nae bairns but a guid
+personality core; slower, or if the lab's three-minute disposal countdown
+(started by the computer's answer, shown big and red at the top of the view)
+runs out, Auld Wullie buries ye. The ending screen shows the time.
+
+E uses things: a story thing in reach takes the press first (a stop, a sign,
+a lever, someone tae talk tae), then a curling stone, then switches, doors and
+the exit. A talk box freezes play; E advances it and, on its last line,
+chooses; W/S move the choice. The HUD objective line follows the level script,
+and the key panel shows what matters there: the brass key on the kirkyard,
+airn and siller in the cellars, the HEID and the CORE while carried.
+
+## The engine
+
 The engine is a pure integer portal renderer. Positions and heights in game state
 use signed 16.16 integers; map coordinates are integer units. Angles cover one
 turn in 4096 steps, with zero east and 1024 north. The committed sine table is
@@ -81,12 +116,13 @@ boost does not stack with it), the mouse and Left/Right arrows turn, E uses door
 Space or left mouse fires, and 1–4 select owned weapons. Hold fire for at
 least 21 tics with the bagpipes, then release to blast; holding 35 tics fires
 automatically. Controls are also available from the title and pause menus.
-Each new level or restart shows its map-authored briefing; press any fresh key or mouse button to begin. The HUD objective advances from finding the airn key to finding the siller key, then reaching the gate. **M** toggles music on every screen. All game sound (music and effects) fades out over about 0.37 s while the window is not focused and back in when it is; music and effects keep running silently meanwhile.
-Death offers **Restart** and **Back to Title**. Completing the Gatehouse offers
-the same choices: there is no next level yet. Both screens show elapsed level
+Each new level or restart shows its map-authored briefing; press any fresh key or mouse button to begin. On classic maps the HUD objective advances from finding the airn key to finding the siller key, then reaching the gate; story maps set their own. **M** toggles music on every screen. All game sound (music and effects) fades out over about 0.37 s while the window is not focused and back in when it is; music and effects keep running silently meanwhile.
+Death offers **Restart** and **Back to Title**. Completing the classic
+episode, or a map played outside a level list, offers the same choices; the
+story ends on its ending screen. Both screens show elapsed level
 time from the existing 35 Hz tic count; kills are not tracked, and secrets are counted in game state only.
 
-E1M1 starts in the courtyard facing a visible gamekeeper. Follow the courtyard
+E1M1, the classic episode's first level (the Gatehouse), starts in the courtyard facing a visible gamekeeper. Follow the courtyard
 east to the gate; face the door within 64 units and **E: open** appears. Locked
 doors name the missing iron or silver key. Moving gates have portcullis faces;
 the iron-key gallery door uses the cell-door face, so the two keyed doors also
@@ -114,7 +150,9 @@ bitmask and mouse delta. Bits are forward 1, back 2, left strafe 4, right strafe
 is a one-based tic followed by unsigned decimal FNV-1a of the indexed bytes.
 The final tic is hashed even when it falls between sampling intervals.
 `BOGLE_LIMIT` caps a replay prefix; `BOGLE_REQUIRE_EXIT=1` asserts completion
-alive with both keys and all four weapons.
+alive with both keys and all four weapons, or with the map's `require` records.
+On story maps each hash row adds a third number, the story-state digest (FNV of
+health, keys, items, story flags, talk, clock and every actor's state).
 
 Native `--record games/bogle/replays/name.txt` or `BOGLE_RECORD` records inputs
 actually consumed by tics. Mouse deltas accumulate between tics and are consumed
@@ -134,15 +172,33 @@ generated from the L-shaped room.
 BOGMAP 1 records follow design section 4.5. Texture ids 0..9 select granite,
 flagstone moss, slate underside, dungeon brick, oak panel, thistle tapestry,
 Celtic lintel, cell door, portcullis and peat straw. IDs 10..14 add bog, chapel
-stone, fryer oil, exit lever and loch water. IDs 15..18 are granite with the cow portrait, stag head, banner, and the marked exit gate. Other accepted IDs use granite.
+stone, fryer oil, exit lever and loch water. IDs 15..18 are granite with the cow portrait, stag head, banner, and the marked exit gate. IDs 21..30 are the story walls: kirk stone, stained glass, crypt door, bark, hedge, earth tunnel, scanner door, dry-stone dyke, panelled corridor and lab wall. Other accepted IDs use granite.
 Ceiling texture -1 means sky. Sector kinds are normal 0, door 1, fryer 2,
 bog 3, cold water 4, lift 5 and hidden door 6. A sector tag's low byte is the
-door lock: 0/1/2 mean unlocked/iron/silver; `tag / 256` is a remote link tag. Thing type 1
+door lock: 0/1/2/3 mean unlocked/iron/silver/brass, and 4 is the retina scanner (it wants the heid); `tag / 256` is a remote link tag. Thing type 1
 is the player start; 2..5 select gamekeeper, haggis, tartan ghost and midges.
 Types 10..20 are oatcake, haggis plate, juice can, juice bottle, shortbread, Mars
 box, powder, blunderbuss, bagpipes, iron key and silver key. Type 21 is the exit;
 30..36 are stag head, armour, brazier, thistle, cow portrait, banner and curling
-stone. Exit thing flag bit 2 hides its sprite when a painted gate supplies the picture; the use trigger remains. Wall flag bit 1 blocks.
+stone. The story adds:
+
+| Types | Things |
+|---|---|
+| 22..24 | Pickups: brass key, the clone's heid, the guid core (into `items`). |
+| 37..39 | Dressing: lamp post (full bright), rubble, lit doorway. |
+| 40, 41 | Auld Wullie (walks the type 60 path points in `flags` order), graves (raise ghosts). |
+| 42..45 | Rat, mad deer, thistle, tree. |
+| 46..49 | Green cloak, the "Ailsa" clone, Ailsa, the Laird's contraption (the boss: 900 health, a 14 steam blast within 224, a 20 stamp within 56, vents every 10 s for double damage). |
+| 50..58 | Computer, organ stop (`flags` 1-4 red, blue, gold, green), compressor, lever, bell, clock, organ console, signpost, scanner. |
+| 60 | Wullie's path point (not an actor). |
+
+40..59 are story things: the map's level script handles E on them.
+Optional map records: `story <id>` names the level script (maps without one
+play exactly as before); `require keys <bits>`, `require item <name>`,
+`require story <flag>` and `require weapon <n>` replace the classic
+two-keys-four-weapons exit check for `BOGLE_REQUIRE_EXIT`; `ghostlight <n>`
+sets the light at or below which ghosts cannot be hurt (default 96); up to
+eight `intro <text>` lines make the opening card. Exit thing flag bit 2 hides its sprite when a painted gate supplies the picture; the use trigger remains. Wall flag bit 1 blocks.
 Wall flag bit 2 makes a solid wall a switch for link tag `flags / 256`; bit 4
 makes it repeatable. Texture ids 19 and 20 are the switch's off and on faces. Doors move their ceilings and wait for bodies
 to clear before closing. Loader
@@ -177,6 +233,23 @@ changes the stage 2 hashes because baked wall/flat texels, sky columns and fixed
 palette light maps replace the synthetic flat colour ramps. Geometry regression
 fixtures inject constant textures and retain their existing exact pixel assertions.
 The game renderer's WASM deployment is stage 8; binary I/O already uses the WASM host.
+
+The five story playthroughs, `replays/<level>.txt` for kirkyard, forest,
+distillery, tower and lab, come from `tools/route_<level>.braw` autopilots
+(same use as `route_e1m2.braw`) and check like `e1m2.txt`: `BOGLE_REQUIRE_EXIT=1`,
+`BOGLE_EVERY=140`, RC off and on both printing `replays/<level>.hashes`, and the
+interpreter's first 140 tics printing its first line. Each level after the
+first starts from `replays/<level>.carry` (health, spirit, ammo, owned weapons,
+weapon, items and clock, one `field value...` per line): the end state of the
+route before it, so a changed route regenerates the carries and hashes after
+it, in order. `replays/campaign.txt`, from `tools/route_campaign.braw`, plays
+New Game, the opening card, every briefing and the five routes through the
+front end (`BOGLE_FRONTEND=1 BOGLE_EVERY=35
+BOGLE_MAP=games/bogle/data/kirkyard.map`) to the ending screen; it runs in full
+natively with RC off and on against `replays/campaign.hashes`, and its first
+210 frames on the interpreter. The story fixtures (`story_*`, `kirk_*`,
+`forest_*`, `cellars_*`, `tower_*`, `lab_*`) cover the script engine, each
+level's mechanics and the endings.
 
 The baker runs entirely in mdhavers, with no runtime tool dependencies:
 
@@ -509,9 +582,11 @@ and shots, splash and the bagpipes.
 
 ## Level progression
 
-`shell/frontend.braw:bogle_levels` lists the episode in order. Winning a
+`shell/frontend.braw:bogle_campaign_levels` lists the story campaign that New
+Game plays (kirkyard, forest, distillery, tower, lab); `bogle_levels` lists the
+classic episode (E1M1, E1M2), played when a run starts on E1M1. Winning a
 listed level goes straight to the next level's briefing, carrying health,
-spirit, ammo, owned weapons and the selected weapon; keys stay with their
-level. Restart replays the current level with what was carried into it, New
+spirit, ammo, owned weapons, the selected weapon and (in the campaign) the
+story items; keys stay with their level. Restart replays the current level with what was carried into it, New
 Game starts again from the first level, and winning the last level (or a
 map launched outside the list) shows the completion screen.

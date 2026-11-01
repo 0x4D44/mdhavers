@@ -2,9 +2,10 @@ fetch "games/bogle/engine/game"
 
 # The lab's actors: Ailsa, freed, keeps 64-160 from the player and never
 # leaves the arena; her spanner hurts only the contraption. The contraption
-# blasts steam (8 and a shove) in sight within 224 once a second-and-a-bit,
-# vents every 10 s (3 s stunned, double damage) and slumps at 0, still there
-# but neither hurting nor hurt, and keeps tae the arena.
+# blasts steam (14 and a shove) in sight within 224 once a second-and-a-bit
+# (within 56 it stamps, 20), vents every 10 s (3 s stunned, double damage)
+# and slumps at 0, still there but neither hurting nor hurt, and keeps tae
+# the arena.
 dae la_sector(m, x, y) {
     fer s in 0..len(m["floor_h"]) {
         gin map_point(m, s, x, y) {
@@ -102,29 +103,38 @@ spawn_projectile(g, "spanner", -1400 * 65536, -96 * 65536, 40 * 65536, la_sector
 fer i in 0..20 {
     projectiles_tick(g)
 }
-mak_siccar g["health"] == 100 an ailsa["health"] == 1 an laird["health"] == 450 an len(g["projectiles"]) == 1
+mak_siccar g["health"] == 100 an ailsa["health"] == 1 an laird["health"] == 900 an len(g["projectiles"]) == 1
 g["projectiles"] = []
 la_put(g, laird, -1300, 40)
 spawn_projectile(g, "spanner", -1300 * 65536, -60 * 65536, 40 * 65536, la_sector(g["map"], -1300, -60), 0, 8 * 65536, 0, ailsa)
 fer i in 0..20 {
     projectiles_tick(g)
 }
-mak_siccar laird["health"] == 444 an len(g["projectiles"]) == 0
+mak_siccar laird["health"] == 894 an len(g["projectiles"]) == 0
 blether "ok Ailsa's spanner hurts only the contraption"
 
-# The steam blast: 8 and a shove, then a breather before the next.
+# The steam blast: 14 and a shove, then a breather before the next.
 g = new_game(load_map("games/bogle/data/lab.map"))
 laird = la_actor(g, 49)
 la_player(g, -1360, 40)
 g["spirit"] = 0
 ken d0 = actor_distance(laird["x"], laird["y"], g["x"], g["y"])
 la_wait(g, 1)
-mak_siccar g["health"] == 92 an laird["state"] == "blast"
+mak_siccar g["health"] == 86 an laird["state"] == "blast"
 mak_siccar actor_distance(laird["x"], laird["y"], g["x"], g["y"]) >= d0 + 28
 la_wait(g, 69)
-mak_siccar g["health"] == 92
+mak_siccar g["health"] == 86
 la_wait(g, 2)
-mak_siccar g["health"] == 84
+mak_siccar g["health"] == 72
+# At its feet it stamps instead: 20 and a bigger shove.
+g = new_game(load_map("games/bogle/data/lab.map"))
+laird = la_actor(g, 49)
+la_player(g, -1320, -96)
+g["spirit"] = 0
+d0 = actor_distance(laird["x"], laird["y"], g["x"], g["y"])
+la_wait(g, 1)
+mak_siccar g["health"] == 80 an laird["state"] == "blast"
+mak_siccar actor_distance(laird["x"], laird["y"], g["x"], g["y"]) >= d0 + 56
 # Oot o range, nae blast.
 g = new_game(load_map("games/bogle/data/lab.map"))
 laird = la_actor(g, 49)
@@ -142,11 +152,11 @@ laird["vent_clock"] = 348
 la_wait(g, 1)
 mak_siccar laird["state"] == "chase"
 damage_actor(g, laird, 10)
-mak_siccar laird["health"] == 440
+mak_siccar laird["health"] == 890
 la_wait(g, 1)
 mak_siccar laird["state"] == "vent"
 damage_actor(g, laird, 10)
-mak_siccar laird["health"] == 420
+mak_siccar laird["health"] == 870
 ken x = laird["x"]
 la_wait(g, 104)
 mak_siccar laird["state"] == "vent" an laird["x"] == x
@@ -159,7 +169,7 @@ g = new_game(load_map("games/bogle/data/lab.map"))
 laird = la_actor(g, 49)
 la_player(g, -1360, 0)
 g["spirit"] = 0
-damage_actor(g, laird, 449)
+damage_actor(g, laird, 899)
 mak_siccar laird["health"] == 1 an laird["state"] == "chase"
 damage_actor(g, laird, 5)
 mak_siccar laird["state"] == "slumped" an laird["active"] an laird["health"] == 0

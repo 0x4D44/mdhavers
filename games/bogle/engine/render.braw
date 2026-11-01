@@ -1046,6 +1046,30 @@ dae bogle_hud_height(w, h) {
     gie min(h, max(44, h * 44 / 200))
 }
 
+# The key panel's two rows, each [art, label, held]: the airn and siller keys,
+# or on a story map the keys and things that matter there (the brass key on
+# the kirkyard, airn and siller in the cellars, then the heid and the guid
+# core while carried).
+dae bogle_hud_keys(g) {
+    ken classic = [["pick_key_tartan", "AIRN", bit_an(g["keys"], 1) != 0], ["pick_key_silver", "SILLER", bit_an(g["keys"], 2) != 0]]
+    gin nae bogle_story_map(g["map"]) {
+        gie classic
+    }
+    ken entries = []
+    gin g["map"]["story"] == "kirkyard" {
+        shove(entries, ["pick_key_brass", "BRASS", bit_an(g["keys"], 4) != 0])
+    } ither gin g["map"]["story"] == "distillery" {
+        entries = classic
+    }
+    gin contains(g["items"], "head") an len(entries) < 2 {
+        shove(entries, ["pick_clone_head", "HEID", aye])
+    }
+    gin contains(g["items"], "good_core") an len(entries) < 2 {
+        shove(entries, ["pick_good_core", "CORE", aye])
+    }
+    gie entries
+}
+
 dae bogle_hud(g, fb, w, h) {
     ken top = h - bogle_hud_height(w, h)
     fer y in top..h {
@@ -1070,9 +1094,10 @@ dae bogle_hud(g, fb, w, h) {
         fer i in 1..5 {
             bogle_text(fb, w, h, 1 + (i - 1) * 20, top + 14, tae_string(i) + bogle_hud_ammo(g, i), bogle_hud_weapon_ink(g, i), 1)
         }
-        fer i in 0..2 {
-            gin bit_an(g["keys"], i + 1) != 0 {
-                bogle_blit(fb, w, h, art[["pick_key_tartan", "pick_key_silver"][i]], 64, 96, 64 + i * 8, top, 7, 7)
+        ken entries = bogle_hud_keys(g)
+        fer i in 0..len(entries) {
+            gin entries[i][2] {
+                bogle_blit(fb, w, h, art[entries[i][0]], 64, 96, 64 + i * 8, top, 7, 7)
             }
         }
         gie naething
@@ -1096,14 +1121,15 @@ dae bogle_hud(g, fb, w, h) {
         ken row = top + (9 + (i - 2) * 9) * scale
         bogle_text(fb, w, h, 225 * scale, row, ["MARS", "SHOT", "PUFF"][i - 2] + " " + bogle_hud_ammo(g, i), bogle_hud_weapon_ink(g, i), scale)
     }
-    fer i in 0..2 {
+    ken entries = bogle_hud_keys(g)
+    fer i in 0..len(entries) {
         ken row = top + (8 + i * 14) * scale
         ken ink = 8
-        gin bit_an(g["keys"], i + 1) != 0 {
+        gin entries[i][2] {
             ink = 15
-            bogle_blit(fb, w, h, art[["pick_key_tartan", "pick_key_silver"][i]], 64, 96, 282 * scale, row - 2 * scale, 10 * scale, 14 * scale)
+            bogle_blit(fb, w, h, art[entries[i][0]], 64, 96, 282 * scale, row - 2 * scale, 10 * scale, 14 * scale)
         }
-        bogle_text(fb, w, h, 296 * scale, row + 3 * scale, ["AIRN", "SILLER"][i], ink, scale)
+        bogle_text(fb, w, h, 296 * scale, row + 3 * scale, entries[i][1], ink, scale)
     }
     fer i in 1..5 {
         ken x = (4 + (i - 1) * 79) * scale

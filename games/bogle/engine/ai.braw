@@ -426,8 +426,9 @@ dae ailsa_tick(g, a) {
 }
 
 # The Laird's steam contraption (49) lumbers at the player inside the arena.
-# In sight within 224 it lets off a one-second steam blast: 8 damage and a
-# 32-unit shove, then a second to build pressure again. Every 10 s it vents
+# In sight within 224 it lets off a one-second steam blast: 14 damage and a
+# 32-unit shove, then a second to build pressure again; within 56 it stamps
+# instead, 20 and a 64-unit shove, and stamps again sooner. Every 10 s it vents
 # for 3 s, stunned and taking double damage. At 0 it slumps (damage_actor)
 # and neither hurts nor is hurt.
 dae laird_tick(g, a, distance) {
@@ -464,11 +465,21 @@ dae laird_tick(g, a, distance) {
         }
         gie naething
     }
+    gin a["timer"] == 0 an distance < 56 {
+        a["state"] = "blast"
+        a["timer"] = 18
+        bogle_emit_sound(g, "thud")
+        hurt_player(g, 20)
+        g["message"] = "Clang! The contraption stamps on ye!"
+        ken shove = actor_towards(a, g["x"], g["y"], 64 * 65536)
+        move_body(g, shove[0], shove[1])
+        gie naething
+    }
     gin a["timer"] == 0 an distance < 224 an bogle_sight(g, a["x"], a["y"], a["z"] + 48 * 65536, a["sector"], g["x"], g["y"], g["z"] + 32 * 65536, g["sector"]) {
         a["state"] = "blast"
         a["timer"] = 35
         bogle_emit_sound(g, "steam")
-        hurt_player(g, 8)
+        hurt_player(g, 14)
         g["message"] = "Pssssht! A blast o steam!"
         ken shove = actor_towards(a, g["x"], g["y"], 32 * 65536)
         move_body(g, shove[0], shove[1])

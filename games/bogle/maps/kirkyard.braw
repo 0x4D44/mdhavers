@@ -22,7 +22,7 @@ kirk["intro"] = [
     "Efter too mony Christmas Pudding Whiskies",
     "he let slip that he once dug a secret tunnel",
     "frae the kirk crypt intae Castle Bogle.",
-    "The Laird has Princess Ailsa. Tonight ye find it.",
+    "The Laird has Princess Ailsa. Tonight ye find the tunnel.",
 ]
 kirk["briefing"] = [
     "The crypt door opens tae the organ, they say.",
@@ -117,9 +117,9 @@ map_thing(kirk, 21, -408, 704, 0, 2)
 
 ken parsed = validate(kirk)
 check_portals(parsed)
-# The kirk's south front faces the kirkyard; stained glass along the nave's
-# north wall and behind the organ.
-ken specials = [[[0, 512, 768, 512], 21], [[896, 544, 896, 864], 22]]
+# A dry-stone dyke rings the kirkyard; the kirk's south front faces it;
+# stained glass along the nave's north wall and behind the organ.
+ken specials = [[[0, 0, 768, 512], 28], [[0, 512, 768, 512], 21], [[896, 544, 896, 864], 22]]
 ken pictures = [
     [[256, 864], [192, 864], 22],
     [[448, 864], [384, 864], 22],

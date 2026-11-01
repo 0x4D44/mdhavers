@@ -56,7 +56,7 @@ dae init_things(g) {
                 state = ["idle", "patrol", "tuft", "standing"][kind - 42]
             }
             gin kind == 49 {
-                hp = 450
+                hp = 900
                 state = "chase"
             }
             shove(g["actors"], {
