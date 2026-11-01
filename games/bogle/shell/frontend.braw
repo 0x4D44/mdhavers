@@ -96,14 +96,6 @@ dae bogle_ending_lines(tier) {
     gie ["Auld Wullie buries ye in the kirkyard.", "He didnae check if ye were deid."]
 }
 
-# Story maps head their screens with their own name.
-dae bogle_front_heading(ui, fallback) {
-    gin ui["game"] != naething an bogle_story_map(ui["game"]["map"]) {
-        gie upper(ui["game"]["map"]["name"])
-    }
-    gie fallback
-}
-
 # Leaving a level by any route banks its tics into the campaign clock once:
 # the game's clock already started from the banked value.
 dae bogle_front_bank(ui) {
@@ -138,7 +130,7 @@ dae bogle_front_new_game(ui) {
     ui["carry"] = naething
     ui["clock"] = 0
     bogle_front_start(ui)
-    # A campaign opens on its card; any key continues to the briefing.
+    # A campaign opens on its card; a menu key continues to the briefing.
     gin len(ui["game"]["map"]["intro"]) > 0 {
         bogle_front_screen(ui, "opening")
     }
@@ -472,7 +464,7 @@ dae bogle_front_render(ui, fb, w, h) {
             heading = "YE'RE DEID!"
         }
         gin screen == "complete" {
-            heading = bogle_front_heading(ui, "GATEHOUSE") + " COMPLETE!"
+            heading = "GATEHOUSE COMPLETE!"
         }
         gin screen != "title" {
             bogle_front_text(canvas, 28, heading, 15, 2)

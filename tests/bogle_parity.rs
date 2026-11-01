@@ -407,7 +407,7 @@ fn tower_playthrough_matches_native_rc_modes_and_interpreter_prefix() {
 // tower's carry (replays/lab.carry).
 #[test]
 fn lab_playthrough_matches_native_rc_modes_and_interpreter_prefix() {
-    check_playthrough("lab", 7);
+    check_playthrough("lab", 8);
 }
 
 // The whole campaign through the front end: New Game, the opening card, each
@@ -426,7 +426,7 @@ fn campaign_frontend_replay_matches_native_rc_modes_and_interpreter_prefix() {
     let expected_text = std::str::from_utf8(&expected).expect("campaign.hashes is UTF-8");
     assert_eq!(
         expected_text.lines().count(),
-        9815,
+        10001,
         "campaign.hashes must contain one row for each frame"
     );
     assert_eq!(

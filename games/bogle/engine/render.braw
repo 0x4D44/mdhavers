@@ -989,14 +989,14 @@ dae bogle_actor_height(kind) {
     gin kind == 4 {
         gie 60
     }
-    gin kind == 42 {
-        gie 30
-    }
     gie 48
 }
 
 # Story things stand on the floor; their sprites are 2:3 like the actors.
 dae bogle_story_height(kind) {
+    gin kind == 42 {
+        gie 30
+    }
     gin kind == 40 {
         gie 56
     }

@@ -126,9 +126,23 @@ dae run_replay(map_path, replay_path, w, h, every, limit = 0) {
     }
     ken game = new_game(load_map(map_path))
     # replays/<level>.carry starts the level as the campaign would.
+    # replays/ sits beside the map's data/, so the path holds from any
+    # working directory.
     ken parts = split(map_path, "/")
     ken level = split(parts[len(parts) - 1], ".")[0]
-    ken carry_path = "games/bogle/replays/" + level + ".carry"
+    ken carry_path = "../replays/" + level + ".carry"
+    gin len(parts) >= 2 {
+        ken up = []
+        ken i = 0
+        whiles i < len(parts) - 2 {
+            shove(up, parts[i])
+            i = i + 1
+        }
+        carry_path = join(up, "/") + "/replays/" + level + ".carry"
+        gin len(up) == 0 {
+            carry_path = "replays/" + level + ".carry"
+        }
+    }
     gin file_exists(carry_path) {
         bogle_apply_carry(game, bogle_parse_carry(read_file(carry_path), game))
     }

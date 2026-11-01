@@ -15,12 +15,6 @@ dae story_objective(g, text) {
     g["objective"] = text
 }
 
-dae story_give(g, item) {
-    gin nae contains(g["items"], item) {
-        shove(g["items"], item)
-    }
-}
-
 dae story_win(g) {
     g["won"] = aye
 }
@@ -37,7 +31,6 @@ dae story_talk_hold(g) {
     }
     g["bag_charge"] = 0
     g["was_use"] = bit_an(g["held_keys"], 128) != 0
-    g["was_fire"] = bit_an(g["held_keys"], 64) != 0
     g["hold_fire"] = aye
 }
 
@@ -125,7 +118,11 @@ dae kirk_use(g, a) {
                 story_objective(g, "DOON INTAE THE CRYPT")
             }
         } ither {
+            # A wrong note that is the tune's first starts it afresh.
             s["tune"] = 0
+            gin a["flags"] == KIRK_TUNE[0] {
+                s["tune"] = 1
+            }
             bogle_emit_sound(g, "organ_sour")
             g["message"] = "BLAAURGH! A sour chord. Start again."
         }
@@ -274,6 +271,7 @@ dae tower_tick(g) {
         s["turret"] = aye
         story_objective(g, "SPEAK TAE AILSA")
     }
+    ken heads = []
     fer a in g["actors"] {
         gin a["active"] an a["kind"] == 47 an a["state"] == "spark" {
             a["timer"] = a["timer"] - 1
@@ -283,10 +281,13 @@ dae tower_tick(g) {
                 a["state"] = "gone"
                 s["boom"] = g["tics"]
                 bogle_emit_sound(g, "explosion")
-                shove(g["actors"], {"x": a["x"], "y": a["y"], "z": a["z"], "sector": a["sector"], "angle": 0, "facing": 0, "kind": 23, "flags": 0, "health": 1, "state": "idle", "timer": 0, "seen_player": nae, "charge_tics": 0, "vx": 0, "vy": 0, "dx": 0, "dy": 0, "active": aye, "svx": 0, "svy": 0, "kick_tic": -1000})
+                shove(heads, {"x": a["x"], "y": a["y"], "z": a["z"], "sector": a["sector"], "angle": 0, "facing": 0, "kind": 23, "flags": 0, "health": 1, "state": "idle", "timer": 0, "seen_player": nae, "charge_tics": 0, "vx": 0, "vy": 0, "dx": 0, "dy": 0, "active": aye, "svx": 0, "svy": 0, "kick_tic": -1000})
                 story_objective(g, "TAKE THE HEID")
             }
         }
+    }
+    fer head in heads {
+        shove(g["actors"], head)
     }
     gin s["boom"] > 0 an nae s["plugged"] an g["tics"] >= s["boom"] + 8 {
         s["plugged"] = aye
@@ -344,7 +345,9 @@ dae lab_free(g) {
 dae lab_use(g, a) {
     ken s = g["story"]
     gin a["kind"] == 50 {
-        gin s["asked"] {
+        gin s["freed"] {
+            story_say(g, ["DISPOSAL CANCELLED. HAVE A NICE DAY."])
+        } ither gin s["asked"] {
             story_say(g, ["DISPOSAL PROCEEDING. HAVE A NICE DAY."])
         } ither {
             lab_ask(g, ["DO YOU WISH TO SAVE THE PRINCESS?"])
@@ -492,6 +495,10 @@ dae story_event(g, tag) {
 }
 
 dae story_drain(g) {
+    # A box opened this tic (E on a sign) is not overwritten unseen.
+    gin g["talk"] != naething {
+        gie naething
+    }
     ken i = 0
     whiles i < len(g["fired"]) {
         story_event(g, g["fired"][i])

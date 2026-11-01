@@ -1,6 +1,12 @@
 fetch "games/bogle/engine/move"
 fetch "games/bogle/engine/kinds"
 
+dae story_give(g, item) {
+    gin nae contains(g["items"], item) {
+        shove(g["items"], item)
+    }
+}
+
 # Mutable game actors are separate from immutable map spawn records.
 # Path points (type 60) are waypoints, not actors.
 dae init_things(g) {
@@ -322,9 +328,7 @@ dae actor_pickup(g, a) {
         gin kind == 24 {
             item = "good_core"
         }
-        gin nae contains(g["items"], item) {
-            shove(g["items"], item)
-        }
+        story_give(g, item)
     }
     gin kind == 15 or (kind >= 17 an kind <= 20) or kind >= 22 {
         g["grin_tic"] = g["tics"]
