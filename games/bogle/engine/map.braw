@@ -8,7 +8,7 @@ dae map_need(ok, message) {
 }
 
 dae map_empty() {
-    gie {"vx": [], "vy": [], "floor_h": [], "ceil_h": [], "floor_tex": [], "ceil_tex": [], "light": [], "kind": [], "tag": [], "wall_first": [], "wall_count": [], "wall_v1": [], "wall_v2": [], "portal": [], "upper_tex": [], "lower_tex": [], "mid_tex": [], "x_off": [], "y_off": [], "flags": [], "thing_type": [], "thing_x": [], "thing_y": [], "thing_angle": [], "thing_flags": [], "thing_sector": [], "thing_z": [], "thing_state": [], "thing_tics": [], "thing_health": [], "start_x": 0, "start_y": 0, "start_angle": 0, "start_sector": -1, "name": "", "briefing": []}
+    gie {"vx": [], "vy": [], "floor_h": [], "ceil_h": [], "floor_tex": [], "ceil_tex": [], "light": [], "kind": [], "tag": [], "wall_first": [], "wall_count": [], "wall_v1": [], "wall_v2": [], "portal": [], "upper_tex": [], "lower_tex": [], "mid_tex": [], "x_off": [], "y_off": [], "flags": [], "thing_type": [], "thing_x": [], "thing_y": [], "thing_angle": [], "thing_flags": [], "thing_sector": [], "thing_z": [], "thing_state": [], "thing_tics": [], "thing_health": [], "start_x": 0, "start_y": 0, "start_angle": 0, "start_sector": -1, "name": "", "briefing": [], "story": "", "require": [], "ghostlight": 96, "intro": []}
 }
 
 dae map_integer(text) {
@@ -283,15 +283,36 @@ dae map_parse(text) {
                 map_need(tokens == ["BOGMAP", "1"], "header/version")
                 header = aye
             } ither {
-                gin tokens[0] == "name" or tokens[0] == "briefing" {
+                gin tokens[0] == "name" or tokens[0] == "briefing" or tokens[0] == "intro" {
                     ken text = wheesht(scran(line, len(tokens[0]), len(line)))
                     map_need(len(text) > 0 an len(text) <= 68, "briefing text length")
                     gin tokens[0] == "name" {
                         m["name"] = text
+                    } ither gin tokens[0] == "intro" {
+                        # The opening card, shown before the first briefing.
+                        map_need(len(m["intro"]) < 8, "too many intro lines")
+                        shove(m["intro"], text)
                     } ither {
                         map_need(len(m["briefing"]) < 6, "too many briefing lines")
                         shove(m["briefing"], text)
                     }
+                    haud
+                }
+                # Story records: the level script id, exit requirements as
+                # word pairs (keys <mask>, item <name>, weapon <n>), and the
+                # ghost's hurt light.
+                gin tokens[0] == "story" {
+                    map_need(len(tokens) == 2 an m["story"] == "", "story record")
+                    m["story"] = tokens[1]
+                    haud
+                }
+                gin tokens[0] == "require" {
+                    map_need(len(tokens) == 3 an (tokens[1] == "keys" or tokens[1] == "item" or tokens[1] == "weapon"), "require record")
+                    ken want = tokens[2]
+                    gin tokens[1] != "item" {
+                        want = map_integer(want)
+                    }
+                    shove(m["require"], [tokens[1], want])
                     haud
                 }
                 ken values = []
@@ -326,6 +347,9 @@ dae map_parse(text) {
                 } ither gin kind == "w" {
                     map_need(len(values) == 8, "wall fields")
                     shove(overrides, values)
+                } ither gin kind == "ghostlight" {
+                    map_need(len(values) == 1 an map_range(values[0], 0, 255), "ghostlight record")
+                    m["ghostlight"] = values[0]
                 } ither gin kind == "t" {
                     map_need(len(values) == 5, "thing fields")
                     ken fields = ["thing_type", "thing_x", "thing_y", "thing_angle", "thing_flags"]
@@ -355,6 +379,11 @@ dae map_parse(text) {
         }
     }
     gie validate_map(m)
+}
+
+# Maps with a `story` record run a level script; the rest play as before.
+dae bogle_story_map(m) {
+    gie contains(m, "story") an m["story"] != ""
 }
 
 dae load_map(path) {

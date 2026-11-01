@@ -1,0 +1,188 @@
+fetch "games/bogle/engine/doors"
+
+# Level scripts. A map's `story <id>` record names its script, and every hook
+# dispatches on it; on maps without one each hook does nothing, so they play
+# exactly as before. Script state lives in g["story"], a dict of flags.
+dae story_id(g) {
+    gin bogle_story_map(g["map"]) {
+        gie g["map"]["story"]
+    }
+    gie ""
+}
+
+dae story_objective(g, text) {
+    g["objective"] = text
+}
+
+dae story_give(g, item) {
+    gin nae contains(g["items"], item) {
+        shove(g["items"], item)
+    }
+}
+
+dae story_win(g) {
+    g["won"] = aye
+}
+
+dae story_fail(g) {
+    g["failed"] = aye
+}
+
+# Opening or closing talk drops a filling bag and takes the held Use and Fire
+# as already seen, and Fire stays dead until released: nothing leaks out.
+dae story_talk_hold(g) {
+    gin g["bag_charge"] > 0 {
+        bogle_emit_sound(g, "pipe_stop")
+    }
+    g["bag_charge"] = 0
+    g["was_use"] = bit_an(g["held_keys"], 128) != 0
+    g["was_fire"] = bit_an(g["held_keys"], 64) != 0
+    g["hold_fire"] = aye
+}
+
+# Lines show one at a time; Use advances. Choices sit under the last line,
+# forward/back move the marker, and Use on it sends `event` to story_event.
+dae story_ask(g, lines, choices, event) {
+    g["talk"] = {"lines": lines, "choices": choices, "sel": 0, "event": event, "at": 0, "held": g["held_keys"]}
+    story_talk_hold(g)
+}
+
+dae story_say(g, lines) {
+    story_ask(g, lines, [], "")
+}
+
+# While talk is open the world is frozen: only fresh presses are read.
+dae story_talk_tick(g, keys) {
+    ken t = g["talk"]
+    ken fresh = bit_an(keys, bit_xor(t["held"], 8191))
+    t["held"] = keys
+    ken last = t["at"] >= len(t["lines"]) - 1
+    ken count = len(t["choices"])
+    gin last an count > 0 {
+        gin bit_an(fresh, 1) != 0 {
+            t["sel"] = (t["sel"] + count - 1) % count
+        }
+        gin bit_an(fresh, 2) != 0 {
+            t["sel"] = (t["sel"] + 1) % count
+        }
+    }
+    gin bit_an(fresh, 128) != 0 {
+        gin nae last {
+            t["at"] = t["at"] + 1
+        } ither {
+            g["talk"] = naething
+            story_talk_hold(g)
+            gin count > 0 {
+                g["story"]["choice"] = t["sel"]
+                story_event(g, t["event"])
+            }
+        }
+    }
+}
+
+dae story_init(g) {
+    gin story_id(g) == "test" {
+        story_objective(g, "ASK THE COMPUTER")
+        g["story"]["countdown"] = 0
+    }
+}
+
+# Called for each link tag that fired (queued by bogle_activate) and for
+# each talk choice event.
+dae story_event(g, tag) {
+    gin story_id(g) == "test" {
+        gin tag == "vague" {
+            story_say(g, ["INTERPRETING VAGUE ANSWER AS NO."])
+            g["story"]["countdown"] = 350
+            story_objective(g, "PULL THE LEVER")
+        }
+        gin tag == 7 {
+            g["story"]["plate"] = aye
+        }
+    }
+}
+
+dae story_drain(g) {
+    ken i = 0
+    whiles i < len(g["fired"]) {
+        story_event(g, g["fired"][i])
+        i = i + 1
+    }
+    g["fired"] = []
+}
+
+# Once per tic after the actors.
+dae story_tick(g) {
+    story_drain(g)
+    gin story_id(g) == "test" {
+        gin g["story"]["countdown"] > 0 {
+            g["story"]["countdown"] = g["story"]["countdown"] - 1
+            gin g["story"]["countdown"] == 0 {
+                story_fail(g)
+            }
+        }
+    }
+}
+
+# E on a story thing. Gives aye when the script used the press; nae lets it
+# fall through to switches, doors and the exit.
+dae story_use(g, a) {
+    gin story_id(g) == "test" {
+        gin a["kind"] == 50 an nae contains(g["story"], "asked") {
+            g["story"]["asked"] = aye
+            story_ask(g, ["DO YOU WISH TO SAVE THE PRINCESS?"], ["What do you think?", "What do you think?", "What do you think?"], "vague")
+            gie aye
+        }
+        gin a["kind"] == 52 {
+            gin contains(g["story"], "air") {
+                g["message"] = "It's runnin' fine."
+            } ither {
+                g["story"]["air"] = aye
+                a["state"] = "on"
+                story_say(g, ["The compressor wheezes intae life."])
+            }
+            gie aye
+        }
+        gin a["kind"] == 53 {
+            gin g["story"]["countdown"] == 0 {
+                g["message"] = "It disnae budge. No yet."
+            } ither {
+                g["story"]["countdown"] = 0
+                g["clock_stop"] = aye
+                a["state"] = "on"
+                story_win(g)
+            }
+            gie aye
+        }
+    }
+    gie nae
+}
+
+# The nearest story thing within 64 units in front with sight, or naething.
+# The shell's E prompt reads the same target.
+dae story_use_target(g) {
+    ken best = naething
+    ken best_d2 = 4097
+    fer a in g["actors"] {
+        gin a["active"] an bogle_is_story_thing(a["kind"]) {
+            ken dx = (a["x"] - g["x"]) / 65536
+            ken dy = (a["y"] - g["y"]) / 65536
+            ken d2 = dx * dx + dy * dy
+            ken dot = dx * bogle_cos(g["sin"], g["angle"]) + dy * bogle_sin(g["sin"], g["angle"])
+            gin d2 < best_d2 an dot >= 0 an bogle_sight(g, g["x"], g["y"], g["view_z"], g["sector"], a["x"], a["y"], a["z"] + 24 * 65536, a["sector"]) {
+                best = a
+                best_d2 = d2
+            }
+        }
+    }
+    gie best
+}
+
+# A fresh E goes to the story thing first; a used press is consumed.
+dae story_use_press(g) {
+    ken a = story_use_target(g)
+    gin a == naething {
+        gie nae
+    }
+    gie story_use(g, a)
+}

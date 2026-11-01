@@ -91,7 +91,7 @@ dae curling_bounce(s, nx, ny, keep) {
     gie aye
 }
 
-# The player or a keeper or haggis the stone would touch at (x, y), closing
+# The player or a walker (keeper, haggis, new monsters) the stone would touch at (x, y), closing
 # on it. The ghost phases through; midges are a cloud.
 dae curling_contact(g, s, x, y) {
     gin g["health"] > 0 an abs(g["z"] - s["z"]) < 56 * 65536 {
@@ -102,7 +102,7 @@ dae curling_contact(g, s, x, y) {
         }
     }
     fer a in g["actors"] {
-        gin a["active"] an (a["kind"] == 2 or a["kind"] == 3) an abs(a["z"] - s["z"]) < 56 * 65536 {
+        gin a["active"] an bogle_is_walker(a["kind"]) an abs(a["z"] - s["z"]) < 56 * 65536 {
             ken dx = (x - a["x"]) / 256
             ken dy = (y - a["y"]) / 256
             gin abs(dx) < 8192 an abs(dy) < 8192 an dx * dx + dy * dy < 67108864 an s["svx"] / 256 * dx + s["svy"] / 256 * dy < 0 {

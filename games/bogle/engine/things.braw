@@ -1,6 +1,8 @@
 fetch "games/bogle/engine/move"
+fetch "games/bogle/engine/kinds"
 
 # Mutable game actors are separate from immutable map spawn records.
+# Path points (type 60) are waypoints, not actors.
 dae init_things(g) {
     g["actors"] = []
     g["sounds"] = []
@@ -9,6 +11,7 @@ dae init_things(g) {
     # Curling stones by thing index (naething elsewhere): move.braw reads their
     # live positions, and curling.braw their glide.
     g["stones"] = []
+    g["paths"] = []
     ken m = g["map"]
     gin nae contains(m, "thing_type") {
         gie naething
@@ -16,7 +19,17 @@ dae init_things(g) {
     fer i in 0..len(m["thing_type"]) {
         ken kind = m["thing_type"][i]
         shove(g["stones"], naething)
-        gin kind != 1 {
+        gin kind == 60 {
+            # Ordered by flags; equal flags keep map order.
+            ken point = {"x": m["thing_x"][i] * 65536, "y": m["thing_y"][i] * 65536, "order": m["thing_flags"][i]}
+            ken at = len(g["paths"])
+            shove(g["paths"], point)
+            whiles at > 0 an g["paths"][at - 1]["order"] > point["order"] {
+                g["paths"][at] = g["paths"][at - 1]
+                at = at - 1
+            }
+            g["paths"][at] = point
+        } ither gin kind != 1 {
             ken hp = 1
             ken state = "idle"
             gin kind == 2 {
@@ -33,6 +46,15 @@ dae init_things(g) {
             }
             gin kind == 5 {
                 hp = 200
+                state = "chase"
+            }
+            # New monster kinds chase until their own behaviour lands.
+            gin kind >= 42 an kind <= 45 {
+                hp = [12, 50, 30, 30][kind - 42]
+                state = "chase"
+            }
+            gin kind == 49 {
+                hp = 450
                 state = "chase"
             }
             shove(g["actors"], {
@@ -100,10 +122,13 @@ dae hurt_player(g, damage) {
 }
 
 dae damage_actor(g, actor, damage) {
-    gin nae actor["active"] or damage <= 0 or actor["kind"] < 2 or actor["kind"] > 5 {
+    gin actor["active"] an actor["kind"] == 40 {
+        g["message"] = "Ye cannae shoot Wullie!"
+    }
+    gin nae actor["active"] or damage <= 0 or nae bogle_is_monster(actor["kind"]) {
         gie nae
     }
-    gin actor["kind"] == 4 an g["map"]["light"][actor["sector"]] <= 96 {
+    gin actor["kind"] == 4 an g["map"]["light"][actor["sector"]] <= bogle_ghostlight(g["map"]) {
         gie nae
     }
     gin actor["kind"] == 5 {
@@ -122,6 +147,14 @@ dae damage_actor(g, actor, damage) {
         }
     }
     gie aye
+}
+
+# Story maps may set the light at or below which the ghost cannot be hurt.
+dae bogle_ghostlight(m) {
+    gin contains(m, "ghostlight") {
+        gie m["ghostlight"]
+    }
+    gie 96
 }
 
 # A shot shoves a curling stone along the 16.16 unit direction (ux, uy) by
@@ -145,7 +178,7 @@ dae splash_damage(g, x, y, z, sector, radius, damage, source, skip_stone = -1) {
         hurt_player(g, damage * (radius - distance) / radius)
     }
     fer a in g["actors"] {
-        gin a["active"] an a["kind"] >= 2 an a["kind"] <= 5 {
+        gin a["active"] an bogle_is_target(a["kind"]) {
             distance = actor_distance(x, y, a["x"], a["y"])
             gin distance < radius an bogle_sight(g, x, y, z + 24 * 65536, sector, a["x"], a["y"], a["z"] + 24 * 65536, a["sector"]) {
                 damage_actor(g, a, damage * (radius - distance) / radius)
@@ -195,20 +228,23 @@ dae actor_move(g, a, dx, dy) {
 
 dae actor_pickup(g, a) {
     ken kind = a["kind"]
-    ken messages = [
-        "Oatcake: +10 health, up tae 100.",
-        "Haggis plate: +50 health, up tae 100.",
-        "Wee juice: +15 health, up tae 100.",
-        "Juice bottle: full health, double speed for 3 seconds.",
-        "Shortbread: spirit filled tae 100.",
-        "Mars box: 5 throws, unlocks Mars bars.",
-        "Powder an shot: +5 blunderbuss shots.",
-        "Blunderbuss unlocked, wi 5 shots.",
-        "Bagpipes unlocked: haud fire, then let gae!",
-        "Airn key: opens the gallery door.",
-        "Siller key: opens the battlement door.",
-    ]
-    g["message"] = messages[kind - 10]
+    ken messages = {
+        10: "Oatcake: +10 health, up tae 100.",
+        11: "Haggis plate: +50 health, up tae 100.",
+        12: "Wee juice: +15 health, up tae 100.",
+        13: "Juice bottle: full health, double speed for 3 seconds.",
+        14: "Shortbread: spirit filled tae 100.",
+        15: "Mars box: 5 throws, unlocks Mars bars.",
+        16: "Powder an shot: +5 blunderbuss shots.",
+        17: "Blunderbuss unlocked, wi 5 shots.",
+        18: "Bagpipes unlocked: haud fire, then let gae!",
+        19: "Airn key: opens the gallery door.",
+        20: "Siller key: opens the battlement door.",
+        22: "Brass key: opens the plant room.",
+        23: "A heid wi wires. Its ee still blinks.",
+        24: "The guid core. It hums a wee tune.",
+    }
+    g["message"] = messages[kind]
     gin kind == 10 {
         g["health"] = g["health"] + 10
     }
@@ -248,7 +284,20 @@ dae actor_pickup(g, a) {
     gin kind == 20 {
         g["keys"] = bit_or(g["keys"], 2)
     }
-    gin kind == 15 or kind == 17 or kind == 18 or kind == 19 or kind == 20 {
+    gin kind == 22 {
+        g["keys"] = bit_or(g["keys"], 4)
+    }
+    # Story items travel in the carry from level to level.
+    gin kind == 23 or kind == 24 {
+        ken item = "head"
+        gin kind == 24 {
+            item = "good_core"
+        }
+        gin nae contains(g["items"], item) {
+            shove(g["items"], item)
+        }
+    }
+    gin kind == 15 or (kind >= 17 an kind <= 20) or kind >= 22 {
         g["grin_tic"] = g["tics"]
     }
     a["active"] = nae
@@ -263,7 +312,7 @@ dae things_tick(g) {
                 a["vx"] = a["vx"] / 2
                 a["vy"] = a["vy"] / 2
             }
-            gin a["kind"] >= 10 an a["kind"] <= 20 an actor_distance(g["x"], g["y"], a["x"], a["y"]) < 24 an abs(g["z"] - a["z"]) < 32 * 65536 an bogle_sight(g, g["x"], g["y"], g["z"] + 24 * 65536, g["sector"], a["x"], a["y"], a["z"] + 24 * 65536, a["sector"]) {
+            gin bogle_is_pickup(a["kind"]) an actor_distance(g["x"], g["y"], a["x"], a["y"]) < 24 an abs(g["z"] - a["z"]) < 32 * 65536 an bogle_sight(g, g["x"], g["y"], g["z"] + 24 * 65536, g["sector"], a["x"], a["y"], a["z"] + 24 * 65536, a["sector"]) {
                 actor_pickup(g, a)
             }
         }

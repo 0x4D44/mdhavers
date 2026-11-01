@@ -21,9 +21,22 @@ gin bogle_option("BOGLE_FRONTEND", "0") == "1" {
     gin bogle_option("BOGLE_REQUIRE_EXIT", "0") == "1" {
         mak_siccar headless_game["won"]
         mak_siccar headless_game["health"] > 0
-        mak_siccar headless_game["keys"] == 3
-        fer owned in headless_game["owned"] {
-            mak_siccar owned
+        ken headless_require = headless_game["map"]["require"]
+        gin len(headless_require) == 0 {
+            mak_siccar headless_game["keys"] == 3
+            fer owned in headless_game["owned"] {
+                mak_siccar owned
+            }
+        }
+        # A map's `require` records replace the classic two-key, four-weapon check.
+        fer need in headless_require {
+            gin need[0] == "keys" {
+                mak_siccar bit_an(headless_game["keys"], need[1]) == need[1]
+            } ither gin need[0] == "item" {
+                mak_siccar contains(headless_game["items"], need[1])
+            } ither {
+                mak_siccar headless_game["owned"][need[1] - 1]
+            }
         }
     }
 }

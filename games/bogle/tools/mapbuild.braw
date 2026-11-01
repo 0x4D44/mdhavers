@@ -156,6 +156,22 @@ dae builder_text(b) {
             text = text + "briefing " + line + "\n"
         }
     }
+    gin contains(b, "intro") {
+        fer line in b["intro"] {
+            text = text + "intro " + line + "\n"
+        }
+    }
+    gin contains(b, "story") {
+        text = text + "story " + b["story"] + "\n"
+    }
+    gin contains(b, "require") {
+        fer need in b["require"] {
+            text = text + "require " + need[0] + " " + tae_string(need[1]) + "\n"
+        }
+    }
+    gin contains(b, "ghostlight") {
+        text = text + builder_line("ghostlight", [b["ghostlight"]])
+    }
     fer v in b["vertices"] {
         text = text + builder_line("v", v)
     }

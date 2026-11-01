@@ -1,3 +1,5 @@
+fetch "games/bogle/engine/kinds"
+
 # Immutable baked assets are shared by every game state.
 ken bogle_asset_cache = {}
 
@@ -228,6 +230,11 @@ dae bogle_actor_art(g, actor) {
         name = "prj_mars_splat"
     } ither gin kind >= 10 an kind <= 21 {
         name = ["pick_oatcake", "pick_haggis_plate", "pick_girder_juice", "pick_girder_bottle", "pick_shortbread", "pick_mars_box", "pick_powder_shot", "pick_blunderbuss", "pick_bagpipes", "pick_key_tartan", "pick_key_silver", "dec_banner"][kind - 10]
+    } ither gin bogle_is_pickup(kind) {
+        # Placeholders until the story art batches land.
+        name = ["pick_key_silver", "dec_stag_head", "pick_powder_shot"][kind - 22]
+    } ither gin bogle_is_monster(kind) {
+        name = "spr_haggis_walk" + tae_string(tick + 1)
     } ither gin kind >= 30 an kind <= 36 {
         name = ["dec_stag_head", "dec_armour", "dec_brazier", "dec_thistle_pot", "dec_cow_portrait", "dec_banner", "dec_curling_stone"][kind - 30]
         gin kind == 32 an contains(actor, "thing") {

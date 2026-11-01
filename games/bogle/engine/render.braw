@@ -2,6 +2,7 @@ fetch "games/bogle/engine/trig"
 
 fetch "games/bogle/engine/assets"
 fetch "games/bogle/engine/fixed"
+fetch "games/bogle/engine/map"
 
 dae bogle_colour(tex) {
     gie tex % 16 * 16 + 15
@@ -222,11 +223,11 @@ dae bogle_sprites(g, fb, w, h, visible, drawsegs, cosine, sine) {
         ken centre = focal + sprite[2] * focal / z
         ken world_height = 6291456
         ken world_half = 2097152
-        gin dynamic an actor["kind"] >= 2 an actor["kind"] <= 5 {
+        gin dynamic an bogle_is_monster(actor["kind"]) {
             world_height = bogle_actor_height(actor["kind"]) * 65536
             world_half = world_height / 3
         }
-        gin dynamic an actor["kind"] >= 10 an actor["kind"] <= 20 {
+        gin dynamic an bogle_is_pickup(actor["kind"]) {
             world_height = 2097152
             world_half = 1048576
         }
@@ -246,7 +247,7 @@ dae bogle_sprites(g, fb, w, h, visible, drawsegs, cosine, sine) {
         ken left = centre - half
         ken right = centre + half
         ken bob = 0
-        gin dynamic an actor["kind"] >= 10 an actor["kind"] <= 20 {
+        gin dynamic an bogle_is_pickup(actor["kind"]) {
             bob = bogle_pickup_bob(g["tics"]) * 65536
         }
         ken bottom = horizon - (actor["z"] + bob - g["view_z"]) * focal / z
@@ -267,7 +268,7 @@ dae bogle_sprites(g, fb, w, h, visible, drawsegs, cosine, sine) {
                 mirror = view[1]
             }
             texture = art[name]
-            fullbright = kind == 4 or kind == 32 or (kind >= 10 an kind <= 20 an bogle_pickup_glint(g["tics"]))
+            fullbright = kind == 4 or kind == 32 or (bogle_is_pickup(kind) an bogle_pickup_glint(g["tics"]))
         } ither {
             texture = g["sprite_tex"][kind - 2]
             fullbright = g["sprite_fullbright"][kind - 2]
@@ -607,6 +608,8 @@ ken bogle_font = {
     ".": "000000000000010",
     ",": "000000000010100",
     "'": "010010000000000",
+    "?": "111001010000010",
+    ">": "100010001010100",
 }
 
 dae bogle_text(fb, w, h, left, top, text, ink, scale) {
@@ -747,9 +750,15 @@ dae bogle_overlay(g, fb, w, h) {
         }
     }
     bogle_hud(g, fb, w, h)
+    gin contains(g, "talk") an g["talk"] != naething {
+        bogle_talk_box(g["talk"], fb, w, h, scale)
+    }
     ken message = g["message"]
     gin g["won"] {
         message = "YE'VE ESCAPED THE GATEHOUSE!"
+        gin bogle_story_map(g["map"]) {
+            message = upper(g["map"]["name"]) + " COMPLETE!"
+        }
     }
     gin g["health"] <= 0 {
         message = "YE'RE DEID! RESTART TAE TRY AGAIN."
@@ -759,8 +768,69 @@ dae bogle_overlay(g, fb, w, h) {
     }
 }
 
+# Word-wrap text to rows of at most `columns` letters.
+dae bogle_wrap_text(text, columns) {
+    ken rows = []
+    ken row = ""
+    fer word in words(text) {
+        gin len(row) > 0 an len(row) + 1 + len(word) > columns {
+            shove(rows, row)
+            row = ""
+        }
+        gin len(row) > 0 {
+            row = row + " "
+        }
+        row = row + word
+    }
+    gin len(row) > 0 {
+        shove(rows, row)
+    }
+    gie rows
+}
+
+# The talk box fills the lower third above the status bar: the current line,
+# wrapped to four rows, then any choices with a > on the selected one.
+dae bogle_talk_box(t, fb, w, h, scale) {
+    ken bottom = h - bogle_hud_height(w, h)
+    ken top = bottom - (bottom / 3)
+    fer y in max(0, top)..bottom {
+        fer x in 0..w {
+            ken ink = 2
+            gin y == top or y == bottom - 1 or x == 0 or x == w - 1 {
+                ink = 15
+            }
+            bytes_set(fb, y * w + x, ink)
+        }
+    }
+    ken rows = []
+    gin t["at"] < len(t["lines"]) {
+        rows = bogle_wrap_text(t["lines"][t["at"]], max(1, (w - 4 * scale) / (4 * scale)))
+    }
+    ken y = top + 2 * scale
+    fer i in 0..min(4, len(rows)) {
+        bogle_text(fb, w, h, 2 * scale, y, rows[i], 15, scale)
+        y = y + 6 * scale
+    }
+    gin t["at"] >= len(t["lines"]) - 1 {
+        fer i in 0..len(t["choices"]) {
+            ken label = "  " + t["choices"][i]
+            ken ink = 13
+            gin i == t["sel"] {
+                label = "> " + t["choices"][i]
+                ink = 15
+            }
+            bogle_text(fb, w, h, 2 * scale, y, label, ink, scale)
+            y = y + 6 * scale
+        }
+    }
+}
+
 # All status text is derived from current state; no objective counter can drift.
+# A level script's objective line takes precedence.
 dae bogle_hud_objective(g) {
+    gin contains(g, "objective") an len(g["objective"]) > 0 {
+        gie g["objective"]
+    }
     gin bit_an(g["keys"], 1) == 0 {
         gie "FIND AIRN KEY"
     }

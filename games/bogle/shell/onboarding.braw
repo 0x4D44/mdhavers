@@ -1,10 +1,14 @@
 fetch "games/bogle/engine/doors"
 fetch "games/bogle/engine/curling"
+fetch "games/bogle/engine/story"
 
 # Read-only shell cue: use the exact trace and reach that E will use.
 dae bogle_door_prompt(g) {
-    gin nae g["gameplay"] or g["health"] <= 0 or g["won"] {
+    gin nae g["gameplay"] or g["health"] <= 0 or g["won"] or g["failed"] or g["talk"] != naething {
         gie ""
+    }
+    gin story_use_target(g) != naething {
+        gie "E: use"
     }
     gin curling_use_target(g) != naething {
         gie "E: kick"
@@ -34,6 +38,12 @@ dae bogle_door_prompt(g) {
             }
             gin lock == 2 an bit_an(g["keys"], 2) == 0 {
                 gie "Ye need the silver key"
+            }
+            gin lock == 3 an bit_an(g["keys"], 4) == 0 {
+                gie "Ye need the brass key"
+            }
+            gin lock == 4 an nae contains(g["items"], "head") {
+                gie "Ye need a recognised ee"
             }
             gie "E: open"
         }

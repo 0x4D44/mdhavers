@@ -1,0 +1,8 @@
+ok story records parse, legacy maps keep defaults, path points are no actors
+ok a walk-over tag reaches the script; the brass key opens lock 3
+ok lock 4 refuses withoot the heid and opens wi it
+ok a story thing in reach takes E before the door
+ok a story thing the script passes on lets E fall through tae the door
+ok the lever stops the countdoon and freezes the clock
+ok carry takes items and the clock, copied, and reads frae a fixture
+ok story maps add a state digest tae each replay row; legacy rows are unchanged

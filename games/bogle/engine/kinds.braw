@@ -1,0 +1,28 @@
+# Thing kinds: monsters fight and take damage; protected story actors are hit
+# by weapons but never hurt; pickups are walked over; story things (40-59) are
+# the level script's. Old kinds keep their old answers.
+dae bogle_is_monster(kind) {
+    gie (kind >= 2 an kind <= 5) or (kind >= 42 an kind <= 45) or kind == 49
+}
+
+dae bogle_is_protected(kind) {
+    gie kind == 40 or kind == 46 or kind == 47 or kind == 48
+}
+
+dae bogle_is_pickup(kind) {
+    gie (kind >= 10 an kind <= 20) or (kind >= 22 an kind <= 24)
+}
+
+dae bogle_is_story_thing(kind) {
+    gie kind >= 40 an kind <= 59
+}
+
+# What weapons strike: monsters and protected actors.
+dae bogle_is_target(kind) {
+    gie bogle_is_monster(kind) or bogle_is_protected(kind)
+}
+
+# Grounded bodies that hold lifts and curling stones: not the ghost or midges.
+dae bogle_is_walker(kind) {
+    gie bogle_is_target(kind) an kind != 4 an kind != 5
+}

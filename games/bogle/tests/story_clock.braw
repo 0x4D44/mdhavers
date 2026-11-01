@@ -1,0 +1,109 @@
+fetch "games/bogle/shell/frontend"
+
+# The campaign clock banks every tic of every attempt once, through deaths,
+# restarts and the ending; tiers split exactly at their thresholds.
+dae clock_step(ui, menu = 0, keys = 0) {
+    # 1000 ms is four tics (the catch-up cap).
+    gie bogle_front_step(ui, 1000, {"menu": menu, "keys": keys, "dx": 0})
+}
+
+dae clock_press(ui, menu) {
+    bogle_front_step(ui, 0, {"menu": 0, "keys": 0, "dx": 0})
+    bogle_front_step(ui, 0, {"menu": menu, "keys": 0, "dx": 0})
+}
+
+ken ui = bogle_front_new("games/bogle/data/storytest.map")
+mak_siccar ui["levels"] == bogle_levels()
+mak_siccar bogle_front_new("games/bogle/data/kirkyard.map")["levels"] == bogle_campaign_levels()
+mak_siccar bogle_campaign_levels()[0] == "games/bogle/data/kirkyard.map" an len(bogle_campaign_levels()) == 5
+bogle_front_new_game(ui)
+mak_siccar ui["screen"] == "opening"
+clock_press(ui, 16)
+mak_siccar ui["screen"] == "briefing"
+clock_press(ui, 16)
+mak_siccar ui["screen"] == "play"
+mak_siccar bogle_front_new("games/bogle/data/e1m1.map")["levels"] == bogle_levels()
+ken g = ui["game"]
+g["x"] = 160 * 65536
+g["y"] = 200 * 65536
+mak_siccar bogle_door_prompt(g) == "E: use"
+g["x"] = 64 * 65536
+g["y"] = 128 * 65536
+blether "ok a story first map opens on its card; e1m1 keeps the classic list"
+
+clock_step(ui)
+clock_step(ui)
+mak_siccar ui["game"]["clock"] == 8 an ui["clock"] == 0
+ui["game"]["health"] = 0
+clock_step(ui)
+mak_siccar ui["screen"] == "dead" an ui["game"]["clock"] == 8
+clock_press(ui, 4)
+mak_siccar ui["screen"] == "briefing" an ui["clock"] == 8 an ui["game"]["clock"] == 8
+clock_press(ui, 16)
+clock_step(ui)
+mak_siccar ui["game"]["clock"] == 12
+blether "ok death then Restart banks the attempt once"
+
+clock_press(ui, 8)
+mak_siccar ui["screen"] == "pause"
+clock_press(ui, 2)
+clock_press(ui, 4)
+mak_siccar ui["screen"] == "briefing" an ui["clock"] == 12 an ui["game"]["clock"] == 12
+clock_press(ui, 16)
+clock_press(ui, 8)
+clock_press(ui, 2)
+clock_press(ui, 4)
+mak_siccar ui["clock"] == 12 an ui["game"]["clock"] == 12
+clock_press(ui, 16)
+clock_step(ui)
+clock_press(ui, 8)
+clock_press(ui, 2)
+clock_press(ui, 4)
+mak_siccar ui["clock"] == 16 an ui["game"]["clock"] == 16
+blether "ok pause then Restart Level, and repeated restarts, bank each tic once"
+
+clock_press(ui, 16)
+clock_step(ui)
+ui["game"]["health"] = 0
+clock_step(ui)
+clock_press(ui, 2)
+clock_press(ui, 4)
+mak_siccar ui["screen"] == "title" an ui["clock"] == 20
+clock_press(ui, 4)
+mak_siccar ui["screen"] == "opening" an ui["clock"] == 0 an ui["game"]["clock"] == 0
+blether "ok Back to Title banks the attempt; New Game starts the clock afresh"
+
+clock_press(ui, 16)
+clock_press(ui, 16)
+clock_step(ui)
+ui["game"]["won"] = aye
+clock_step(ui)
+mak_siccar ui["screen"] == "ending" an ui["clock"] == 4 an ui["ending"] == 0
+clock_press(ui, 8)
+mak_siccar ui["screen"] == "title"
+blether "ok winning a story map off the level list banks and ends"
+
+bogle_front_new_game(ui)
+clock_press(ui, 16)
+clock_press(ui, 16)
+clock_step(ui)
+ui["game"]["failed"] = aye
+clock_step(ui)
+mak_siccar ui["screen"] == "ending" an ui["ending"] == 2 an ui["clock"] == 4
+blether "ok the countdoon failing goes tae the buried ending"
+
+ken fast = bogle_end_fast()
+ken slow = bogle_end_slow()
+mak_siccar fast < slow
+mak_siccar bogle_ending_tier(fast - 1, nae) == 0 an bogle_ending_tier(fast, nae) == 1
+mak_siccar bogle_ending_tier(slow - 1, nae) == 1 an bogle_ending_tier(slow, nae) == 2
+mak_siccar bogle_ending_tier(0, aye) == 2
+mak_siccar bogle_ending_lines(0)[1] == "Yin o them is a clone."
+mak_siccar bogle_ending_lines(2)[0] == "Auld Wullie buries ye in the kirkyard."
+blether "ok ending tiers split at their thresholds on both sides"
+
+ken fb = bytes(320 * 200)
+bogle_front_render(ui, fb, 320, 200)
+ui["screen"] = "opening"
+bogle_front_render(ui, fb, 320, 200)
+blether "ok opening and ending screens draw"

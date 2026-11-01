@@ -9,6 +9,92 @@ dae frame_hash(fb) {
     gie hash
 }
 
+# What the player takes into the next level, as in Doom: health, spirit,
+# ammo, weapons, story items and the campaign clock. Keys belong to their level.
+dae bogle_front_carry(g) {
+    ken owned = []
+    fer have in g["owned"] {
+        shove(owned, have)
+    }
+    ken items = []
+    fer item in g["items"] {
+        shove(items, item)
+    }
+    gie {"health": g["health"], "spirit": g["spirit"], "mars": g["mars"], "powder": g["powder"], "puff": g["puff"], "owned": owned, "weapon": g["weapon"], "items": items, "clock": g["clock"]}
+}
+
+# The only way carry enters a game, for the front end and the replay runner.
+dae bogle_apply_carry(g, carry) {
+    gin carry == naething {
+        gie g
+    }
+    ken copy = bogle_front_carry(carry)
+    fer field in ["health", "spirit", "mars", "powder", "puff", "weapon", "owned", "items", "clock"] {
+        g[field] = copy[field]
+    }
+    gie g
+}
+
+# A replay carry fixture: one `field value...` per line, over a fresh game's
+# carry. owned takes four 0/1 flags; items takes names.
+dae bogle_parse_carry(text, g) {
+    ken carry = bogle_front_carry(g)
+    fer line in split(text, "\n") {
+        ken fields = words(wheesht(split(line, "#")[0]))
+        gin len(fields) > 0 {
+            ken name = fields[0]
+            gin name == "owned" {
+                gin len(fields) != 5 {
+                    hurl "Carry owned wants four flags"
+                }
+                fer i in 0..4 {
+                    carry["owned"][i] = fields[i + 1] == "1"
+                }
+            } ither gin name == "items" {
+                carry["items"] = []
+                fer i in 1..len(fields) {
+                    shove(carry["items"], fields[i])
+                }
+            } ither gin contains(carry, name) an len(fields) == 2 {
+                carry[name] = map_integer(fields[1])
+            } ither {
+                hurl "Carry record no kent: " + name
+            }
+        }
+    }
+    gie carry
+}
+
+# The per-row digest for story maps: FNV over a canonical string of the story
+# state, so a replay pins more than the picture.
+dae bogle_story_digest(g) {
+    ken text = tae_string(g["health"]) + "|" + tae_string(g["keys"]) + "|" + join(g["items"], ",") + "|"
+    fer name in sort(keys(g["story"])) {
+        text = text + name + "=" + tae_string(g["story"][name]) + ";"
+    }
+    gin g["talk"] != naething {
+        text = text + "|talk " + tae_string(g["talk"]["at"]) + " " + tae_string(g["talk"]["sel"])
+    }
+    text = text + "|" + tae_string(g["clock"]) + "|" + tae_string(g["won"]) + tae_string(g["failed"])
+    fer a in g["actors"] {
+        text = text + "|" + tae_string(a["kind"]) + " " + tae_string(a["active"]) + " " + a["state"] + " " + tae_string(a["health"]) + " " + tae_string(a["x"] / 65536) + " " + tae_string(a["y"] / 65536)
+    }
+    ken hash = 2166136261
+    fer letter in text {
+        hash = bit_xor(hash, ord(letter)) * 16777619 % 4294967296
+    }
+    gie hash
+}
+
+# A row is the frame and its hash; story maps add the state digest.
+dae replay_row(game, fb, frame) {
+    ken row = tae_string(frame) + " " + tae_string(frame_hash(fb))
+    gin bogle_story_map(game["map"]) {
+        row = row + " " + tae_string(bogle_story_digest(game))
+    }
+    gie row
+}
+
 dae replay_inputs(path) {
     ken inputs = []
     fer line in split(read_file(path), "\n") {
@@ -39,6 +125,13 @@ dae run_replay(map_path, replay_path, w, h, every, limit = 0) {
         hurl "Replay interval must be positive"
     }
     ken game = new_game(load_map(map_path))
+    # replays/<level>.carry starts the level as the campaign would.
+    ken parts = split(map_path, "/")
+    ken level = split(parts[len(parts) - 1], ".")[0]
+    ken carry_path = "games/bogle/replays/" + level + ".carry"
+    gin file_exists(carry_path) {
+        bogle_apply_carry(game, bogle_parse_carry(read_file(carry_path), game))
+    }
     ken fb = bytes(w * h)
     ken inputs = replay_inputs(replay_path)
     ken frame = 0
@@ -50,12 +143,12 @@ dae run_replay(map_path, replay_path, w, h, every, limit = 0) {
         frame = frame + 1
         gin frame % every == 0 {
             render(game, fb, w, h)
-            blether tae_string(frame) + " " + tae_string(frame_hash(fb))
+            blether replay_row(game, fb, frame)
         }
     }
     gin frame > 0 an frame % every != 0 {
         render(game, fb, w, h)
-        blether tae_string(frame) + " " + tae_string(frame_hash(fb))
+        blether replay_row(game, fb, frame)
     }
     gie game
 }

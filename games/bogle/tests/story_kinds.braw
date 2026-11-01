@@ -1,0 +1,91 @@
+fetch "games/bogle/engine/game"
+fetch "games/bogle/engine/map"
+
+# Kind predicates keep the old answers for old kinds; a monster from the new
+# range is hit by every weapon path and holds doors; protected actors are
+# struck but never hurt.
+fer kind in 0..70 {
+    mak_siccar bogle_is_monster(kind) == ((kind >= 2 an kind <= 5) or (kind >= 42 an kind <= 45) or kind == 49)
+    mak_siccar bogle_is_pickup(kind) == ((kind >= 10 an kind <= 20) or (kind >= 22 an kind <= 24))
+    mak_siccar bogle_is_story_thing(kind) == (kind >= 40 an kind <= 59)
+    gin kind < 40 {
+        mak_siccar bogle_is_target(kind) == (kind >= 2 an kind <= 5)
+        mak_siccar bogle_is_walker(kind) == (kind == 2 or kind == 3)
+    }
+}
+mak_siccar bogle_is_protected(40) an bogle_is_protected(48) an nae bogle_is_protected(42) an nae bogle_is_monster(40)
+blether "ok kind predicates keep old answers and cover the new ranges"
+
+ken room = "BOGMAP 1\nv 0 0\nv 1024 0\nv 1024 512\nv 0 512\ns 0 128 1 2 192 0 0 0 1 2 3\nt 1 64 64 0 0\n"
+ken g = new_game(map_parse(room + "t 42 112 64 0 0\n"))
+mak_siccar g["actors"][0]["health"] == 12 an g["actors"][0]["state"] == "chase"
+weapons_tick(g, aye)
+mak_siccar nae g["actors"][0]["active"]
+g = new_game(map_parse(room + "t 49 112 64 0 0\n"))
+weapons_tick(g, aye)
+mak_siccar g["actors"][0]["health"] == 430
+blether "ok the sgian-dubh hitscan hurts new monsters"
+
+g = new_game(map_parse(room + "t 43 300 64 0 0\n"))
+g["owned"][2] = aye
+g["weapon"] = 3
+g["powder"] = 1
+weapons_tick(g, aye)
+mak_siccar g["actors"][0]["health"] < 50
+blether "ok the blunderbuss hurts new monsters"
+
+g = new_game(map_parse(room + "t 43 300 64 0 0\n"))
+splash_damage(g, 300 * 65536, 80 * 65536, 0, 0, 64, 45, naething)
+mak_siccar g["actors"][0]["health"] < 50
+g = new_game(map_parse(room + "t 43 300 64 0 0\n"))
+spawn_projectile(g, "mars", 290 * 65536, 64 * 65536, 20 * 65536, 0, 4 * 65536, 0, 0, naething)
+projectiles_tick(g)
+projectiles_tick(g)
+mak_siccar g["projectiles"][0]["kind"] == "sizzle" an g["actors"][0]["health"] < 50
+blether "ok a Mars bar strikes and splashes new monsters"
+
+g = new_game(map_parse(room + "t 43 200 64 0 0\n"))
+g["owned"][3] = aye
+g["weapon"] = 4
+fer i in 0..35 {
+    weapons_tick(g, aye)
+}
+mak_siccar g["actors"][0]["health"] < 50 an g["actors"][0]["state"] == "stunned"
+blether "ok the bagpipe cone hurts and stuns new monsters"
+
+g = new_game(map_parse(room + "t 40 112 64 0 0\n"))
+weapons_tick(g, aye)
+mak_siccar g["actors"][0]["health"] == 1 an g["actors"][0]["active"] an g["message"] == "Ye cannae shoot Wullie!"
+g = new_game(map_parse(room + "t 40 112 64 0 0\nt 43 160 64 0 0\n"))
+weapons_tick(g, aye)
+mak_siccar g["actors"][1]["health"] == 50
+blether "ok Wullie stops the stab and takes nae harm"
+
+g = new_game(map_parse(room + "t 48 300 64 0 0\n"))
+g["owned"][2] = aye
+g["weapon"] = 3
+g["powder"] = 1
+weapons_tick(g, aye)
+splash_damage(g, 300 * 65536, 80 * 65536, 0, 0, 64, 45, naething)
+spawn_projectile(g, "mars", 290 * 65536, 64 * 65536, 20 * 65536, 0, 4 * 65536, 0, 0, naething)
+projectiles_tick(g)
+projectiles_tick(g)
+mak_siccar g["projectiles"][0]["kind"] == "sizzle"
+g["owned"][3] = aye
+g["weapon"] = 4
+g["cooldown"] = 0
+fer i in 0..35 {
+    weapons_tick(g, aye)
+}
+ken ailsa = g["actors"][0]
+mak_siccar ailsa["health"] == 1 an ailsa["active"] an ailsa["state"] == "idle" an ailsa["vx"] == 0
+blether "ok protected actors are struck by every weapon but never hurt or shoved"
+
+ken door_map = "BOGMAP 1\nv 0 0\nv 128 0\nv 128 128\nv 0 128\nv 160 0\nv 160 128\nv 288 0\nv 288 128\ns 0 128 1 2 192 0 0 0 1 2 3\ns 0 128 1 2 192 1 0 1 4 5 2\ns 0 128 1 2 192 0 0 4 6 7 5\nt 1 64 64 0 0\nt 42 144 64 0 0\n"
+g = new_game(map_parse(door_map))
+mak_siccar door_occupied(g, 1)
+g["actors"][0]["active"] = nae
+mak_siccar nae door_occupied(g, 1)
+g = new_game(map_parse(replace(door_map, "t 42", "t 40")))
+mak_siccar door_occupied(g, 1)
+blether "ok new monsters and protected actors hold a door open"

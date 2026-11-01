@@ -1,0 +1,141 @@
+fetch "games/bogle/shell/replay"
+
+# Story records, path points, locks 3 and 4, story items, the use priority,
+# link tags reaching the script, the lever stopping the clock, carry and the
+# story-map replay digest.
+dae eng_tic(g, keys) {
+    gie tic(g, {"keys": keys, "dx": 0})
+}
+
+dae eng_at(g, x, y, angle) {
+    g["x"] = x * 65536
+    g["y"] = y * 65536
+    g["angle"] = angle
+    g["sector"] = 0
+}
+
+dae eng_door(g, sector) {
+    fer d in g["doors"] {
+        gin d["sector"] == sector {
+            gie d
+        }
+    }
+    gie naething
+}
+
+ken m = load_map("games/bogle/data/storytest.map")
+mak_siccar m["story"] == "test" an m["ghostlight"] == 64 an len(m["intro"]) == 2
+mak_siccar m["require"] == [["keys", 4], ["item", "head"]]
+ken legacy = load_map("games/bogle/data/e1m1.map")
+mak_siccar legacy["story"] == "" an legacy["require"] == [] an legacy["ghostlight"] == 96 an legacy["intro"] == []
+mak_siccar nae bogle_story_map(legacy) an bogle_story_map(m)
+ken room = "BOGMAP 1\nv 0 0\nv 1024 0\nv 1024 512\nv 0 512\ns 0 128 1 2 192 0 0 0 1 2 3\nt 1 64 64 0 0\n"
+ken paths = new_game(map_parse(room + "t 60 300 64 0 2\nt 60 200 64 0 1\nt 60 400 64 0 3\nt 4 500 64 0 0\nghostlight 200\n"))
+mak_siccar len(paths["actors"]) == 1 an len(paths["paths"]) == 3
+mak_siccar paths["paths"][0]["x"] == 200 * 65536 an paths["paths"][2]["x"] == 400 * 65536
+mak_siccar paths["map"]["ghostlight"] == 200 an nae damage_actor(paths, paths["actors"][0], 10)
+blether "ok story records parse, legacy maps keep defaults, path points are no actors"
+
+ken g = new_game(load_map("games/bogle/data/storytest.map"))
+# The brass door (sector 2) refuses without the brass key.
+eng_at(g, 240, 56, 0)
+eng_tic(g, 128)
+mak_siccar g["message"] == "It's lockit. Ye'll be needin' the brass key." an eng_door(g, 2)["state"] == "closed"
+eng_tic(g, 0)
+# Walking onto the west strip fires link tag 7 to the script.
+mak_siccar nae contains(g["story"], "plate")
+eng_at(g, -64, 64, 0)
+g["sector"] = 1
+eng_tic(g, 0)
+mak_siccar g["story"]["plate"] an bit_an(g["keys"], 4) == 4 an g["message"] == "Brass key: opens the plant room."
+eng_at(g, 240, 56, 0)
+eng_tic(g, 128)
+mak_siccar eng_door(g, 2)["state"] == "opening"
+blether "ok a walk-over tag reaches the script; the brass key opens lock 3"
+
+eng_tic(g, 0)
+eng_at(g, 240, 200, 0)
+eng_tic(g, 128)
+mak_siccar g["message"] == "RETINA NOT RECOGNISED. ARE YE A SALESMAN?" an eng_door(g, 3)["state"] == "closed"
+eng_tic(g, 0)
+g["x"] = 400 * 65536
+g["y"] = 56 * 65536
+g["sector"] = 4
+eng_tic(g, 0)
+mak_siccar g["items"] == ["head"] an g["message"] == "A heid wi wires. Its ee still blinks."
+eng_at(g, 240, 200, 0)
+eng_tic(g, 128)
+mak_siccar eng_door(g, 3)["state"] == "opening"
+blether "ok lock 4 refuses withoot the heid and opens wi it"
+
+g = new_game(load_map("games/bogle/data/storytest.map"))
+ken compressor = g["actors"][1]
+mak_siccar compressor["kind"] == 52
+compressor["x"] = 230 * 65536
+eng_at(g, 216, 56, 0)
+eng_tic(g, 128)
+mak_siccar g["talk"]["lines"] == ["The compressor wheezes intae life."] an g["story"]["air"] an compressor["state"] == "on"
+eng_tic(g, 0)
+eng_tic(g, 128)
+mak_siccar g["talk"] == naething
+g["keys"] = 4
+eng_tic(g, 0)
+eng_tic(g, 128)
+mak_siccar g["message"] == "It's runnin' fine." an eng_door(g, 2)["state"] == "closed"
+blether "ok a story thing in reach takes E before the door"
+
+ken computer = g["actors"][0]
+mak_siccar computer["kind"] == 50
+g["story"]["asked"] = aye
+compressor["active"] = nae
+computer["x"] = 230 * 65536
+computer["y"] = 56 * 65536
+eng_tic(g, 0)
+eng_tic(g, 128)
+mak_siccar g["talk"] == naething an eng_door(g, 2)["state"] == "opening"
+blether "ok a story thing the script passes on lets E fall through tae the door"
+
+g = new_game(load_map("games/bogle/data/storytest.map"))
+ken lever = g["actors"][6]
+mak_siccar lever["kind"] == 53
+lever["x"] = 100 * 65536
+lever["y"] = 128 * 65536
+lever["sector"] = 0
+eng_tic(g, 128)
+mak_siccar g["message"] == "It disnae budge. No yet." an nae g["won"]
+g["story"]["countdown"] = 100
+eng_tic(g, 0)
+eng_tic(g, 128)
+mak_siccar g["won"] an g["clock_stop"] an g["story"]["countdown"] == 0 an lever["state"] == "on"
+ken clock = g["clock"]
+g["won"] = nae
+eng_tic(g, 0)
+mak_siccar g["clock"] == clock an g["story"]["countdown"] == 0
+blether "ok the lever stops the countdoon and freezes the clock"
+
+g = new_game(load_map("games/bogle/data/storytest.map"))
+g["items"] = ["head"]
+g["clock"] = 77
+g["owned"][2] = aye
+ken carry = bogle_front_carry(g)
+g["items"] = []
+mak_siccar carry["items"] == ["head"] an carry["clock"] == 77
+ken fresh = new_game(load_map("games/bogle/data/storytest.map"))
+bogle_apply_carry(fresh, carry)
+mak_siccar fresh["items"] == ["head"] an fresh["clock"] == 77 an fresh["owned"][2] an fresh["keys"] == 0
+carry["items"] = []
+mak_siccar fresh["items"] == ["head"]
+ken read = bogle_parse_carry("health 40 # wounded\nowned 1 1 0 1\nitems head good_core\nclock 900\n", new_game(load_map("games/bogle/data/storytest.map")))
+mak_siccar read["health"] == 40 an read["owned"] == [aye, aye, nae, aye] an read["items"] == ["head", "good_core"] an read["clock"] == 900 an read["mars"] == 0
+blether "ok carry takes items and the clock, copied, and reads frae a fixture"
+
+ken fb = bytes(80 * 50)
+render(g, fb, 80, 50)
+mak_siccar len(split(replay_row(g, fb, 35), " ")) == 3
+ken digest = bogle_story_digest(g)
+g["story"]["countdown"] = 5
+mak_siccar bogle_story_digest(g) != digest
+ken old = new_game(load_map("games/bogle/data/e1m1.map"))
+render(old, fb, 80, 50)
+mak_siccar replay_row(old, fb, 35) == "35 " + tae_string(frame_hash(fb))
+blether "ok story maps add a state digest tae each replay row; legacy rows are unchanged"

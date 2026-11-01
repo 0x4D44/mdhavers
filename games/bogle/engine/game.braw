@@ -6,6 +6,7 @@ fetch "games/bogle/engine/weapons"
 fetch "games/bogle/engine/doors"
 fetch "games/bogle/engine/ai"
 fetch "games/bogle/engine/curling"
+fetch "games/bogle/engine/story"
 
 dae new_game(map, play = naething) {
     ken assets = bogle_assets()
@@ -66,21 +67,43 @@ dae new_game(map, play = naething) {
         "hurt_tic": -1000,
         "grin_tic": -1000,
         "bog_slow": nae,
+        # Story state: items carry between levels, the clock counts every
+        # tic (talk included) until the script stops it.
+        "items": [],
+        "clock": 0,
+        "clock_stop": nae,
+        "story": {},
+        "objective": "",
+        "talk": naething,
+        "held_keys": 0,
+        "hold_fire": nae,
+        "fired": [],
+        "failed": nae,
     }
     init_things(game)
     gin gameplay {
         init_doors(game)
+        story_init(game)
     }
     gie game
 }
 
 dae tic(g, input) {
     g["sounds"] = []
-    gin g["gameplay"] an (g["health"] <= 0 or g["won"]) {
+    gin g["gameplay"] an (g["health"] <= 0 or g["won"] or g["failed"]) {
         gie g["sounds"]
     }
     ken keys = input["keys"]
+    gin nae g["clock_stop"] {
+        g["clock"] = g["clock"] + 1
+    }
     gin g["gameplay"] {
+        g["held_keys"] = keys
+        # Talk freezes the world before turning, weapons and fire.
+        gin g["talk"] != naething {
+            story_talk_tick(g, keys)
+            gie g["sounds"]
+        }
         fer weapon in 1..5 {
             gin bit_an(keys, 128 * bogle_pow2(weapon)) != 0 an g["owned"][weapon - 1] {
                 gin g["weapon"] != weapon {
@@ -106,11 +129,16 @@ dae tic(g, input) {
     gin g["gameplay"] {
         ken use = bit_an(keys, 128) != 0
         ken fresh = use an nae g["was_use"]
-        # E on a curling stone kicks it instead of reaching past it.
+        # A story thing takes E first, then a curling stone (kicked instead
+        # of reaching past it), then switches, doors and the exit.
+        gin fresh an story_use_press(g) {
+            fresh = nae
+        }
         gin fresh an curling_use_kick(g) {
             fresh = nae
         }
         doors_tick(g, fresh)
+        story_drain(g)
         g["was_use"] = use
         gin g["won"] {
             g["tics"] = g["tics"] + 1
@@ -170,11 +198,21 @@ dae tic(g, input) {
     g["view_z"] = g["view_z"] + (target - g["view_z"]) / 4
     g["tics"] = g["tics"] + 1
     gin g["gameplay"] {
-        weapons_tick(g, bit_an(keys, 64) != 0)
+        # Fire held through talk stays dead until it is released.
+        ken fire = bit_an(keys, 64) != 0
+        gin g["hold_fire"] {
+            gin fire {
+                fire = nae
+            } ither {
+                g["hold_fire"] = nae
+            }
+        }
+        weapons_tick(g, fire)
         projectiles_tick(g)
         things_tick(g)
         curling_tick(g)
         ai_tick(g)
+        story_tick(g)
     }
     gie g["sounds"]
 }

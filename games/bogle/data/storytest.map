@@ -1,0 +1,40 @@
+BOGMAP 1
+name The Test Wing
+briefing ASK THE COMPUTER. FIND THE BRASS KEY AND THE HEID.
+intro A wee test o the story engine.
+intro Naebody will ever see this.
+story test
+require keys 4
+require item head
+ghostlight 64
+v 0 0
+v 256 0
+v 256 112
+v 256 144
+v 256 256
+v 0 256
+v -128 0
+v -128 256
+v 288 0
+v 288 112
+v 288 144
+v 288 256
+v 512 0
+v 512 112
+v 512 144
+v 512 256
+s 0 128 1 2 192 0 0 0 1 2 3 4 5
+s 0 128 1 2 160 0 1792 6 0 5 7
+s 0 128 1 2 160 1 3 1 8 9 2
+s 0 128 1 2 160 1 4 3 10 11 4
+s 0 128 1 2 192 0 0 8 12 13 9
+s 0 128 1 2 192 0 0 10 14 15 11
+t 1 64 128 0 0
+t 50 200 200 0 0
+t 52 200 56 0 0
+t 22 -64 64 0 0
+t 40 -64 192 0 0
+t 23 400 56 0 0
+t 42 480 56 0 0
+t 53 400 200 0 0
+t 21 480 200 0 0

@@ -21,8 +21,10 @@ dae bogle_front_new(map_path) {
         "return": "title",
         "map_path": map_path,
         "first_map": map_path,
-        "levels": bogle_levels(),
+        "levels": bogle_levels_for(map_path),
         "carry": naething,
+        "clock": 0,
+        "ending": 0,
         "game": naething,
         "last_menu": 0,
         "blocked_keys": 0,
@@ -47,6 +49,68 @@ dae bogle_levels() {
     gie ["games/bogle/data/e1m1.map", "games/bogle/data/e1m2.map"]
 }
 
+# The story campaign. Starting on one of its maps plays it; the classic
+# episode stays for e1m1 and the regression maps.
+dae bogle_campaign_levels() {
+    ken levels = []
+    fer name in ["kirkyard", "forest", "distillery", "tower", "lab"] {
+        shove(levels, "games/bogle/data/" + name + ".map")
+    }
+    gie levels
+}
+
+dae bogle_levels_for(first_map) {
+    gin contains(bogle_campaign_levels(), first_map) {
+        gie bogle_campaign_levels()
+    }
+    gie bogle_levels()
+}
+
+# Ending tiers by the campaign clock when Ailsa is freed: 0 fast, 1 slow,
+# 2 buried (too slow, or the countdown ran out). Tuned once routes exist.
+dae bogle_end_fast() {
+    gie 35 * 60 * 15
+}
+
+dae bogle_end_slow() {
+    gie 35 * 60 * 30
+}
+
+dae bogle_ending_tier(clock, failed) {
+    gin failed or clock >= bogle_end_slow() {
+        gie 2
+    }
+    gin clock >= bogle_end_fast() {
+        gie 1
+    }
+    gie 0
+}
+
+dae bogle_ending_lines(tier) {
+    gin tier == 0 {
+        gie ["Ye mairry Ailsa. Ye hae seeven bairns.", "Yin o them is a clone."]
+    }
+    gin tier == 1 {
+        gie ["Ye mairry Ailsa. Ye hae nae bairns,", "but a verra guid personality core."]
+    }
+    gie ["Auld Wullie buries ye in the kirkyard.", "He didnae check if ye were deid."]
+}
+
+# Story maps head their screens with their own name.
+dae bogle_front_heading(ui, fallback) {
+    gin ui["game"] != naething an bogle_story_map(ui["game"]["map"]) {
+        gie upper(ui["game"]["map"]["name"])
+    }
+    gie fallback
+}
+
+# Leaving a level by any route banks its tics into the campaign clock once:
+# the game's clock already started from the banked value.
+dae bogle_front_bank(ui) {
+    gin ui["game"] != naething {
+        ui["clock"] = ui["game"]["clock"]
+    }
+}
 dae bogle_front_next_level(ui) {
     ken levels = ui["levels"]
     fer i in 0..len(levels) - 1 {
@@ -57,26 +121,11 @@ dae bogle_front_next_level(ui) {
     gie ""
 }
 
-# What the player takes into the next level, as in Doom: health, spirit,
-# ammo and weapons. Keys belong to their level.
-dae bogle_front_carry(g) {
-    ken owned = []
-    fer have in g["owned"] {
-        shove(owned, have)
-    }
-    gie {"health": g["health"], "spirit": g["spirit"], "mars": g["mars"], "powder": g["powder"], "puff": g["puff"], "owned": owned, "weapon": g["weapon"]}
-}
-
 dae bogle_front_start(ui) {
     # Reload pristine geometry: doors mutate their map's ceiling heights.
     ken g = new_game(load_map(ui["map_path"]))
-    ken carry = ui["carry"]
-    gin carry != naething {
-        fer field in ["health", "spirit", "mars", "powder", "puff", "weapon"] {
-            g[field] = carry[field]
-        }
-        g["owned"] = bogle_front_carry(carry)["owned"]
-    }
+    bogle_apply_carry(g, ui["carry"])
+    g["clock"] = ui["clock"]
     ui["game"] = g
     ui["run"] = ui["run"] + 1
     bogle_front_screen(ui, "briefing")
@@ -87,12 +136,26 @@ dae bogle_front_start(ui) {
 dae bogle_front_new_game(ui) {
     ui["map_path"] = ui["first_map"]
     ui["carry"] = naething
+    ui["clock"] = 0
     bogle_front_start(ui)
+    # A campaign opens on its card; any key continues to the briefing.
+    gin len(ui["game"]["map"]["intro"]) > 0 {
+        bogle_front_screen(ui, "opening")
+    }
+}
+
+dae bogle_front_ending(ui) {
+    bogle_front_bank(ui)
+    ui["ending"] = bogle_ending_tier(ui["clock"], ui["game"]["failed"])
+    bogle_front_screen(ui, "ending")
 }
 
 dae bogle_front_won(ui) {
+    bogle_front_bank(ui)
     ken next = bogle_front_next_level(ui)
-    gin next == "" {
+    gin next == "" an bogle_story_map(ui["game"]["map"]) {
+        bogle_front_ending(ui)
+    } ither gin next == "" {
         bogle_front_screen(ui, "complete")
     } ither {
         ui["carry"] = bogle_front_carry(ui["game"])
@@ -113,6 +176,9 @@ dae bogle_front_items(screen) {
     }
     gin screen == "complete" {
         gie ["Restart", "Back to Title"]
+    }
+    gin screen == "ending" {
+        gie ["Back to Title"]
     }
     gie []
 }
@@ -140,6 +206,12 @@ dae bogle_front_step(ui, dt_ms, input) {
         gin ui["screen"] == "briefing" {
             gin bit_an(pressed, 31) != 0 {
                 bogle_front_screen(ui, "play")
+            }
+            gie aye
+        }
+        gin ui["screen"] == "opening" {
+            gin bit_an(pressed, 31) != 0 {
+                bogle_front_screen(ui, "briefing")
             }
             gie aye
         }
@@ -172,7 +244,8 @@ dae bogle_front_step(ui, dt_ms, input) {
         gin bit_an(pressed, 8) != 0 {
             gin ui["screen"] == "pause" {
                 bogle_front_screen(ui, "play")
-            } ither gin ui["screen"] == "dead" or ui["screen"] == "complete" {
+            } ither gin ui["screen"] == "dead" or ui["screen"] == "complete" or ui["screen"] == "ending" {
+                bogle_front_bank(ui)
                 bogle_front_screen(ui, "title")
             }
             gie aye
@@ -189,6 +262,7 @@ dae bogle_front_step(ui, dt_ms, input) {
             gin action == "New Game" {
                 bogle_front_new_game(ui)
             } ither gin action == "Restart" or action == "Restart Level" {
+                bogle_front_bank(ui)
                 bogle_front_start(ui)
             } ither gin action == "Music ON/OFF" {
                 ui["music_enabled"] = nae ui["music_enabled"]
@@ -202,6 +276,7 @@ dae bogle_front_step(ui, dt_ms, input) {
                 ui["kit_page"] = 0
                 bogle_front_screen(ui, "kit")
             } ither gin action == "Back to Title" {
+                bogle_front_bank(ui)
                 bogle_front_screen(ui, "title")
             } ither gin action == "Quit" {
                 bogle_front_screen(ui, "quit")
@@ -216,6 +291,10 @@ dae bogle_front_step(ui, dt_ms, input) {
     }
     gin g["won"] {
         bogle_front_won(ui)
+        gie aye
+    }
+    gin g["failed"] {
+        bogle_front_ending(ui)
         gie aye
     }
     gin bit_an(pressed, 8) != 0 {
@@ -243,6 +322,10 @@ dae bogle_front_step(ui, dt_ms, input) {
         }
         gin g["won"] {
             bogle_front_won(ui)
+            brak
+        }
+        gin g["failed"] {
+            bogle_front_ending(ui)
             brak
         }
     }
@@ -352,6 +435,23 @@ dae bogle_front_render(ui, fb, w, h) {
             }
         }
         bogle_front_text(canvas, 174, "PRESS ONY KEY", 15, 2)
+    } ither gin screen == "opening" {
+        bogle_front_text(canvas, 28, "BOGLE CASTLE", 15, 2)
+        ken y = 52
+        fer line in ui["game"]["map"]["intro"] {
+            bogle_front_text(canvas, y, line, 13)
+            y = y + 14
+        }
+        bogle_front_text(canvas, 174, "PRESS ONY KEY", 15, 2)
+    } ither gin screen == "ending" {
+        bogle_front_text(canvas, 28, "THE END", 15, 2)
+        ken y = 60
+        fer line in bogle_ending_lines(ui["ending"]) {
+            bogle_front_text(canvas, y, line, 13)
+            y = y + 14
+        }
+        bogle_front_text(canvas, 100, "TIME " + tae_string(ui["clock"] / 35) + " SECONDS", 13)
+        bogle_front_text(canvas, 140, "- Back to Title -", 15, 2)
     } ither gin screen == "kit" {
         bogle_kit_render(canvas, ui["kit_page"])
     } ither gin screen == "controls" {
@@ -372,13 +472,16 @@ dae bogle_front_render(ui, fb, w, h) {
             heading = "YE'RE DEID!"
         }
         gin screen == "complete" {
-            heading = "GATEHOUSE COMPLETE!"
+            heading = bogle_front_heading(ui, "GATEHOUSE") + " COMPLETE!"
         }
         gin screen != "title" {
             bogle_front_text(canvas, 28, heading, 15, 2)
         }
         gin screen == "dead" or screen == "complete" {
             bogle_front_text(canvas, 52, "TIME " + tae_string(ui["game"]["tics"] / 35) + " SECONDS", 13)
+        }
+        gin screen == "dead" an bogle_story_map(ui["game"]["map"]) {
+            bogle_front_text(canvas, 64, "HERE LIES A GIRDER JUICE SALESMAN", 15)
         }
         ken items = bogle_front_items(screen)
         ken y = 80

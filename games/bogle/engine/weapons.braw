@@ -3,14 +3,14 @@ fetch "games/bogle/engine/trig"
 
 fetch "games/bogle/engine/things"
 
-# Hitscan selects the nearest enemy intersecting a narrow horizontal ray.
+# Hitscan selects the nearest target intersecting a narrow horizontal ray.
 dae weapon_hitscan(g, angle, range, damage) {
     ken cosine = bogle_cos(g["sin"], angle)
     ken sine = bogle_sin(g["sin"], angle)
     ken best = range + 1
     ken target = naething
     fer a in g["actors"] {
-        gin a["active"] an a["kind"] >= 2 an a["kind"] <= 5 {
+        gin a["active"] an bogle_is_target(a["kind"]) {
             ken dx = (a["x"] - g["x"]) / 65536
             ken dy = (a["y"] - g["y"]) / 65536
             ken along = (dx * cosine + dy * sine) / 65536
@@ -56,7 +56,7 @@ dae bagpipe_blast(g) {
     ken cosine = bogle_cos(g["sin"], g["angle"])
     ken sine = bogle_sin(g["sin"], g["angle"])
     fer a in g["actors"] {
-        gin a["active"] an a["kind"] >= 2 an a["kind"] <= 5 {
+        gin a["active"] an bogle_is_target(a["kind"]) {
             ken dx = (a["x"] - g["x"]) / 65536
             ken dy = (a["y"] - g["y"]) / 65536
             ken distance = isqrt(dx * dx + dy * dy)
@@ -70,6 +70,9 @@ dae bagpipe_blast(g) {
                     gin a["kind"] == 5 {
                         a["health"] = 0
                         a["active"] = nae
+                    } ither gin nae bogle_is_monster(a["kind"]) {
+                        # Protected actors are struck but neither hurt nor shoved.
+                        damage_actor(g, a, 1)
                     } ither {
                         damage_actor(g, a, max(1, 60 - distance * 50 / 320))
                         gin a["active"] {
@@ -169,7 +172,7 @@ dae projectiles_tick(g) {
                         }
                     } ither gin p["active"] an p["kind"] == "mars" {
                         fer a in g["actors"] {
-                            gin a["active"] an a["kind"] >= 2 an a["kind"] <= 5 {
+                            gin a["active"] an bogle_is_target(a["kind"]) {
                                 ken dx = (a["x"] - nx) / 65536
                                 ken dy = (a["y"] - ny) / 65536
                                 gin dx * dx + dy * dy <= 400 an nz >= a["z"] an nz <= a["z"] + 56 * 65536 {

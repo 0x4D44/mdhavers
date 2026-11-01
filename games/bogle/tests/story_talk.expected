@@ -1,0 +1,8 @@
+ok E on the computer opens its choice and drops the filling bag
+ok talk freezes positions, turning and tics; the clock runs on
+ok choices move only on fresh presses
+ok a choice fires its event; the answer is a fresh talk
+ok fire held oot o talk does nothing until released
+ok nae sgian-dubh stab leaks oot o talk either
+ok every choice is read as no and starts the countdown
+ok the countdoon running oot fails the level and stops the world

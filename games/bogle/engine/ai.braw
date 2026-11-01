@@ -186,7 +186,7 @@ dae ai_tick(g) {
         gie naething
     }
     fer a in g["actors"] {
-        gin a["active"] an a["kind"] >= 2 an a["kind"] <= 5 {
+        gin a["active"] an bogle_is_monster(a["kind"]) {
             gin a["state"] == "stunned" {
                 actor_face(g, a, g["x"] - a["x"], g["y"] - a["y"])
                 a["timer"] = a["timer"] - 1
@@ -315,6 +315,19 @@ dae ai_tick(g) {
                         bogle_emit_sound(g, "ghost")
                         spawn_projectile(g, "wail", a["x"], a["y"], a["z"] + 32 * 65536, a["sector"], velocity[0], velocity[1], 0, a)
                         a["timer"] = 70
+                    }
+                }
+                # Placeholder for the new monster kinds: chase, and bite 4
+                # within 24 every 18 tics.
+                gin kind >= 42 {
+                    a["timer"] = a["timer"] + 1
+                    gin distance < 24 an bogle_sight(g, a["x"], a["y"], a["z"] + 24 * 65536, a["sector"], g["x"], g["y"], g["z"] + 24 * 65536, g["sector"]) {
+                        gin a["timer"] >= 18 {
+                            a["timer"] = 0
+                            hurt_player(g, 4)
+                        }
+                    } ither {
+                        actor_chase(g, a, g["x"], g["y"], 196608)
                     }
                 }
                 gin kind == 5 {

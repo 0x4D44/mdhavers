@@ -1,0 +1,131 @@
+fetch "games/bogle/engine/game"
+
+# Talk freezes the world, reads only fresh presses, and lets no shot or pipe
+# blast leak out; every computer choice reads as no and starts the countdown.
+dae talk_game() {
+    ken g = new_game(load_map("games/bogle/data/storytest.map"))
+    # Face the computer at (200, 200) from 40 units west.
+    g["x"] = 160 * 65536
+    g["y"] = 200 * 65536
+    g["angle"] = 0
+    gie g
+}
+
+dae talk_positions(g) {
+    ken text = tae_string(g["x"]) + " " + tae_string(g["y"]) + " " + tae_string(g["angle"])
+    fer a in g["actors"] {
+        text = text + " " + tae_string(a["x"]) + " " + tae_string(a["y"])
+    }
+    gie text
+}
+
+dae talk_tic(g, keys, dx = 0) {
+    gie tic(g, {"keys": keys, "dx": dx})
+}
+
+ken g = talk_game()
+mak_siccar g["objective"] == "ASK THE COMPUTER" an g["talk"] == naething
+g["owned"][3] = aye
+g["weapon"] = 4
+fer i in 0..5 {
+    talk_tic(g, 64)
+}
+mak_siccar g["bag_charge"] == 5
+ken sounds = talk_tic(g, 64 + 128)
+mak_siccar g["talk"] != naething an g["talk"]["choices"] == ["What do you think?", "What do you think?", "What do you think?"]
+mak_siccar g["bag_charge"] == 0 an contains(sounds, "pipe_stop") an g["hold_fire"]
+ken fb = bytes(320 * 200)
+render(g, fb, 320, 200)
+fb = bytes(80 * 50)
+render(g, fb, 80, 50)
+mak_siccar bogle_wrap_text("DO YOU WISH TO SAVE THE PRINCESS?", 12) == ["DO YOU WISH", "TO SAVE THE", "PRINCESS?"]
+blether "ok E on the computer opens its choice and drops the filling bag"
+
+ken tics = g["tics"]
+ken clock = g["clock"]
+ken before = talk_positions(g)
+fer i in 0..20 {
+    talk_tic(g, 64 + 128 + 4 + 16, 300)
+}
+mak_siccar g["tics"] == tics an talk_positions(g) == before an g["clock"] == clock + 20
+mak_siccar g["talk"] != naething an g["talk"]["sel"] == 0 an g["bag_charge"] == 0
+blether "ok talk freezes positions, turning and tics; the clock runs on"
+
+talk_tic(g, 64 + 128 + 1)
+mak_siccar g["talk"]["sel"] == 2
+talk_tic(g, 64 + 128 + 1)
+mak_siccar g["talk"]["sel"] == 2
+talk_tic(g, 0)
+talk_tic(g, 2)
+mak_siccar g["talk"]["sel"] == 0
+talk_tic(g, 2)
+mak_siccar g["talk"]["sel"] == 0
+talk_tic(g, 0)
+talk_tic(g, 2)
+mak_siccar g["talk"]["sel"] == 1 an g["story"]["countdown"] == 0
+blether "ok choices move only on fresh presses"
+
+talk_tic(g, 64 + 128)
+mak_siccar g["story"]["choice"] == 1 an g["story"]["countdown"] == 350
+mak_siccar g["talk"]["lines"] == ["INTERPRETING VAGUE ANSWER AS NO."] an g["objective"] == "PULL THE LEVER"
+talk_tic(g, 64 + 128)
+mak_siccar g["talk"] != naething an g["story"]["countdown"] == 350
+talk_tic(g, 64)
+talk_tic(g, 64 + 128)
+mak_siccar g["talk"] == naething an g["hold_fire"]
+blether "ok a choice fires its event; the answer is a fresh talk"
+
+tics = g["tics"]
+fer i in 0..10 {
+    sounds = talk_tic(g, 64)
+    mak_siccar g["bag_charge"] == 0 an nae contains(sounds, "pipe_fill") an nae contains(sounds, "pipe_blast")
+}
+mak_siccar g["tics"] == tics + 10 an g["story"]["countdown"] == 340 an g["puff"] == 100
+sounds = talk_tic(g, 0)
+mak_siccar nae g["hold_fire"]
+sounds = talk_tic(g, 64)
+mak_siccar g["bag_charge"] == 1 an contains(sounds, "pipe_fill")
+blether "ok fire held oot o talk does nothing until released"
+
+g = talk_game()
+talk_tic(g, 64 + 128)
+talk_tic(g, 64)
+talk_tic(g, 64 + 128)
+talk_tic(g, 64)
+talk_tic(g, 64 + 128)
+mak_siccar g["talk"] == naething an g["cooldown"] == 0
+talk_tic(g, 64)
+mak_siccar g["cooldown"] == 0
+talk_tic(g, 0)
+talk_tic(g, 64)
+mak_siccar g["cooldown"] == 8
+blether "ok nae sgian-dubh stab leaks oot o talk either"
+
+fer pick in 0..3 {
+    g = talk_game()
+    talk_tic(g, 128)
+    talk_tic(g, 0)
+    fer i in 0..pick {
+        talk_tic(g, 2)
+        talk_tic(g, 0)
+    }
+    mak_siccar g["talk"]["sel"] == pick
+    talk_tic(g, 128)
+    mak_siccar g["talk"]["lines"] == ["INTERPRETING VAGUE ANSWER AS NO."] an g["story"]["countdown"] == 350
+}
+blether "ok every choice is read as no and starts the countdown"
+
+talk_tic(g, 0)
+talk_tic(g, 128)
+mak_siccar g["talk"] == naething
+g["story"]["countdown"] = 2
+talk_tic(g, 0)
+mak_siccar nae g["failed"]
+talk_tic(g, 0)
+mak_siccar g["failed"] an nae g["won"]
+tics = g["tics"]
+clock = g["clock"]
+before = talk_positions(g)
+talk_tic(g, 1)
+mak_siccar g["tics"] == tics an g["clock"] == clock an talk_positions(g) == before
+blether "ok the countdoon running oot fails the level and stops the world"

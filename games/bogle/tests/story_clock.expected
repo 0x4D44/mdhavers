@@ -1,0 +1,8 @@
+ok a story first map opens on its card; e1m1 keeps the classic list
+ok death then Restart banks the attempt once
+ok pause then Restart Level, and repeated restarts, bank each tic once
+ok Back to Title banks the attempt; New Game starts the clock afresh
+ok winning a story map off the level list banks and ends
+ok the countdoon failing goes tae the buried ending
+ok ending tiers split at their thresholds on both sides
+ok opening and ending screens draw
