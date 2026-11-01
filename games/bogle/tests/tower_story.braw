@@ -1,0 +1,157 @@
+fetch "games/bogle/engine/game"
+
+# The Tower script: the green cloaks speak in turn and shrug off a shot;
+# "Ailsa" sparks for 35 tics, goes off and leaves exactly one head where she
+# stood; the laundry chute is shut until the head is taken, and the map will
+# not let ye leave without it. Efter the bang the seen-o-meter reads zero.
+dae ts_sector(m, x, y) {
+    fer s in 0..len(m["floor_h"]) {
+        gin map_point(m, s, x, y) {
+            gie s
+        }
+    }
+    gie -1
+}
+
+dae ts_at(g, x, y, angle) {
+    g["x"] = x * 65536
+    g["y"] = y * 65536
+    g["angle"] = angle
+    g["sector"] = ts_sector(g["map"], x, y)
+    g["z"] = g["map"]["floor_h"][g["sector"]] * 65536
+    g["view_z"] = g["z"] + 2686976
+}
+
+dae ts_press(g, keys) {
+    tic(g, {"keys": keys, "dx": 0})
+    tic(g, {"keys": 0, "dx": 0})
+}
+
+dae ts_read(g) {
+    whiles g["talk"] != naething {
+        ts_press(g, 128)
+    }
+}
+
+# The rats put away so only the script acts.
+dae ts_game() {
+    ken g = new_game(load_map("games/bogle/data/tower.map"))
+    fer a in g["actors"] {
+        gin a["kind"] == 42 {
+            a["active"] = nae
+        }
+    }
+    gie g
+}
+
+dae ts_count(g, kind) {
+    ken n = 0
+    fer a in g["actors"] {
+        gin a["active"] an a["kind"] == kind {
+            n = n + 1
+        }
+    }
+    gie n
+}
+
+dae ts_chute(g) {
+    fer d in g["doors"] {
+        gin bogle_link(g["map"], d["sector"]) == 8 {
+            gie d
+        }
+    }
+    gie naething
+}
+
+ken g = ts_game()
+mak_siccar g["map"]["require"] == [["item", "head"]] an g["objective"] == "DINNAE GET SEEN"
+blether "ok the tower wants the heid tae finish"
+
+# The cloak south of the table, from the doorway side, three times; then the
+# north one: the lines run on in turn whoever ye ask.
+ken said = []
+ts_at(g, 1600, 60, 3072)
+fer i in 0..3 {
+    ts_press(g, 128)
+    shove(said, g["talk"]["lines"][0])
+    ts_read(g)
+}
+ts_at(g, 1600, 70, 1024)
+ts_press(g, 128)
+shove(said, g["talk"]["lines"][0])
+ts_read(g)
+mak_siccar said[0] == "It's YOU!" an said[1] == "I'm a Faithful, I swear!" an said[2] == "BANISHED!" an len(said[3]) > 0 an g["story"]["cloak"] == 4
+blether "ok the cloaks speak in turn: " + join(said, " / ")
+
+# A blunderbuss blast at point blank: the cloak is hit but none the worse.
+ken cloak = naething
+fer a in g["actors"] {
+    gin a["kind"] == 46 an a["y"] / 65536 == 122 {
+        cloak = a
+    }
+}
+g["owned"][2] = aye
+g["powder"] = 5
+g["weapon"] = 3
+ts_at(g, 1600, 80, 1024)
+ts_press(g, 64)
+fer i in 0..10 {
+    tic(g, {"keys": 0, "dx": 0})
+}
+mak_siccar g["powder"] == 4 an cloak["active"] an cloak["health"] == 1 an nae damage_actor(g, cloak, 100) an cloak["health"] == 1
+blether "ok a cloak is protected"
+
+# The chute is shut: facing the exit through its door does nothing.
+ken chute = ts_chute(g)
+ts_at(g, 2016, 180, 1024)
+ts_press(g, 128)
+mak_siccar chute["state"] == "closed" an nae g["won"]
+blether "ok the chute is shut afore the heid"
+
+# "Ailsa": her line, 35 tics of sparks, then the bang and one head.
+ken clone = naething
+fer a in g["actors"] {
+    gin a["kind"] == 47 {
+        clone = a
+    }
+}
+ts_at(g, 2024, 64, 0)
+tic(g, {"keys": 128, "dx": 0})
+mak_siccar g["talk"]["lines"][0] == "Ma hero. Ma hero. Ma he-he-hero." an clone["state"] == "spark"
+ts_read(g)
+fer i in 0..33 {
+    tic(g, {"keys": 0, "dx": 0})
+}
+mak_siccar clone["active"] an clone["state"] == "spark" an ts_count(g, 23) == 0
+tic(g, {"keys": 0, "dx": 0})
+mak_siccar nae clone["active"] an ts_count(g, 23) == 1 an g["objective"] == "TAKE THE HEID" an chute["state"] == "closed"
+ken head = g["actors"][len(g["actors"]) - 1]
+mak_siccar head["kind"] == 23 an head["x"] == clone["x"] an head["y"] == clone["y"]
+blether "ok she sparks 35 tics, goes off, an leaves one heid where she stood"
+fer i in 0..8 {
+    tic(g, {"keys": 0, "dx": 0})
+}
+mak_siccar g["talk"]["lines"][0] == "THE METER WASNAE PLUGGED IN."
+ts_read(g)
+# Pressing E where she stood does nothing more.
+ts_press(g, 128)
+mak_siccar ts_count(g, 23) == 1 an g["talk"] == naething
+ts_at(g, 608, 100, 0)
+mak_siccar bogle_seen_meter(g) == 0
+ts_at(g, 2024, 64, 0)
+blether "ok the meter wasnae plugged in: zero by a doorway efter the bang"
+
+# Take the head: the stamp, and the chute opens.
+ts_at(g, 2070, 64, 0)
+tic(g, {"keys": 0, "dx": 0})
+mak_siccar contains(g["items"], "head") an ts_count(g, 23) == 0
+mak_siccar g["talk"]["lines"][0] == "Stamped on the neck: McDREICHBOTTOM CLONE WORKS - BATCH 47." an chute["state"] == "opening"
+ts_read(g)
+mak_siccar g["objective"] == "DOON THE LAUNDRY CHUTE"
+fer i in 0..40 {
+    tic(g, {"keys": 0, "dx": 0})
+}
+ts_at(g, 2016, 214, 1024)
+ts_press(g, 128)
+mak_siccar g["won"] an g["message"] == "Doon the laundry chute. Wheeeee!"
+blether "ok the heid opens the chute, an doon ye go"

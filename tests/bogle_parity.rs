@@ -390,3 +390,11 @@ fn forest_playthrough_matches_native_rc_modes_and_interpreter_prefix() {
 fn distillery_playthrough_matches_native_rc_modes_and_interpreter_prefix() {
     check_playthrough("distillery", 41);
 }
+
+// The Tower: the corridor of lit doorways and the seen-o-meter, the store
+// room rats, the green cloaks, "Ailsa" and her head, then the laundry chute,
+// started from the cellars' carry (replays/tower.carry).
+#[test]
+fn tower_playthrough_matches_native_rc_modes_and_interpreter_prefix() {
+    check_playthrough("tower", 6);
+}

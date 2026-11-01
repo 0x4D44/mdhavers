@@ -1,0 +1,84 @@
+fetch "games/bogle/shell/replay"
+
+# The HAVE-YE-BEEN-SEEN-O-METER changes nothing: the tower route's first 420
+# tics (the doorways, the store room rats) play to the same state wi the
+# meter on (drawn every few tics, alarm cue and all) and wi it off. It leaps
+# up near a doorway and wobbles (tests/tower_story.braw sees it zero once
+# "Ailsa" has gone off).
+dae tm_game() {
+    ken g = new_game(load_map("games/bogle/data/tower.map"))
+    bogle_apply_carry(g, bogle_parse_carry(read_file("games/bogle/replays/tower.carry"), g))
+    gie g
+}
+
+dae tm_at(g, x, y) {
+    g["x"] = x * 65536
+    g["y"] = y * 65536
+    fer s in 0..len(g["map"]["floor_h"]) {
+        gin map_point(g["map"], s, x, y) {
+            g["sector"] = s
+        }
+    }
+}
+
+# Everything that plays: the player, the actors, the seed, the clock, the
+# story flags and talk, the projectiles and doors.
+dae tm_state(g) {
+    ken text = ""
+    fer name in ["x", "y", "z", "vz", "angle", "sector", "health", "spirit", "mars", "powder", "puff", "weapon", "cooldown", "bag_charge", "keys", "seed", "tics", "clock", "won", "message", "objective", "items", "story", "talk", "owned", "speed_tics", "hold_fire", "was_use", "was_fire"] {
+        text = text + name + "=" + tae_string(g[name]) + ";"
+    }
+    fer a in g["actors"] {
+        text = text + tae_string(a) + "|"
+    }
+    fer p in g["projectiles"] {
+        text = text + tae_string(p) + "|"
+    }
+    fer d in g["doors"] {
+        text = text + tae_string(d) + "|"
+    }
+    gie text
+}
+
+ken inputs = replay_inputs("games/bogle/replays/tower.txt")
+ken on = tm_game()
+ken off = tm_game()
+off["meter_off"] = aye
+ken fb = bytes(80 * 50)
+ken peak = 0
+ken alarms = 0
+ken moves = 0
+ken last = -1
+fer i in 0..420 {
+    tic(on, inputs[i])
+    tic(off, inputs[i])
+    gin contains(on["sounds"], "alarm") {
+        alarms = alarms + 1
+    }
+    mak_siccar nae contains(off["sounds"], "alarm")
+    ken meter = bogle_seen_meter(on)
+    peak = max(peak, meter)
+    gin meter != last {
+        moves = moves + 1
+    }
+    last = meter
+    gin i % 7 == 0 {
+        render(on, fb, 80, 50)
+    }
+    mak_siccar bogle_seen_meter(off) == 0
+    gin tm_state(on) != tm_state(off) {
+        hurl "the meter changed the game at tic " + tae_string(i)
+    }
+}
+mak_siccar peak >= 96 an alarms > 0 an moves > 100
+blether "ok 420 tics the same wi the meter on an off (peak " + tae_string(peak) + ", " + tae_string(alarms) + " alarms)"
+
+ken g = tm_game()
+tic(g, {"keys": 0, "dx": 0})
+mak_siccar bogle_seen_meter(g) == 0
+tm_at(g, 608, 100)
+ken near = bogle_seen_meter(g)
+tm_at(g, 608, 64)
+ken nearby = bogle_seen_meter(g)
+mak_siccar near >= 70 an nearby > 0
+blether "ok the meter's quiet at the stair foot an leaps up by a doorway"

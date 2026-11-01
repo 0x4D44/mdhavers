@@ -113,6 +113,9 @@ dae bogle_audio_event(mixer, event) {
     gin event == "bell" {
         profile = [5, 20000, 523, 520, 9000, 1, 0]
     }
+    gin event == "alarm" {
+        profile = [3, 3000, 1400, 1400, 6000, 1, 0]
+    }
     gin event == "menu" {
         profile = [3, 1900, 800, 1050, 4000, 1, 0]
     }

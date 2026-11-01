@@ -1,0 +1,10 @@
+# Starts the tower as the campaign does: the player's carry at the end of
+# the cellars route (tools/route_distillery.braw, replays/distillery.txt).
+health 100
+spirit 80
+mars 0
+powder 5
+puff 100
+owned 1 1 1 1
+weapon 3
+clock 8157

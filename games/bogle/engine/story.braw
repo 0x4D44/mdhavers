@@ -1,4 +1,5 @@
 fetch "games/bogle/engine/doors"
+fetch "games/bogle/engine/render"
 
 # Level scripts. A map's `story <id>` record names its script, and every hook
 # dispatches on it; on maps without one each hook does nothing, so they play
@@ -231,7 +232,88 @@ dae cellars_tick(g) {
     }
 }
 
+# The Tower: dinnae get seen (the seen-o-meter is the renderer's, a pure
+# function of the tics and the nearest lit doorway; it changes nothing). The
+# green cloaks (46) speak in turn; "Ailsa" (47) sparks for 35 tics and goes
+# off wi a harmless bang, leaving her head (pickup 23); taking it opens the
+# laundry chute (link 8). g["story"]: cloak (lines said), turret (reached),
+# boom (the tic she went off), plugged (the meter line said), chute (open).
+ken TOWER_CHUTE = 8
+ken TOWER_CLOAK_LINES = [
+    "It's YOU!",
+    "I'm a Faithful, I swear!",
+    "BANISHED!",
+    "Ah've been a Faithful fae the very start. Ask onybody.",
+    "Somebody at this table is no who they say they are.",
+]
+
+dae tower_use(g, a) {
+    ken s = g["story"]
+    gin a["kind"] == 46 {
+        story_say(g, [TOWER_CLOAK_LINES[s["cloak"] % len(TOWER_CLOAK_LINES)]])
+        s["cloak"] = s["cloak"] + 1
+        gie aye
+    }
+    gin a["kind"] == 47 {
+        gin a["state"] == "idle" {
+            a["state"] = "spark"
+            a["timer"] = 35
+            story_say(g, ["Ma hero. Ma hero. Ma he-he-hero."])
+        }
+        gie aye
+    }
+    gie nae
+}
+
+dae tower_tick(g) {
+    ken s = g["story"]
+    gin g["talk"] != naething {
+        gie naething
+    }
+    gin nae s["turret"] an g["map"]["floor_h"][g["sector"]] >= 192 {
+        s["turret"] = aye
+        story_objective(g, "SPEAK TAE AILSA")
+    }
+    fer a in g["actors"] {
+        gin a["active"] an a["kind"] == 47 an a["state"] == "spark" {
+            a["timer"] = a["timer"] - 1
+            gin a["timer"] <= 0 {
+                # Boom: she is gone, and her head lies where she stood.
+                a["active"] = nae
+                a["state"] = "gone"
+                s["boom"] = g["tics"]
+                bogle_emit_sound(g, "explosion")
+                shove(g["actors"], {"x": a["x"], "y": a["y"], "z": a["z"], "sector": a["sector"], "angle": 0, "facing": 0, "kind": 23, "flags": 0, "health": 1, "state": "idle", "timer": 0, "seen_player": nae, "charge_tics": 0, "vx": 0, "vy": 0, "dx": 0, "dy": 0, "active": aye, "svx": 0, "svy": 0, "kick_tic": -1000})
+                story_objective(g, "TAKE THE HEID")
+            }
+        }
+    }
+    gin s["boom"] > 0 an nae s["plugged"] an g["tics"] >= s["boom"] + 8 {
+        s["plugged"] = aye
+        story_say(g, ["THE METER WASNAE PLUGGED IN."])
+    }
+    gin nae s["chute"] an g["talk"] == naething an contains(g["items"], "head") {
+        s["chute"] = aye
+        bogle_activate(g, TOWER_CHUTE)
+        story_say(g, ["Stamped on the neck: McDREICHBOTTOM CLONE WORKS - BATCH 47.", "Somebody's makin' copies o' Ailsa..."])
+        story_objective(g, "DOON THE LAUNDRY CHUTE")
+    }
+    # The alarm bleeps at the meter's peak, at most once a second. A sound
+    # is an output of the tic, never an input.
+    gin bogle_seen_meter(g) >= 96 an g["tics"] % 35 == 0 {
+        bogle_emit_sound(g, "alarm")
+    }
+}
+
 dae story_init(g) {
+    gin story_id(g) == "tower" {
+        story_objective(g, "DINNAE GET SEEN")
+        g["story"]["cloak"] = 0
+        g["story"]["boom"] = 0
+        fer flag in ["turret", "plugged", "chute"] {
+            g["story"][flag] = nae
+        }
+    }
     gin story_id(g) == "forest" {
         story_objective(g, "FIND A WAY OOT THE WOOD")
         fer flag in ["ghosts", "gap", "door", "slide"] {
@@ -292,6 +374,9 @@ dae story_tick(g) {
     gin story_id(g) == "distillery" {
         cellars_tick(g)
     }
+    gin story_id(g) == "tower" {
+        tower_tick(g)
+    }
     gin story_id(g) == "test" {
         gin g["story"]["countdown"] > 0 {
             g["story"]["countdown"] = g["story"]["countdown"] - 1
@@ -310,6 +395,9 @@ dae story_use(g, a) {
     }
     gin story_id(g) == "forest" {
         gie forest_use(g, a)
+    }
+    gin story_id(g) == "tower" {
+        gie tower_use(g, a)
     }
     gin story_id(g) == "test" {
         gin a["kind"] == 50 an nae contains(g["story"], "asked") {

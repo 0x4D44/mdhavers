@@ -279,7 +279,7 @@ dae bogle_sprites(g, fb, w, h, visible, drawsegs, cosine, sine) {
                 mirror = actor["dx"] * sine - actor["dy"] * cosine < 0
             }
             texture = art[name]
-            fullbright = kind == 4 or kind == 32 or kind == 37 or kind == 40 or (bogle_is_pickup(kind) an bogle_pickup_glint(g["tics"]))
+            fullbright = kind == 4 or kind == 32 or kind == 37 or kind == 39 or kind == 40 or (kind == 47 an actor["state"] == "spark") or (bogle_is_pickup(kind) an bogle_pickup_glint(g["tics"]))
         } ither {
             texture = g["sprite_tex"][kind - 2]
             fullbright = g["sprite_fullbright"][kind - 2]
@@ -710,6 +710,67 @@ dae bogle_blit(fb, w, h, texture, tw, th, left, top, width, height, mirror = nae
     }
 }
 
+# The Tower's HAVE-YE-BEEN-SEEN-O-METER, 0..100: a pure function of the tics
+# and the distance to the nearest lit doorway (kind 39). It leaps up near a
+# doorway and wobbles; once "Ailsa" has gone off it reads zero for good. It
+# reads the game and writes nothing.
+dae bogle_seen_meter(g) {
+    gin nae bogle_story_map(g["map"]) or g["map"]["story"] != "tower" or contains(g, "meter_off") {
+        gie 0
+    }
+    gin g["story"]["boom"] > 0 {
+        gie 0
+    }
+    ken near = 999999
+    fer a in g["actors"] {
+        gin a["kind"] == 39 {
+            ken dx = (a["x"] - g["x"]) / 65536
+            ken dy = (a["y"] - g["y"]) / 65536
+            near = min(near, isqrt(dx * dx + dy * dy))
+        }
+    }
+    gin near >= 320 {
+        gie 0
+    }
+    ken wobble = bogle_sin(g["sin"], g["tics"] * 173) * 9 / 65536 + bogle_sin(g["sin"], g["tics"] * 461) * 5 / 65536
+    gie max(0, min(100, (320 - near) * 100 / 224 + wobble))
+}
+
+# The meter's dial: a red half disc at the view's top right, its needle
+# swinging from left (0) to right (100), the name under it.
+dae bogle_seen_dial(g, fb, w, h, scale) {
+    ken value = bogle_seen_meter(g)
+    ken r = max(7, 22 * scale)
+    ken cx = w - r - 3 * scale
+    ken cy = r + 12 * scale
+    fer y in cy - r..cy + 1 {
+        fer x in cx - r..cx + r + 1 {
+            ken d2 = (x - cx) * (x - cx) + (y - cy) * (y - cy)
+            gin d2 <= r * r an x >= 0 an y >= 0 an x < w an y < h {
+                ken ink = 88
+                gin d2 > (r - scale) * (r - scale) {
+                    ink = 15
+                }
+                bytes_set(fb, y * w + x, ink)
+            }
+        }
+    }
+    ken angle = 2048 - value * 2048 / 100
+    fer t in 0..r - scale {
+        fer side in 0..scale + 1 {
+            ken x = cx + bogle_cos(g["sin"], angle) * t / 65536
+            ken y = cy - side - bogle_sin(g["sin"], angle) * t / 65536
+            gin x >= 0 an y >= 0 an x < w an y < h {
+                bytes_set(fb, y * w + x, 0)
+            }
+        }
+    }
+    gin w >= 240 {
+        ken label = "HAVE-YE-BEEN-SEEN-O-METER"
+        bogle_text(fb, w, h, w - len(label) * 4 * scale - 2 * scale, cy + 3 * scale, label, 95, scale)
+    }
+}
+
 dae bogle_overlay(g, fb, w, h) {
     gin nae contains(g, "gameplay") or nae g["gameplay"] {
         gie naething
@@ -763,6 +824,20 @@ dae bogle_overlay(g, fb, w, h) {
         }
     }
     bogle_hud(g, fb, w, h)
+    gin bogle_story_map(g["map"]) an g["map"]["story"] == "tower" {
+        # The clone's bang: a brief white flash over the view.
+        ken boom = g["story"]["boom"]
+        gin boom > 0 an g["tics"] - boom < 6 {
+            fer y in 0..h - bogle_hud_height(w, h) {
+                fer x in 0..w {
+                    gin (x + y) % 2 == 0 {
+                        bytes_set(fb, y * w + x, 15)
+                    }
+                }
+            }
+        }
+        bogle_seen_dial(g, fb, w, h, scale)
+    }
     gin contains(g, "talk") an g["talk"] != naething {
         bogle_talk_box(g["talk"], fb, w, h, scale)
     }
@@ -928,6 +1003,9 @@ dae bogle_story_height(kind) {
     }
     gin kind == 57 {
         gie 60
+    }
+    gin kind == 47 {
+        gie 58
     }
     gie 48
 }

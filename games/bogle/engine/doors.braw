@@ -312,6 +312,9 @@ dae doors_tick(g, use) {
                         gin m["story"] == "distillery" {
                             g["message"] = "Up the stair ye go."
                         }
+                        gin m["story"] == "tower" {
+                            g["message"] = "Doon the laundry chute. Wheeeee!"
+                        }
                     }
                 }
             }

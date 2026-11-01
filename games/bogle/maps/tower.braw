@@ -1,0 +1,98 @@
+# The Tower, campaign level 4. Run this builder from the repository root.
+# Short: up from the foot of the castle stairs, along the panelled corridor
+# past the lit doorways (whose residents peer oot), the store rooms and their
+# rats, the round-table room of the green cloaks, and up the turret stair to
+# "Ailsa" under the night sky. The laundry chute (link 8) opens only for the
+# script, once her head is taken.
+#
+# Layout (x east, y north):
+#   the foot of the castle stairs x 0..128, y 0..128 (start), a stair rising
+#     east x 128..320 to the corridor floor (64);
+#   the corridor x 320..1472, y 0..128, six 192-unit segments, each with a
+#     lit doorway alcove on its north wall; the even ones have one on the
+#     south wall too, the odd ones a store room to the south (rats);
+#   the round-table room x 1504..1696, y -32..160 (a 3 by 3 grid round the
+#     raised table), reached through a short doorway at y 32..96;
+#   the turret stair x 1696..1888 rising to 192, the turret top x 1888..2144,
+#     y -64..192 under the sky, and the chute door and chute on its north side.
+fetch "games/bogle/maps/cells"
+
+ken tower = new_map()
+tower["name"] = "The Tower"
+tower["story"] = "tower"
+tower["briefing"] = [
+    "Up the castle stairs tae the tower.",
+    "Every door's lit an every body's nosy.",
+    "Dinnae get seen. Dinnae stop for a blether.",
+    "Ailsa's at the very top.",
+]
+tower["require"] = [["item", "head"]]
+
+ken PANEL = 29
+ken OAK = 4
+ken TOWER_CHUTE = 8
+
+# The foot of the castle stairs and the climb to the corridor.
+cell(0, 0, 128, 128, 0, 128, 1, 2, 120, PANEL)
+stair_run(128, 32, 24, 64, 8, 0, 8, 160, 1, 120, PANEL)
+
+# The corridor, its doorway alcoves and store rooms.
+ken doorways = []
+fer k in 0..6 {
+    ken x0 = 320 + 192 * k
+    ken c = x0 + 96
+    cell(x0, 0, x0 + 192, 128, 64, 176, 1, OAK, 104, PANEL)
+    cell(c - 32, 128, c + 32, 160, 64, 160, 1, OAK, 208, PANEL)
+    shove(doorways, [c, 156, 3072])
+    gin k % 2 == 0 {
+        cell(c - 32, -32, c + 32, 0, 64, 160, 1, OAK, 208, PANEL)
+        shove(doorways, [c, -28, 1024])
+    } ither {
+        cell(c - 32, -16, c + 32, 0, 64, 160, 1, OAK, 112, PANEL)
+        cell(x0 + 16, -176, x0 + 176, -16, 64, 144, 9, OAK, 96, PANEL)
+    }
+}
+
+# The round-table room: a doorway in, a 3 by 3 grid, the table in the middle.
+cell(1472, 32, 1504, 96, 64, 160, 1, OAK, 128, PANEL)
+grid(1504, -32, 64, 3, 3, [[1, 1]], 64, 192, 4, OAK, 144, OAK)
+cell(1568, 32, 1632, 96, 92, 192, 4, OAK, 144, OAK)
+
+# The turret stair, the turret top under the sky, the chute.
+stair_run(1696, 32, 24, 64, 8, 64, 16, 288, 1, 128, PANEL)
+cell(1888, -64, 2144, 192, 192, 296, 1, -1, 152, 0)
+door_cell(1984, 192, 2048, 208, 192, 272, 0, TOWER_CHUTE)
+cell(1984, 208, 2048, 272, 192, 272, 3, 2, 72, PANEL)
+
+ken owners = emit(tower)
+
+# Things. The player starts at the stair foot facing east, up the stair.
+map_thing(tower, 1, 40, 64, 0)
+fer d in doorways {
+    map_thing(tower, 39, d[0], d[1], d[2])
+}
+# The store rooms: two rats each, an oatcake and some powder.
+map_thing(tower, 42, 560, -120)
+map_thing(tower, 42, 660, -150)
+map_thing(tower, 10, 608, -160)
+map_thing(tower, 42, 940, -110)
+map_thing(tower, 42, 1040, -140)
+map_thing(tower, 16, 990, -160)
+map_thing(tower, 14, 960, -40)
+map_thing(tower, 42, 1320, -110)
+map_thing(tower, 42, 1420, -140)
+map_thing(tower, 16, 1370, -160)
+# The green cloaks round the table (flags 0 and 1 pick the two poses).
+map_thing(tower, 46, 1600, 6, 1024, 0)
+map_thing(tower, 46, 1600, 122, 3072, 1)
+map_thing(tower, 46, 1534, 10, 512, 1)
+map_thing(tower, 46, 1666, 10, 1536, 0)
+# The turret top: "Ailsa", and the chute's exit beyond its door.
+map_thing(tower, 47, 2074, 64, 2048)
+map_thing(tower, 21, 2016, 256, 0, 2)
+
+ken parsed = validate(tower)
+check_portals(parsed)
+tower["walls"] = cell_walls(parsed, owners, [], [])
+write(tower, "games/bogle/data/tower.map")
+blether "tower sectors " + tae_string(len(tower["sectors"])) + " things " + tae_string(len(tower["things"])) + " walls " + tae_string(len(tower["walls"]))
