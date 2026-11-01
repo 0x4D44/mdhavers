@@ -2,7 +2,8 @@ fetch "frontend"
 
 # Each shell replay row is dt_ms, held menu bits, gameplay keys, mouse dx.
 # Unlike engine replays this drives frames, including frames with no tics.
-dae bogle_front_replay(map_path, replay_path, w, h) {
+# A positive limit stops after that many frames.
+dae bogle_front_replay(map_path, replay_path, w, h, limit = 0) {
     ken ui = bogle_front_new(map_path)
     ken fb = bytes(w * h)
     ken frame = 0
@@ -14,6 +15,9 @@ dae bogle_front_replay(map_path, replay_path, w, h) {
                 gin len(part) > 0 {
                     shove(fields, map_integer(part))
                 }
+            }
+            gin limit > 0 an frame >= limit {
+                brak
             }
             gin len(fields) != 4 {
                 hurl "Shell replay wants dt menu keys dx"

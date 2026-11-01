@@ -1,0 +1,271 @@
+# Lab autopilot, after tools/route_tower.braw: from the tower's carry (wi
+# the head) it walks the landing, opens the scanner wi the head's ee, follows
+# the winding corridor to the arena, asks the computer (and gets the vague
+# answer), gathers the kit and the guid core, pulls the three levers while
+# the contraption lumbers after it, then, wi Ailsa free and throwing her
+# spanner, stabs the contraption till it slumps and fits the core. It drives
+# the real engine tic(), so the written replay plays back exactly. Run from
+# the repository root:
+#   BOGLE_ROUTE_OUT=games/bogle/replays/lab.txt mdhavers run games/bogle/tools/route_lab.braw
+# Prints a status line per milestone and fails loudly on death or a stuck leg.
+fetch "games/bogle/shell/replay"
+
+ken ap_map = bogle_option("BOGLE_MAP", "games/bogle/data/lab.map")
+ken ap_out = bogle_option("BOGLE_ROUTE_OUT", "games/bogle/replays/lab.txt")
+ken ap_game = new_game(load_map(ap_map))
+bogle_apply_carry(ap_game, bogle_parse_carry(read_file("games/bogle/replays/lab.carry"), ap_game))
+ken ap_lines = []
+ken ap_engaged = {}
+ken ap_prev = [-384, -200]
+ken ap_low = {"hp": 100, "tic": 0}
+# The contraption is fought only once Ailsa is free to help.
+ken ap_fight_on = {"on": nae}
+
+# Angle (0..4095) facing map vector dx,dy: coarse search, then refine.
+dae ap_angle_to(g, dx, dy) {
+    ken best = 0
+    ken best_v = -999999999999
+    fer i in 0..64 {
+        ken v = dx * bogle_cos(g["sin"], i * 64) + dy * bogle_sin(g["sin"], i * 64)
+        gin v > best_v {
+            best_v = v
+            best = i * 64
+        }
+    }
+    ken centre = best
+    fer i in 0..129 {
+        ken a = bogle_angle(centre - 64 + i)
+        ken v = dx * bogle_cos(g["sin"], a) + dy * bogle_sin(g["sin"], a)
+        gin v > best_v {
+            best_v = v
+            best = a
+        }
+    }
+    gie best
+}
+
+# Mouse delta that turns exactly to the desired angle this tic.
+dae ap_turn(g, desired) {
+    ken d = bogle_angle(g["angle"] - desired)
+    gin d >= 2048 {
+        d = d - 4096
+    }
+    gie d
+}
+
+dae ap_step(g, keys, dx) {
+    tic(g, {"keys": keys, "dx": dx})
+    shove(ap_lines, tae_string(keys) + " " + tae_string(dx))
+    gin g["health"] < ap_low["hp"] {
+        ap_low["hp"] = g["health"]
+        ap_low["tic"] = g["tics"]
+    }
+    gin g["health"] <= 0 {
+        hurl "dead at tic " + tae_string(g["tics"])
+    }
+}
+
+# Read every talk box through: release Use, then press it, line by line.
+dae ap_talk(g) {
+    gin g["talk"] == naething {
+        gie nae
+    }
+    blether "  talk: " + g["talk"]["lines"][0]
+    whiles g["talk"] != naething {
+        ap_step(g, 0, 0)
+        ap_step(g, 128, 0)
+    }
+    ap_step(g, 0, 0)
+    gie aye
+}
+
+# The live contraption, once the fight is on.
+dae ap_target(g) {
+    gin nae ap_fight_on["on"] {
+        gie naething
+    }
+    fer i in 0..len(g["actors"]) {
+        ken a = g["actors"][i]
+        gin a["active"] an a["kind"] == 49 an a["state"] != "slumped" {
+            gie i
+        }
+    }
+    gie naething
+}
+
+# One fighting tic: face the contraption, close in and stab.
+dae ap_fight(g, i) {
+    ken a = g["actors"][i]
+    ken key = tae_string(i)
+    gin nae contains(ap_engaged, key) {
+        ap_engaged[key] = 0
+        blether "  engage kind " + tae_string(a["kind"]) + " tic " + tae_string(g["tics"]) + " hp " + tae_string(g["health"]) + " spirit " + tae_string(g["spirit"])
+    }
+    ap_engaged[key] = ap_engaged[key] + 1
+    ken d = actor_distance(g["x"], g["y"], a["x"], a["y"])
+    ken turn = ap_turn(g, ap_angle_to(g, (a["x"] - g["x"]) / 65536, (a["y"] - g["y"]) / 65536))
+    ken keys = 0
+    gin d >= 52 {
+        keys = 1
+    }
+    gin g["weapon"] != 1 {
+        keys = keys + 256
+    } ither gin d < 64 an g["cooldown"] == 0 {
+        keys = keys + 64
+    }
+    ap_step(g, keys, turn)
+}
+
+dae ap_maybe_fight(g) {
+    gin ap_talk(g) {
+        gie aye
+    }
+    ken target = ap_target(g)
+    gin target == naething {
+        gie nae
+    }
+    ap_fight(g, target)
+    gie aye
+}
+
+# Walk straight to x,y (fighting on the way). Presses use when blocked, which
+# opens doors. Returns nae if no progress for `limit` tics.
+dae ap_go_once(g, x, y, limit) {
+    ken best = 999999
+    ken stall = 0
+    whiles aye {
+        gin nae ap_maybe_fight(g) {
+            ken dx = x - g["x"] / 65536
+            ken dy = y - g["y"] / 65536
+            ken d = isqrt(dx * dx + dy * dy)
+            gin d <= 6 {
+                gie aye
+            }
+            gin d < best {
+                best = d
+                stall = 0
+            } ither {
+                stall = stall + 1
+                gin stall == 30 or stall == 90 {
+                    ap_step(g, 0, ap_turn(g, ap_angle_to(g, dx, dy)))
+                    ap_step(g, 128, 0)
+                }
+                gin stall > limit {
+                    gie nae
+                }
+            }
+            ap_step(g, 1, ap_turn(g, ap_angle_to(g, dx, dy)))
+        }
+    }
+}
+
+# A fight can push the player off the line; recover via the current sector's
+# centre, then via the previous waypoint.
+dae ap_go(g, x, y) {
+    gin nae ap_go_once(g, x, y, 120) {
+        ken m = g["map"]
+        ken s = g["sector"]
+        ken n = m["wall_count"][s]
+        ken cx = 0
+        ken cy = 0
+        fer w in m["wall_first"][s]..m["wall_first"][s] + n {
+            cx = cx + m["vx"][m["wall_v1"][w]]
+            cy = cy + m["vy"][m["wall_v1"][w]]
+        }
+        blether "  recentre " + tae_string(cx / n) + "," + tae_string(cy / n) + " tic " + tae_string(g["tics"])
+        gin nae (ap_go_once(g, cx / n, cy / n, 150) an ap_go_once(g, x, y, 200)) {
+            gin nae (ap_go_once(g, ap_prev[0], ap_prev[1], 200) an ap_go_once(g, x, y, 200)) {
+                hurl "stuck going to " + tae_string(x) + "," + tae_string(y) + " at tic " + tae_string(g["tics"])
+            }
+        }
+    }
+    ap_prev = [x, y]
+}
+
+# Face an angle, press use once, read any talk it opens, then wait (still
+# fighting) for a door to rise.
+dae ap_use(g, angle, wait) {
+    whiles ap_maybe_fight(g) {
+    }
+    ap_step(g, 0, ap_turn(g, angle))
+    ap_step(g, 128, 0)
+    ap_talk(g)
+    fer i in 0..wait {
+        gin nae ap_maybe_fight(g) {
+            ap_step(g, 0, ap_turn(g, angle))
+        }
+    }
+}
+
+dae ap_status(g, label) {
+    blether label + " tic " + tae_string(g["tics"]) + " hp " + tae_string(g["health"]) + " spirit " + tae_string(g["spirit"]) + " keys " + tae_string(g["keys"]) + " objective " + g["objective"] + " story " + tae_string(g["story"]) + " pos " + tae_string(g["x"] / 65536) + "," + tae_string(g["y"] / 65536)
+}
+
+# E on the slumped contraption, from wherever it stopped.
+dae ap_fit_core(g) {
+    fer a in g["actors"] {
+        gin a["kind"] == 49 {
+            ken dx = g["x"] / 65536 - a["x"] / 65536
+            ken dy = g["y"] / 65536 - a["y"] / 65536
+            ken d = max(1, isqrt(dx * dx + dy * dy))
+            ap_go(g, a["x"] / 65536 + dx * 40 / d, a["y"] / 65536 + dy * 40 / d)
+            ap_use(g, ap_angle_to(g, a["x"] / 65536 - g["x"] / 65536, a["y"] / 65536 - g["y"] / 65536), 4)
+        }
+    }
+}
+
+ken route = [
+    ["status", "start"],
+    # The landing: the left way is rubble; the head's ee opens the scanner.
+    ["go", -384, -352], ["go", -512, -352], ["go", -610, -352], ["use", 2048, 24],
+    ["go", -704, -352],
+    ["status", "scanner"],
+    # The winding corridor tae the arena.
+    ["go", -816, -352], ["go", -928, -352], ["go", -928, -96], ["go", -1024, -96], ["go", -1110, -96],
+    ["status", "arena"],
+    # The computer, then the kit, the core and the levers round the walls.
+    ["go", -1136, -24], ["use", 1024, 2],
+    ["status", "asked"],
+    ["go", -1120, 136], ["go", -1216, 136], ["go", -1296, 104], ["use", 1024, 2],
+    ["go", -1408, 120], ["go", -1408, 184], ["go", -1408, 120],
+    ["go", -1560, 120], ["go", -1576, 136], ["go", -1544, 64], ["use", 2048, 2],
+    ["status", "two levers"],
+    ["go", -1560, -300], ["go", -1576, -328], ["go", -1408, -328], ["go", -1296, -300], ["use", 3072, 2],
+    ["status", "freed"],
+    ["fight"],
+    ["status", "slumped"],
+    ["fit"],
+]
+
+fer op in route {
+    gin ap_game["won"] {
+        brak
+    }
+    gin op[0] == "go" {
+        ap_go(ap_game, op[1], op[2])
+    } ither gin op[0] == "use" {
+        ap_use(ap_game, op[1], op[2])
+    } ither gin op[0] == "fight" {
+        ap_fight_on["on"] = aye
+        whiles ap_maybe_fight(ap_game) {
+        }
+        ap_talk(ap_game)
+    } ither gin op[0] == "fit" {
+        ap_fit_core(ap_game)
+        fer i in 0..2 {
+            ap_step(ap_game, 0, 0)
+        }
+    } ither {
+        ap_status(ap_game, op[1])
+    }
+}
+ap_status(ap_game, "end")
+mak_siccar ap_game["won"] an ap_game["story"]["freed"] an ap_game["story"]["tea"] an contains(ap_game["items"], "good_core")
+ken ap_text = "# Lab generated by tools/route_lab.braw: movement, fire64, use128, select weapons256..2048.\n"
+fer line in ap_lines {
+    ap_text = ap_text + line + "\n"
+}
+scrieve(ap_out, ap_text)
+blether "clock at freeing " + tae_string(ap_game["clock"])
+blether "lowest health " + tae_string(ap_low["hp"]) + " at tic " + tae_string(ap_low["tic"])
+blether "won in " + tae_string(len(ap_lines)) + " tics, wrote " + ap_out

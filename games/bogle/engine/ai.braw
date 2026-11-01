@@ -365,6 +365,123 @@ dae rat_tick(g, a, distance) {
     }
 }
 
+# The lab script confines Ailsa and the contraption to the arena, a map
+# rectangle in g["story"]["arena"]; elsewhere nothing is confined. A step
+# that leaves it is taken back.
+dae lab_in_arena(g, a) {
+    gin nae contains(g["story"], "arena") {
+        gie aye
+    }
+    ken r = g["story"]["arena"]
+    ken x = a["x"] / 65536
+    ken y = a["y"] / 65536
+    gie x > r[0] an x < r[2] an y > r[1] an y < r[3]
+}
+
+dae lab_confine(g, a, saved) {
+    gin lab_in_arena(g, a) {
+        gie aye
+    }
+    a["x"] = saved[0]
+    a["y"] = saved[1]
+    a["z"] = saved[2]
+    a["sector"] = saved[3]
+    gie nae
+}
+
+# The live contraption, or naething once it has slumped.
+dae lab_contraption(g) {
+    fer a in g["actors"] {
+        gin a["active"] an a["kind"] == 49 an a["state"] != "slumped" {
+            gie a
+        }
+    }
+    gie naething
+}
+
+# Ailsa (48), once freed, keeps 64-160 from the player inside the arena and
+# every 35 tics throws a spanner (6 damage, hitting only the contraption)
+# when she can see it.
+dae ailsa_tick(g, a) {
+    gin a["state"] != "free" {
+        gie naething
+    }
+    a["timer"] = a["timer"] + 1
+    ken distance = actor_distance(a["x"], a["y"], g["x"], g["y"])
+    ken saved = [a["x"], a["y"], a["z"], a["sector"]]
+    gin distance > 160 {
+        actor_chase(g, a, g["x"], g["y"], 196608)
+    } ither gin distance < 64 {
+        ken away = actor_towards(a, g["x"], g["y"], 196608)
+        actor_try(g, a, 0 - away[0], 0 - away[1])
+    }
+    lab_confine(g, a, saved)
+    ken c = lab_contraption(g)
+    gin c != naething an a["timer"] >= 35 an bogle_sight(g, a["x"], a["y"], a["z"] + 40 * 65536, a["sector"], c["x"], c["y"], c["z"] + 40 * 65536, c["sector"]) {
+        ken velocity = actor_towards(a, c["x"], c["y"], 8 * 65536)
+        actor_face(g, a, velocity[0], velocity[1])
+        spawn_projectile(g, "spanner", a["x"], a["y"], a["z"] + 40 * 65536, a["sector"], velocity[0], velocity[1], 0, a)
+        a["timer"] = 0
+    }
+}
+
+# The Laird's steam contraption (49) lumbers at the player inside the arena.
+# In sight within 224 it lets off a one-second steam blast: 8 damage and a
+# 32-unit shove, then a second to build pressure again. Every 10 s it vents
+# for 3 s, stunned and taking double damage. At 0 it slumps (damage_actor)
+# and neither hurts nor is hurt.
+dae laird_tick(g, a, distance) {
+    gin a["state"] == "slumped" {
+        gie naething
+    }
+    gin nae contains(a, "vent_clock") {
+        a["vent_clock"] = 0
+    }
+    a["moving"] = nae
+    gin a["state"] == "vent" {
+        a["timer"] = a["timer"] - 1
+        gin a["timer"] <= 0 {
+            a["state"] = "chase"
+        }
+        gie naething
+    }
+    a["vent_clock"] = a["vent_clock"] + 1
+    gin a["vent_clock"] >= 350 {
+        a["vent_clock"] = 0
+        a["state"] = "vent"
+        a["timer"] = 105
+        bogle_emit_sound(g, "steam")
+        gie naething
+    }
+    actor_face(g, a, g["x"] - a["x"], g["y"] - a["y"])
+    gin a["timer"] > 0 {
+        a["timer"] = a["timer"] - 1
+    }
+    gin a["state"] == "blast" {
+        gin a["timer"] <= 0 {
+            a["state"] = "chase"
+            a["timer"] = 35
+        }
+        gie naething
+    }
+    gin a["timer"] == 0 an distance < 224 an bogle_sight(g, a["x"], a["y"], a["z"] + 48 * 65536, a["sector"], g["x"], g["y"], g["z"] + 32 * 65536, g["sector"]) {
+        a["state"] = "blast"
+        a["timer"] = 35
+        bogle_emit_sound(g, "steam")
+        hurt_player(g, 8)
+        g["message"] = "Pssssht! A blast o steam!"
+        ken shove = actor_towards(a, g["x"], g["y"], 32 * 65536)
+        move_body(g, shove[0], shove[1])
+        gie naething
+    }
+    gin distance > 48 {
+        ken saved = [a["x"], a["y"], a["z"], a["sector"]]
+        gin actor_chase(g, a, g["x"], g["y"], 131072) an lab_confine(g, a, saved) {
+            a["moving"] = aye
+        }
+    }
+}
+
 dae story_actors_tick(g) {
     ken count = len(g["actors"])
     fer i in 0..count {
@@ -374,6 +491,9 @@ dae story_actors_tick(g) {
         }
         gin a["active"] an a["kind"] == 41 {
             grave_tick(g, a)
+        }
+        gin a["active"] an a["kind"] == 48 {
+            ailsa_tick(g, a)
         }
     }
 }
@@ -538,6 +658,9 @@ dae ai_tick(g) {
                 }
                 gin kind == 42 {
                     rat_tick(g, a, distance)
+                }
+                gin kind == 49 {
+                    laird_tick(g, a, distance)
                 }
                 gin kind == 5 {
                     gin distance < 256 an (g["tics"] % 7 == 1) {

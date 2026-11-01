@@ -75,7 +75,8 @@ dae bagpipe_blast(g) {
                         damage_actor(g, a, 1)
                     } ither {
                         damage_actor(g, a, max(1, 60 - distance * 50 / 320))
-                        gin a["active"] {
+                        # The contraption is too heavy to stun or shove.
+                        gin a["active"] an a["kind"] != 49 {
                             a["state"] = "stunned"
                             a["timer"] = 53
                             ken divisor = max(1, distance)
@@ -169,6 +170,21 @@ dae projectiles_tick(g) {
                         gin dx * dx + dy * dy <= 400 an nz >= g["z"] an nz <= g["z"] + 56 * 65536 {
                             hurt_player(g, 10)
                             p["active"] = nae
+                        }
+                    } ither gin p["active"] an p["kind"] == "spanner" {
+                        # Ailsa's spanner flies past everything but the
+                        # contraption.
+                        fer a in g["actors"] {
+                            gin a["active"] an a["kind"] == 49 an a["state"] != "slumped" {
+                                ken dx = (a["x"] - nx) / 65536
+                                ken dy = (a["y"] - ny) / 65536
+                                gin dx * dx + dy * dy <= 576 an nz >= a["z"] an nz <= a["z"] + 80 * 65536 {
+                                    damage_actor(g, a, 6)
+                                    bogle_emit_sound(g, "clank")
+                                    p["active"] = nae
+                                    brak
+                                }
+                            }
                         }
                     } ither gin p["active"] an p["kind"] == "mars" {
                         fer a in g["actors"] {

@@ -1,0 +1,104 @@
+fetch "games/bogle/shell/frontend"
+
+# The endings through the front end: the lab won picks its tier by the clock
+# when Ailsa was freed (either side of 25 and 60 minutes), the countdown
+# running out buries ye at once, and death in the lab keeps Restart. Then the
+# whole campaign's transitions: New Game, the card and each level in order,
+# carrying health, items and the clock, to the ending.
+ken LAB = "games/bogle/data/lab.map"
+
+dae le_frame(ui, dt = 0) {
+    bogle_front_step(ui, dt, {"menu": 0, "keys": 0, "dx": 0})
+}
+
+dae le_lab(clock) {
+    ken ui = bogle_front_new("games/bogle/data/kirkyard.map")
+    ui["map_path"] = LAB
+    ui["clock"] = clock
+    bogle_front_start(ui)
+    bogle_front_screen(ui, "play")
+    gie ui
+}
+
+# Free Ailsa at `clock`, play on a while, then win.
+dae le_tier(clock) {
+    ken ui = le_lab(clock)
+    ken g = ui["game"]
+    mak_siccar g["clock"] == clock
+    lab_free(g)
+    g["talk"] = naething
+    fer i in 0..20 {
+        le_frame(ui, 1000)
+    }
+    mak_siccar g["clock"] == clock an ui["screen"] == "play"
+    g["won"] = aye
+    le_frame(ui)
+    mak_siccar ui["screen"] == "ending" an ui["clock"] == clock
+    gie ui["ending"]
+}
+
+ken fast = bogle_end_fast()
+ken slow = bogle_end_slow()
+mak_siccar fast == 35 * 60 * 25 an slow == 35 * 60 * 60
+mak_siccar le_tier(fast - 1) == 0 an le_tier(fast) == 1
+mak_siccar le_tier(slow - 1) == 1 an le_tier(slow) == 2
+mak_siccar bogle_ending_lines(0) == ["Ye mairry Ailsa. Ye hae seeven bairns.", "Yin o them is a clone."]
+mak_siccar bogle_ending_lines(1) == ["Ye mairry Ailsa. Ye hae nae bairns,", "but a verra guid personality core."]
+mak_siccar bogle_ending_lines(2) == ["Auld Wullie buries ye in the kirkyard.", "He didnae check if ye were deid."]
+blether "ok the ending tier follows the clock when Ailsa was freed, both sides o both lines"
+
+ken ui = le_lab(100)
+ken g = ui["game"]
+g["story"]["countdown"] = 2
+le_frame(ui, 29)
+mak_siccar ui["screen"] == "play"
+le_frame(ui, 29)
+mak_siccar ui["screen"] == "ending" an ui["ending"] == 2 an g["failed"]
+mak_siccar bogle_front_items("ending") == ["Back to Title"]
+blether "ok the countdoon running oot buries ye at once"
+
+ui = le_lab(100)
+ui["game"]["health"] = 0
+le_frame(ui, 29)
+mak_siccar ui["screen"] == "dead" an bogle_front_items("dead") == ["Restart", "Back to Title"]
+ken fb = bytes(320 * 200)
+bogle_front_render(ui, fb, 320, 200)
+ken lit = 0
+fer i in 64 * 320..70 * 320 {
+    gin bytes_get(fb, i) == 15 {
+        lit = lit + 1
+    }
+}
+mak_siccar lit > 100
+bogle_front_step(ui, 0, {"menu": 4, "keys": 0, "dx": 0})
+mak_siccar ui["screen"] == "briefing" an ui["map_path"] == LAB
+blether "ok death in the lab keeps Restart, under a salesman's stane"
+
+# The campaign's transitions, fast: New Game, the opening card, then each
+# level won in turn wi its clock and kit carried into the next.
+ui = bogle_front_new("games/bogle/data/kirkyard.map")
+bogle_front_new_game(ui)
+mak_siccar ui["screen"] == "opening" an ui["clock"] == 0
+ken order = ["kirkyard", "forest", "distillery", "tower", "lab"]
+ken clock = 0
+fer i in 0..5 {
+    mak_siccar ui["map_path"] == "games/bogle/data/" + order[i] + ".map"
+    mak_siccar ui["screen"] == "opening" or ui["screen"] == "briefing"
+    g = ui["game"]
+    mak_siccar g["clock"] == clock an g["health"] == 100 - i
+    mak_siccar contains(g["items"], "head") == (i == 4)
+    g["health"] = 99 - i
+    clock = clock + 1000 * (i + 1)
+    g["clock"] = clock
+    gin order[i] == "tower" {
+        story_give(g, "head")
+    }
+    gin order[i] == "lab" {
+        lab_free(g)
+    }
+    g["won"] = aye
+    bogle_front_won(ui)
+}
+mak_siccar ui["screen"] == "ending" an ui["ending"] == 0 an ui["clock"] == 15000
+mak_siccar ui["carry"]["items"] == ["head"] an ui["carry"]["clock"] == 10000
+blether "ok New Game runs kirkyard, forest, distillery, tower, lab and the ending, carryin kit an clock"

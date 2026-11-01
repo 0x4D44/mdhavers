@@ -1,0 +1,72 @@
+# The Laird's Laboratory, campaign level 5. Run this builder from the
+# repository root. The laundry chute drops the player back at the foot of
+# the clock shaft (maps/landing.braw, the `lab` variant): the explosion's
+# rubble now blocks the left way, and the head's ee opens the scanner door
+# on the right. Past the vestibule a winding corridor of lab walls runs to
+# the arena: Ailsa strapped to her rig, the Laird in his steam contraption,
+# the computer, three release levers round the walls and, on a shelf by the
+# contraption, the guid core.
+#
+# Layout (x east, y north):
+#   the landing and the scanner door as in maps/landing.braw, its vestibule
+#     x -736..-672, y -384..-320;
+#   the corridor: west x -896..-736, a bend, north x -960..-896 from y -384
+#     to -64, then west again x -1088..-960, y -128..-64;
+#   the arena x -1600..-1088, y -352..160 (its floor inset by 24 is
+#     LAB_ARENA in engine/story.braw), the shelf alcove x -1440..-1376,
+#     y 160..200 on its north wall.
+fetch "games/bogle/maps/landing"
+
+ken lab = new_map()
+lab["name"] = "The Laird's Laboratory"
+lab["story"] = "lab"
+lab["briefing"] = [
+    "Back at the foot o the clock shaft. The bang brought the roof doon.",
+    "But ye've a heid wi a blinkin ee noo, an a scanner wants an ee.",
+    "Ailsa's in the Laird's laboratory, strapped tae a rig.",
+    "Pull the release levers. Mind the Laird's steam contraption.",
+    "There's a guid core on the shelf. It might help.",
+]
+lab["require"] = [["story", "freed"], ["item", "good_core"], ["story", "tea"]]
+
+ken LAB_WALL = 30
+
+landing_cells("lab")
+# The winding corridor.
+cell(-896, -384, -736, -320, 0, 96, 1, 2, 112, LAB_WALL)
+cell(-960, -384, -896, -320, 0, 96, 1, 2, 104, LAB_WALL)
+cell(-960, -320, -896, -128, 0, 96, 1, 2, 128, LAB_WALL)
+cell(-960, -128, -896, -64, 0, 96, 1, 2, 104, LAB_WALL)
+cell(-1088, -128, -960, -64, 0, 96, 1, 2, 120, LAB_WALL)
+# The arena and the core's shelf.
+cell(-1600, -352, -1088, 160, 0, 192, 1, 2, 176, LAB_WALL)
+cell(-1440, 160, -1376, 200, 0, 112, 1, 2, 208, LAB_WALL)
+
+ken owners = emit(lab)
+
+landing_things(lab, "lab")
+# A plate in the corridor for the road in.
+map_thing(lab, 11, -928, -224)
+# The arena: computer by the door, Ailsa on her rig at the far wall, the
+# contraption in the middle, a lever on each of the other three walls.
+map_thing(lab, 50, -1136, 24, 0)
+map_thing(lab, 48, -1560, -96, 0)
+map_thing(lab, 49, -1360, -96, 0)
+map_thing(lab, 53, -1296, 144, 3072)
+map_thing(lab, 53, -1296, -336, 1024)
+map_thing(lab, 53, -1584, 64, 0)
+map_thing(lab, 24, -1408, 184)
+# Kit for a boss fight.
+map_thing(lab, 16, -1120, 136)
+map_thing(lab, 16, -1120, -328)
+map_thing(lab, 16, -1576, 136)
+map_thing(lab, 15, -1216, 136)
+map_thing(lab, 14, -1576, -328)
+map_thing(lab, 11, -1408, -328)
+
+ken parsed = validate(lab)
+check_portals(parsed)
+lab["walls"] = cell_walls(parsed, owners, [], [])
+landing_faces(lab, parsed)
+write(lab, "games/bogle/data/lab.map")
+blether "lab sectors " + tae_string(len(lab["sectors"])) + " things " + tae_string(len(lab["things"])) + " walls " + tae_string(len(lab["walls"]))

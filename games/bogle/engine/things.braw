@@ -147,7 +147,23 @@ dae damage_actor(g, actor, damage) {
     gin actor["kind"] == 5 {
         damage = 1
     }
+    # The contraption takes double while it vents, and nothing once slumped.
+    gin actor["kind"] == 49 {
+        gin actor["state"] == "slumped" {
+            gie nae
+        }
+        gin actor["state"] == "vent" {
+            damage = damage * 2
+        }
+    }
     actor["health"] = actor["health"] - damage
+    gin actor["health"] <= 0 an actor["kind"] == 49 {
+        # It slumps where it stands, still in the way, its core sparkin'.
+        actor["health"] = 0
+        actor["state"] = "slumped"
+        bogle_emit_sound(g, "steam")
+        gie aye
+    }
     gin actor["health"] <= 0 {
         actor["health"] = 0
         actor["active"] = nae

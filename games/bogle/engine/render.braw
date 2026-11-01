@@ -838,6 +838,9 @@ dae bogle_overlay(g, fb, w, h) {
         }
         bogle_seen_dial(g, fb, w, h, scale)
     }
+    gin bogle_story_map(g["map"]) an contains(g["story"], "countdown") an g["story"]["countdown"] > 0 {
+        bogle_countdown(g["story"]["countdown"], fb, w, h, scale)
+    }
     gin contains(g, "talk") an g["talk"] != naething {
         bogle_talk_box(g["talk"], fb, w, h, scale)
     }
@@ -854,6 +857,20 @@ dae bogle_overlay(g, fb, w, h) {
     gin len(message) > 0 {
         bogle_text(fb, w, h, 4 * scale, 4 * scale, message, 15, scale)
     }
+}
+
+# The disposal countdown, big and red across the top of the view: M:SS,
+# rounded up, under the message line.
+dae bogle_countdown(tics, fb, w, h, scale) {
+    ken seconds = (tics + 34) / 35
+    ken text = tae_string(seconds / 60) + ":" + tae_string(seconds % 60 / 10) + tae_string(seconds % 10)
+    ken size = 3 * scale
+    gin w < 240 {
+        size = 1
+    }
+    ken label = "DISPOSAL IN"
+    bogle_text(fb, w, h, (w - len(label) * 4 * scale) / 2, 12 * scale, label, 95, scale)
+    bogle_text(fb, w, h, (w - (len(text) * 4 - 1) * size) / 2, 19 * scale, text, 88, size)
 }
 
 # Word-wrap text to rows of at most `columns` letters.
@@ -1006,6 +1023,18 @@ dae bogle_story_height(kind) {
     }
     gin kind == 47 {
         gie 58
+    }
+    gin kind == 48 {
+        gie 60
+    }
+    gin kind == 49 {
+        gie 96
+    }
+    gin kind == 50 {
+        gie 64
+    }
+    gin kind == 53 {
+        gie 40
     }
     gie 48
 }

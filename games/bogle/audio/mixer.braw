@@ -116,6 +116,15 @@ dae bogle_audio_event(mixer, event) {
     gin event == "alarm" {
         profile = [3, 3000, 1400, 1400, 6000, 1, 0]
     }
+    gin event == "steam" {
+        profile = [4, 11000, 90, 60, 14000, 1, 250]
+    }
+    gin event == "lever" {
+        profile = [2, 6000, 160, 90, 9000, 25, 120]
+    }
+    gin event == "clank" {
+        profile = [3, 2600, 900, 700, 9000, 2, 160]
+    }
     gin event == "menu" {
         profile = [3, 1900, 800, 1050, 4000, 1, 0]
     }

@@ -1,0 +1,11 @@
+# Starts the lab as the campaign does: the player's carry at the end of
+# the tower route (tools/route_tower.braw, replays/tower.txt), wi the head.
+health 100
+spirit 80
+mars 0
+powder 0
+puff 100
+owned 1 1 1 1
+weapon 1
+items head
+clock 8911

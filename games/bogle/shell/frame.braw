@@ -17,7 +17,7 @@ dae bogle_init(w, h) {
     bogle_height = h
     bogle_fb = bytes(w * h)
     bogle_palette = make_palette()
-    bogle_ui = bogle_front_new(bogle_option("BOGLE_MAP", "games/bogle/data/e1m1.map"))
+    bogle_ui = bogle_front_new(bogle_option("BOGLE_MAP", "games/bogle/data/kirkyard.map"))
     bogle_record = env_get("BOGLE_RECORD")
     ken options = args()
     fer i in 0..len(options) {
@@ -28,7 +28,7 @@ dae bogle_init(w, h) {
             bogle_record = options[i + 1]
         }
     }
-    screen_open(w, h, "Bogle Castle - The Gatehouse")
+    screen_open(w, h, "Bogle Castle")
     screen_grab_mouse(nae)
     # The native bridge also honours these flags, but avoid even opening its
     # null stream in an offscreen shell. Replay hosts never import frame.braw.

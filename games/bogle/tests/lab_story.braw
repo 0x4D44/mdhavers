@@ -1,0 +1,209 @@
+fetch "games/bogle/engine/game"
+
+# The lab script: every answer at the computer is vague and starts the
+# disposal countdown (drawn on the HUD); a lever before the question makes
+# the computer ask anyway; levers pull once; the third frees Ailsa and stops
+# the countdown and the clock; the countdown running out fails the level; a
+# live contraption never takes E, and the slumped one wins only wi the core.
+dae ls_sector(m, x, y) {
+    fer s in 0..len(m["floor_h"]) {
+        gin map_point(m, s, x, y) {
+            gie s
+        }
+    }
+    gie -1
+}
+
+dae ls_at(g, x, y, angle) {
+    g["x"] = x * 65536
+    g["y"] = y * 65536
+    g["angle"] = angle
+    g["sector"] = ls_sector(g["map"], x, y)
+    g["z"] = g["map"]["floor_h"][g["sector"]] * 65536
+    g["view_z"] = g["z"] + 2686976
+}
+
+dae ls_press(g, keys) {
+    tic(g, {"keys": keys, "dx": 0})
+    tic(g, {"keys": 0, "dx": 0})
+}
+
+dae ls_read(g) {
+    whiles g["talk"] != naething {
+        ls_press(g, 128)
+    }
+}
+
+dae ls_actor(g, kind, index = 0) {
+    ken n = 0
+    fer a in g["actors"] {
+        gin a["kind"] == kind {
+            gin n == index {
+                gie a
+            }
+            n = n + 1
+        }
+    }
+    gie naething
+}
+
+# The contraption put away so only the script acts.
+dae ls_game() {
+    ken g = new_game(load_map("games/bogle/data/lab.map"))
+    ls_actor(g, 49)["active"] = nae
+    gie g
+}
+
+# Ask the computer and take choice `pick` (0..2).
+dae ls_ask(g, pick) {
+    ls_at(g, -1136, -24, 1024)
+    ls_press(g, 128)
+    mak_siccar g["talk"]["lines"][0] == "DO YOU WISH TO SAVE THE PRINCESS?"
+    mak_siccar len(g["talk"]["choices"]) == 3
+    fer choice in g["talk"]["choices"] {
+        mak_siccar choice == "What do you think?"
+    }
+    fer i in 0..pick {
+        ls_press(g, 2)
+    }
+    ls_press(g, 128)
+}
+
+# Red pixels across the top of the view.
+dae ls_red(g) {
+    ken fb = bytes(320 * 200)
+    render(g, fb, 320, 200)
+    ken n = 0
+    fer i in 0..320 * 60 {
+        gin bytes_get(fb, i) == 88 {
+            n = n + 1
+        }
+    }
+    gie n
+}
+
+# Pull lever i (north, south, west) from in front of it.
+ken LS_LEVERS = [[-1296, 104, 1024], [-1296, -296, 3072], [-1544, 64, 2048]]
+dae ls_pull(g, i) {
+    ken spot = LS_LEVERS[i]
+    ls_at(g, spot[0], spot[1], spot[2])
+    ls_press(g, 128)
+}
+
+fer pick in 0..3 {
+    ken g = ls_game()
+    mak_siccar g["objective"] == "SAVE AILSA" an ls_actor(g, 48)["state"] == "strapped"
+    ls_ask(g, pick)
+    mak_siccar g["story"]["choice"] == pick an g["talk"]["lines"][0] == "INTERPRETING VAGUE ANSWER AS NO."
+    mak_siccar g["story"]["countdown"] == 6300
+    ls_read(g)
+    mak_siccar g["objective"] == "PULL THE THREE LEVERS"
+    # Asking again does not restart it.
+    ken left = g["story"]["countdown"]
+    ls_press(g, 128)
+    mak_siccar g["talk"]["lines"][0] == "DISPOSAL PROCEEDING. HAVE A NICE DAY."
+    ls_read(g)
+    mak_siccar g["story"]["countdown"] < left
+}
+blether "ok every answer at the computer is vague and starts the countdoon"
+
+# The countdown on the HUD: big red figures that come and go wi it.
+ken g = ls_game()
+ls_at(g, -1136, -24, 1024)
+ken quiet = ls_red(g)
+ls_ask(g, 0)
+ls_read(g)
+mak_siccar g["story"]["countdown"] > 6200 an ls_red(g) > quiet + 100
+blether "ok the countdoon shows on the HUD"
+
+# A lever before the question: the computer asks anyway, and the pull counts.
+g = ls_game()
+ls_pull(g, 0)
+mak_siccar g["story"]["levers"] == 1 an ls_actor(g, 53, 0)["state"] == "on" an g["story"]["asked"]
+mak_siccar g["talk"]["lines"][1] == "TAMPERING DETECTED. DO YOU WISH TO SAVE THE PRINCESS?" an len(g["talk"]["choices"]) == 3
+ls_press(g, 128)
+ls_press(g, 128)
+mak_siccar g["talk"]["lines"][0] == "INTERPRETING VAGUE ANSWER AS NO." an g["story"]["countdown"] == 6300
+ls_read(g)
+# The same lever again does nothing.
+ls_pull(g, 0)
+mak_siccar g["story"]["levers"] == 1 an g["message"] == "That lever's pulled already." an g["talk"] == naething
+ls_pull(g, 1)
+mak_siccar g["story"]["levers"] == 2 an ls_actor(g, 48)["state"] == "strapped" an g["story"]["countdown"] > 0
+ken before = g["clock"]
+ls_pull(g, 2)
+mak_siccar g["story"]["levers"] == 3 an g["story"]["freed"] an ls_actor(g, 48)["state"] == "free"
+mak_siccar g["story"]["countdown"] == 0 an g["clock_stop"]
+ken freed_at = g["clock"]
+ls_read(g)
+fer i in 0..400 {
+    tic(g, {"keys": 0, "dx": 0})
+}
+mak_siccar g["clock"] == freed_at an freed_at > before an nae g["failed"]
+ls_pull(g, 2)
+mak_siccar g["story"]["levers"] == 3
+blether "ok levers pull once; the third frees Ailsa and stops the countdoon and the clock"
+
+# The countdown running out fails the level.
+g = ls_game()
+ls_ask(g, 2)
+ls_read(g)
+g["story"]["countdown"] = 3
+fer i in 0..2 {
+    tic(g, {"keys": 0, "dx": 0})
+}
+mak_siccar nae g["failed"]
+tic(g, {"keys": 0, "dx": 0})
+mak_siccar g["failed"] an g["message"] == "DISPOSAL COMPLETE."
+ken t = g["tics"]
+tic(g, {"keys": 0, "dx": 0})
+mak_siccar g["tics"] == t
+blether "ok the countdoon running oot fails the level"
+
+# A live contraption between the player and a lever: E pulls the lever.
+g = new_game(load_map("games/bogle/data/lab.map"))
+ken laird = ls_actor(g, 49)
+laird["x"] = -1296 * 65536
+laird["y"] = 124 * 65536
+laird["state"] = "vent"
+laird["timer"] = 100000
+ls_pull(g, 0)
+mak_siccar g["story"]["levers"] == 1 an laird["state"] == "vent"
+blether "ok a live contraption disnae take E"
+
+# The slumped one: no fit before Ailsa is free, no fit without the core,
+# and wi both the Laird's line, then the win.
+g = new_game(load_map("games/bogle/data/lab.map"))
+laird = ls_actor(g, 49)
+laird["x"] = -1296 * 65536
+laird["y"] = -48 * 65536
+laird["sector"] = ls_sector(g["map"], -1296, -48)
+damage_actor(g, laird, 1000)
+mak_siccar laird["state"] == "slumped" an laird["active"]
+ls_at(g, -1296, -96, 1024)
+tic(g, {"keys": 0, "dx": 0})
+mak_siccar g["story"]["slumped"] an g["talk"]["lines"][0] == "The contraption slumps wi a sigh, its core sparkin'."
+ls_read(g)
+ls_press(g, 128)
+mak_siccar g["talk"]["lines"][0] == "Ailsa's still strapped tae the rig. Pull the levers first."
+ls_read(g)
+fer i in 0..3 {
+    ls_actor(g, 53, i)["state"] = "on"
+}
+g["story"]["levers"] = 2
+g["story"]["asked"] = aye
+ls_actor(g, 53, 2)["state"] = "idle"
+ls_pull(g, 2)
+ls_read(g)
+mak_siccar g["story"]["freed"] an g["objective"] == "FIT THE GUID CORE"
+ls_at(g, -1296, -96, 1024)
+ls_press(g, 128)
+mak_siccar g["talk"]["lines"][0] == "The core's no in yer pooch. It's on the shelf."
+ls_read(g)
+mak_siccar nae g["won"]
+story_give(g, "good_core")
+ls_press(g, 128)
+mak_siccar g["talk"]["lines"][1] == "Whit a lovely day. Shall we hae a cup o' tea?" an nae g["won"]
+ls_read(g)
+mak_siccar g["won"] an g["story"]["tea"]
+blether "ok the slumped contraption wins only wi the guid core"

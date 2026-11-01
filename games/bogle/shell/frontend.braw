@@ -67,13 +67,13 @@ dae bogle_levels_for(first_map) {
 }
 
 # Ending tiers by the campaign clock when Ailsa is freed: 0 fast, 1 slow,
-# 2 buried (too slow, or the countdown ran out). Tuned once routes exist.
+# 2 buried (too slow, or the countdown ran out): 25 and 60 minutes of tics.
 dae bogle_end_fast() {
-    gie 35 * 60 * 15
+    gie 35 * 60 * 25
 }
 
 dae bogle_end_slow() {
-    gie 35 * 60 * 30
+    gie 35 * 60 * 60
 }
 
 dae bogle_ending_tier(clock, failed) {

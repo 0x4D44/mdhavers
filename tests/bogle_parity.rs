@@ -197,7 +197,9 @@ fn configure_headless(command: &mut Command, rc: bool, repo: &Path, map: &Path, 
         .env("BOGLE_MAP", map)
         .env(
             "BOGLE_FRONTEND",
-            if replay.file_stem() == Some(std::ffi::OsStr::new("frontend")) {
+            if replay.file_stem() == Some(std::ffi::OsStr::new("frontend"))
+                || replay.file_stem() == Some(std::ffi::OsStr::new("campaign"))
+            {
                 "1"
             } else {
                 "0"
@@ -397,4 +399,76 @@ fn distillery_playthrough_matches_native_rc_modes_and_interpreter_prefix() {
 #[test]
 fn tower_playthrough_matches_native_rc_modes_and_interpreter_prefix() {
     check_playthrough("tower", 6);
+}
+
+// The Laird's Laboratory: the scanner opened wi the head, the computer's
+// vague answer and its countdown, the three levers, Ailsa freed, the
+// contraption beaten wi her help and the guid core fitted, started from the
+// tower's carry (replays/lab.carry).
+#[test]
+fn lab_playthrough_matches_native_rc_modes_and_interpreter_prefix() {
+    check_playthrough("lab", 7);
+}
+
+// The whole campaign through the front end: New Game, the opening card, each
+// briefing, the five level routes chained (one tic a frame) and the ending
+// screen. Native runs it in full under both RC modes; the debug interpreter
+// replays the first 210 frames, which every native output must extend.
+#[test]
+fn campaign_frontend_replay_matches_native_rc_modes_and_interpreter_prefix() {
+    const PREFIX_FRAMES: usize = 210;
+    let repo = root();
+    let script = repo.join("games/bogle/shell/headless.braw");
+    let map = repo.join("games/bogle/data/kirkyard.map");
+    let replay = repo.join("games/bogle/replays/campaign.txt");
+    let expected = std::fs::read(repo.join("games/bogle/replays/campaign.hashes"))
+        .unwrap_or_else(|error| panic!("read campaign frame hashes: {error}"));
+    let expected_text = std::str::from_utf8(&expected).expect("campaign.hashes is UTF-8");
+    assert_eq!(
+        expected_text.lines().count(),
+        9815,
+        "campaign.hashes must contain one row for each frame"
+    );
+    assert_eq!(
+        expected_text.lines().last().and_then(|line| line.split(' ').nth(1)),
+        Some("ending"),
+        "the campaign replay must finish on the ending screen"
+    );
+
+    let mut interpreter = Command::new(env!("CARGO_BIN_EXE_mdhavers"));
+    configure_headless(&mut interpreter, false, &repo, &map, &replay);
+    interpreter
+        .env("BOGLE_LIMIT", PREFIX_FRAMES.to_string())
+        .arg("run")
+        .arg(&script);
+    let prefix = run_command(interpreter, RUN_TIMEOUT, "campaign interpreter prefix");
+    assert_success(&prefix, "campaign interpreter prefix");
+    assert_clean_stderr(&prefix, "campaign interpreter prefix");
+    assert_eq!(
+        prefix
+            .stdout
+            .bytes
+            .iter()
+            .filter(|byte| **byte == b'\n')
+            .count(),
+        PREFIX_FRAMES
+    );
+    let mut outputs = Vec::new();
+    for rc in [false, true] {
+        let native = NativeExecutable::build(&script, rc);
+        let output = native.run(rc, &repo, &map, &replay);
+        let mode = if rc { "MDH_RC=1" } else { "MDH_RC=0" };
+        assert_success(&output, &format!("campaign native replay with {mode}"));
+        assert_clean_stderr(&output, &format!("campaign native replay with {mode}"));
+        assert!(
+            output.stdout.bytes.starts_with(&prefix.stdout.bytes),
+            "campaign {mode} diverged from interpreter prefix"
+        );
+        outputs.push(output.stdout.bytes);
+    }
+    assert_eq!(outputs[0], outputs[1], "campaign RC modes diverged");
+    assert_eq!(
+        outputs[0], expected,
+        "campaign differs from committed frame hashes"
+    );
 }

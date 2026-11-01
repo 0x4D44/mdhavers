@@ -57,7 +57,7 @@ dae make_cmap() {
 dae bogle_assets() {
     gin nae contains(bogle_asset_cache, "textures") {
         ken textures = []
-        fer name in ["tex_granite", "tex_flagstone_moss", "tex_slate_under", "tex_dungeon_brick", "tex_oak_panel", "tex_tapestry_thistle", "tex_celtic_lintel", "tex_cell_door", "tex_portcullis", "tex_peat_straw", "tex_bog", "tex_chapel_stone", "tex_fryer_oil", "tex_lever_wall", "tex_loch_water", "tex_cow_wall", "tex_stag_wall", "tex_banner_wall", "tex_exit_gate", "tex_switch_off", "tex_switch_on", "tex_kirk_stone", "tex_stained_glass", "tex_crypt_door", "tex_bark", "tex_hedge", "tex_earth_tunnel", "tex_scanner_door", "tex_dyke", "tex_panel_corridor"] {
+        fer name in ["tex_granite", "tex_flagstone_moss", "tex_slate_under", "tex_dungeon_brick", "tex_oak_panel", "tex_tapestry_thistle", "tex_celtic_lintel", "tex_cell_door", "tex_portcullis", "tex_peat_straw", "tex_bog", "tex_chapel_stone", "tex_fryer_oil", "tex_lever_wall", "tex_loch_water", "tex_cow_wall", "tex_stag_wall", "tex_banner_wall", "tex_exit_gate", "tex_switch_off", "tex_switch_on", "tex_kirk_stone", "tex_stained_glass", "tex_crypt_door", "tex_bark", "tex_hedge", "tex_earth_tunnel", "tex_scanner_door", "tex_dyke", "tex_panel_corridor", "tex_lab_wall"] {
             shove(textures, bogle_asset(name, 64, 64))
         }
         ken sprites = []
@@ -120,6 +120,10 @@ dae bogle_gameplay_assets() {
         }
         # The Tower (story art batch 4).
         fer name in ["spr_cloak_a", "spr_cloak_b", "spr_clone_idle", "spr_clone_spark", "pick_clone_head", "dec_doorway_lit"] {
+            art[name] = bogle_asset(name, 64, 96)
+        }
+        # The Laird's Laboratory (story art batch 5).
+        fer name in ["spr_ailsa_strapped", "spr_ailsa_idle", "spr_ailsa_throw", "spr_laird_idle", "spr_laird_walk1", "spr_laird_walk2", "spr_laird_blast", "spr_laird_vent", "spr_laird_slumped", "dec_computer", "dec_lever_off", "dec_lever_on", "pick_good_core"] {
             art[name] = bogle_asset(name, 64, 96)
         }
         art["pick_bagpipes"] = bogle_asset("pick_bagpipes", 64, 96)
@@ -247,8 +251,7 @@ dae bogle_actor_art(g, actor) {
     } ither gin kind >= 10 an kind <= 21 {
         name = ["pick_oatcake", "pick_haggis_plate", "pick_girder_juice", "pick_girder_bottle", "pick_shortbread", "pick_mars_box", "pick_powder_shot", "pick_blunderbuss", "pick_bagpipes", "pick_key_tartan", "pick_key_silver", "dec_banner"][kind - 10]
     } ither gin bogle_is_pickup(kind) {
-        # Placeholders until the story art batches land.
-        name = ["pick_key_brass", "pick_clone_head", "pick_powder_shot"][kind - 22]
+        name = ["pick_key_brass", "pick_clone_head", "pick_good_core"][kind - 22]
     } ither gin kind == 40 {
         name = "spr_wullie_idle"
         gin len(g["paths"]) > 0 {
@@ -314,6 +317,36 @@ dae bogle_actor_art(g, actor) {
         name = "spr_clone_idle"
         gin state == "spark" an g["tics"] / 3 % 2 == 0 {
             name = "spr_clone_spark"
+        }
+    } ither gin kind == 48 {
+        name = "spr_ailsa_strapped"
+        gin state == "free" {
+            name = "spr_ailsa_idle"
+            gin actor["timer"] < 8 {
+                name = "spr_ailsa_throw"
+            }
+        }
+    } ither gin kind == 49 {
+        # The Laird's steam contraption.
+        name = "spr_laird_idle"
+        gin state == "chase" an contains(actor, "moving") an actor["moving"] {
+            name = "spr_laird_walk" + tae_string(g["tics"] / 9 % 2 + 1)
+        }
+        gin state == "blast" {
+            name = "spr_laird_blast"
+        }
+        gin state == "vent" {
+            name = "spr_laird_vent"
+        }
+        gin state == "slumped" {
+            name = "spr_laird_slumped"
+        }
+    } ither gin kind == 50 {
+        name = "dec_computer"
+    } ither gin kind == 53 {
+        name = "dec_lever_off"
+        gin state == "on" {
+            name = "dec_lever_on"
         }
     } ither gin kind == 54 {
         name = "dec_castle_bell"

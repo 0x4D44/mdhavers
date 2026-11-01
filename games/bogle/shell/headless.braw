@@ -15,7 +15,7 @@ gin len(headless_args) == 6 {
     headless_every = headless_args[5]
 }
 gin bogle_option("BOGLE_FRONTEND", "0") == "1" {
-    bogle_front_replay(headless_map, headless_replay, map_integer(headless_w), map_integer(headless_h))
+    bogle_front_replay(headless_map, headless_replay, map_integer(headless_w), map_integer(headless_h), map_integer(bogle_option("BOGLE_LIMIT", "0")))
 } ither {
     ken headless_game = run_replay(headless_map, headless_replay, map_integer(headless_w), map_integer(headless_h), map_integer(headless_every), map_integer(bogle_option("BOGLE_LIMIT", "0")))
     gin bogle_option("BOGLE_REQUIRE_EXIT", "0") == "1" {

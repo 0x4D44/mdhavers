@@ -1,0 +1,190 @@
+fetch "games/bogle/engine/game"
+
+# The lab's actors: Ailsa, freed, keeps 64-160 from the player and never
+# leaves the arena; her spanner hurts only the contraption. The contraption
+# blasts steam (8 and a shove) in sight within 224 once a second-and-a-bit,
+# vents every 10 s (3 s stunned, double damage) and slumps at 0, still there
+# but neither hurting nor hurt, and keeps tae the arena.
+dae la_sector(m, x, y) {
+    fer s in 0..len(m["floor_h"]) {
+        gin map_point(m, s, x, y) {
+            gie s
+        }
+    }
+    gie -1
+}
+
+dae la_put(g, a, x, y) {
+    a["x"] = x * 65536
+    a["y"] = y * 65536
+    a["sector"] = la_sector(g["map"], x, y)
+    a["z"] = g["map"]["floor_h"][a["sector"]] * 65536
+}
+
+dae la_player(g, x, y) {
+    la_put(g, g, x, y)
+    g["view_z"] = g["z"] + 2686976
+}
+
+dae la_actor(g, kind) {
+    fer a in g["actors"] {
+        gin a["kind"] == kind {
+            gie a
+        }
+    }
+    gie naething
+}
+
+dae la_wait(g, n) {
+    fer i in 0..n {
+        tic(g, {"keys": 0, "dx": 0})
+    }
+}
+
+dae la_inside(g, a) {
+    ken r = g["story"]["arena"]
+    gie a["x"] / 65536 > r[0] an a["x"] / 65536 < r[2] an a["y"] / 65536 > r[1] an a["y"] / 65536 < r[3]
+}
+
+# Ailsa freed, the contraption parked and venting for good.
+dae la_game() {
+    ken g = new_game(load_map("games/bogle/data/lab.map"))
+    ken laird = la_actor(g, 49)
+    la_put(g, laird, -1360, 120)
+    laird["state"] = "vent"
+    laird["timer"] = 1000000
+    ken ailsa = la_actor(g, 48)
+    ailsa["state"] = "free"
+    ailsa["timer"] = 0
+    gie g
+}
+
+ken g = la_game()
+ken ailsa = la_actor(g, 48)
+la_player(g, -1150, -96)
+ken far = actor_distance(ailsa["x"], ailsa["y"], g["x"], g["y"])
+la_wait(g, 140)
+ken near = actor_distance(ailsa["x"], ailsa["y"], g["x"], g["y"])
+mak_siccar far > 300 an near <= 164 an near >= 64
+# Up close she backs off.
+la_player(g, ailsa["x"] / 65536 + 20, ailsa["y"] / 65536)
+la_wait(g, 35)
+mak_siccar actor_distance(ailsa["x"], ailsa["y"], g["x"], g["y"]) >= 60
+# The player leaves by the corridor: she follows only tae the arena's edge.
+la_player(g, -928, -300)
+fer i in 0..300 {
+    tic(g, {"keys": 0, "dx": 0})
+    mak_siccar la_inside(g, ailsa)
+}
+mak_siccar ailsa["x"] / 65536 > -1150
+blether "ok Ailsa keeps her distance an bides in the arena"
+
+# Her spanner: she throws at the contraption she can see; it flies through
+# the player and past herself, and strikes only the contraption.
+g = la_game()
+ailsa = la_actor(g, 48)
+ken laird = la_actor(g, 49)
+la_player(g, -1500, 120)
+ken hp = laird["health"]
+la_wait(g, 34)
+mak_siccar len(g["projectiles"]) == 0
+la_wait(g, 2)
+mak_siccar len(g["projectiles"]) == 1 an g["projectiles"][0]["kind"] == "spanner"
+la_wait(g, 60)
+mak_siccar laird["health"] == hp - 12
+g = la_game()
+laird = la_actor(g, 49)
+ailsa = la_actor(g, 48)
+laird["state"] = "chase"
+la_player(g, -1300, -96)
+la_put(g, ailsa, -1340, -96)
+spawn_projectile(g, "spanner", -1400 * 65536, -96 * 65536, 40 * 65536, la_sector(g["map"], -1400, -96), 8 * 65536, 0, 0, ailsa)
+fer i in 0..20 {
+    projectiles_tick(g)
+}
+mak_siccar g["health"] == 100 an ailsa["health"] == 1 an laird["health"] == 450 an len(g["projectiles"]) == 1
+g["projectiles"] = []
+la_put(g, laird, -1300, 40)
+spawn_projectile(g, "spanner", -1300 * 65536, -60 * 65536, 40 * 65536, la_sector(g["map"], -1300, -60), 0, 8 * 65536, 0, ailsa)
+fer i in 0..20 {
+    projectiles_tick(g)
+}
+mak_siccar laird["health"] == 444 an len(g["projectiles"]) == 0
+blether "ok Ailsa's spanner hurts only the contraption"
+
+# The steam blast: 8 and a shove, then a breather before the next.
+g = new_game(load_map("games/bogle/data/lab.map"))
+laird = la_actor(g, 49)
+la_player(g, -1360, 40)
+g["spirit"] = 0
+ken d0 = actor_distance(laird["x"], laird["y"], g["x"], g["y"])
+la_wait(g, 1)
+mak_siccar g["health"] == 92 an laird["state"] == "blast"
+mak_siccar actor_distance(laird["x"], laird["y"], g["x"], g["y"]) >= d0 + 28
+la_wait(g, 69)
+mak_siccar g["health"] == 92
+la_wait(g, 2)
+mak_siccar g["health"] == 84
+# Oot o range, nae blast.
+g = new_game(load_map("games/bogle/data/lab.map"))
+laird = la_actor(g, 49)
+la_player(g, -1110, -96)
+g["spirit"] = 0
+la_wait(g, 5)
+mak_siccar g["health"] == 100 an laird["state"] == "chase"
+blether "ok the contraption blasts steam in range"
+
+# Venting: every 10 s, 3 s stunned and double damage.
+g = new_game(load_map("games/bogle/data/lab.map"))
+laird = la_actor(g, 49)
+la_player(g, -1110, -96)
+laird["vent_clock"] = 348
+la_wait(g, 1)
+mak_siccar laird["state"] == "chase"
+damage_actor(g, laird, 10)
+mak_siccar laird["health"] == 440
+la_wait(g, 1)
+mak_siccar laird["state"] == "vent"
+damage_actor(g, laird, 10)
+mak_siccar laird["health"] == 420
+ken x = laird["x"]
+la_wait(g, 104)
+mak_siccar laird["state"] == "vent" an laird["x"] == x
+la_wait(g, 1)
+mak_siccar laird["state"] == "chase"
+blether "ok the contraption vents and takes double"
+
+# Slumped: still there, no longer hurt or hurting; bagpipes cannae stun it.
+g = new_game(load_map("games/bogle/data/lab.map"))
+laird = la_actor(g, 49)
+la_player(g, -1360, 0)
+g["spirit"] = 0
+damage_actor(g, laird, 449)
+mak_siccar laird["health"] == 1 an laird["state"] == "chase"
+damage_actor(g, laird, 5)
+mak_siccar laird["state"] == "slumped" an laird["active"] an laird["health"] == 0
+mak_siccar nae damage_actor(g, laird, 50)
+g["story"]["slumped"] = aye
+ken spot = [laird["x"], laird["y"]]
+la_wait(g, 100)
+mak_siccar g["health"] == 100 an laird["state"] == "slumped" an [laird["x"], laird["y"]] == spot
+mak_siccar bogle_hittable(laird)
+g["owned"][3] = aye
+g["weapon"] = 4
+g["angle"] = 3072
+fer i in 0..35 {
+    weapons_tick(g, aye)
+}
+mak_siccar laird["state"] == "slumped" an laird["vx"] == 0
+blether "ok the slumped contraption bides, hurtless an unhurt"
+
+# The contraption keeps tae the arena when the player leaves it.
+g = new_game(load_map("games/bogle/data/lab.map"))
+laird = la_actor(g, 49)
+la_player(g, -928, -300)
+fer i in 0..400 {
+    tic(g, {"keys": 0, "dx": 0})
+    mak_siccar la_inside(g, laird)
+}
+mak_siccar laird["x"] / 65536 > -1200
+blether "ok the contraption keeps tae the arena"

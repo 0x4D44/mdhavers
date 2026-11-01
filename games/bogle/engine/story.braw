@@ -305,7 +305,142 @@ dae tower_tick(g) {
     }
 }
 
+# The Laird's Laboratory. The computer (50) asks once, every answer is
+# vague, and the three-minute disposal countdown starts. Pulling a lever (53)
+# before it has asked makes it pipe up anyway. Each lever pulls once; the
+# third frees Ailsa (48), stops the countdown and the campaign clock (the
+# clock then decides the ending). The contraption (49) slumps at 0 health;
+# E on it wi the guid core wins. g["story"]: asked, levers (pulled), freed,
+# slumped, tea (the core fitted), countdown (tics left), arena (the map
+# rectangle Ailsa and the contraption keep to).
+ken LAB_COUNTDOWN = 35 * 180
+# The arena floor, inset from its walls (maps/lab.braw).
+ken LAB_ARENA = [-1576, -328, -1112, 136]
+
+dae lab_ask(g, lines) {
+    g["story"]["asked"] = aye
+    ken vague = "What do you think?"
+    story_ask(g, lines, [vague, vague, vague], "vague")
+}
+
+dae lab_free(g) {
+    ken s = g["story"]
+    s["freed"] = aye
+    s["countdown"] = 0
+    g["clock_stop"] = aye
+    fer a in g["actors"] {
+        gin a["active"] an a["kind"] == 48 {
+            a["state"] = "free"
+            a["timer"] = 35
+        }
+    }
+    story_say(g, ["The straps spring open. Ailsa's free!", "AILSA: Ma hero! Noo let's sort oot that big tin eejit."])
+    story_objective(g, "SORT OOT THE LAIRD")
+    gin s["slumped"] {
+        story_objective(g, "FIT THE GUID CORE")
+    }
+}
+
+dae lab_use(g, a) {
+    ken s = g["story"]
+    gin a["kind"] == 50 {
+        gin s["asked"] {
+            story_say(g, ["DISPOSAL PROCEEDING. HAVE A NICE DAY."])
+        } ither {
+            lab_ask(g, ["DO YOU WISH TO SAVE THE PRINCESS?"])
+        }
+        gie aye
+    }
+    gin a["kind"] == 53 {
+        gin a["state"] == "on" {
+            g["message"] = "That lever's pulled already."
+            gie aye
+        }
+        a["state"] = "on"
+        s["levers"] = s["levers"] + 1
+        bogle_emit_sound(g, "lever")
+        gin s["levers"] == 3 {
+            lab_free(g)
+        } ither gin nae s["asked"] {
+            lab_ask(g, ["Clunk. The computer whirrs awake.", "TAMPERING DETECTED. DO YOU WISH TO SAVE THE PRINCESS?"])
+        } ither {
+            g["message"] = "Clunk! " + tae_string(3 - s["levers"]) + " tae go."
+        }
+        gie aye
+    }
+    gin a["kind"] == 49 {
+        gin nae s["freed"] {
+            story_say(g, ["Ailsa's still strapped tae the rig. Pull the levers first."])
+        } ither gin contains(g["items"], "good_core") {
+            s["tea"] = aye
+            story_say(g, ["The guid core clicks intae place. The contraption purrs.", "Whit a lovely day. Shall we hae a cup o' tea?"])
+        } ither {
+            story_say(g, ["The core's no in yer pooch. It's on the shelf."])
+        }
+        gie aye
+    }
+    gie nae
+}
+
+dae lab_event(g, tag) {
+    ken s = g["story"]
+    gin tag == "vague" an nae s["freed"] {
+        s["countdown"] = LAB_COUNTDOWN
+        story_say(g, ["INTERPRETING VAGUE ANSWER AS NO.", "PRINCESS DISPOSAL IN THREE MINUTES."])
+        story_objective(g, "PULL THE THREE LEVERS")
+    }
+}
+
+dae lab_tick(g) {
+    ken s = g["story"]
+    gin g["talk"] != naething {
+        gie naething
+    }
+    gin s["tea"] {
+        story_win(g)
+        gie naething
+    }
+    gin s["countdown"] > 0 {
+        s["countdown"] = s["countdown"] - 1
+        gin s["countdown"] == 0 {
+            g["message"] = "DISPOSAL COMPLETE."
+            story_fail(g)
+            gie naething
+        }
+    }
+    ken slumped = nae
+    fer a in g["actors"] {
+        gin a["active"] an a["kind"] == 49 an a["state"] == "slumped" {
+            slumped = aye
+        }
+    }
+    gin nae s["slumped"] an slumped {
+        s["slumped"] = aye
+        story_say(g, ["The contraption slumps wi a sigh, its core sparkin'.", "The Laird's still in there. He needs a better core."])
+        gin s["freed"] {
+            story_objective(g, "FIT THE GUID CORE")
+        } ither {
+            story_objective(g, "PULL THE THREE LEVERS")
+        }
+    }
+}
+
 dae story_init(g) {
+    gin story_id(g) == "lab" {
+        story_objective(g, "SAVE AILSA")
+        ken s = g["story"]
+        fer flag in ["asked", "freed", "slumped", "tea"] {
+            s[flag] = nae
+        }
+        s["levers"] = 0
+        s["countdown"] = 0
+        s["arena"] = LAB_ARENA
+        fer a in g["actors"] {
+            gin a["kind"] == 48 {
+                a["state"] = "strapped"
+            }
+        }
+    }
     gin story_id(g) == "tower" {
         story_objective(g, "DINNAE GET SEEN")
         g["story"]["cloak"] = 0
@@ -338,6 +473,9 @@ dae story_init(g) {
 # Called for each link tag that fired (queued by bogle_activate) and for
 # each talk choice event.
 dae story_event(g, tag) {
+    gin story_id(g) == "lab" {
+        lab_event(g, tag)
+    }
     gin story_id(g) == "forest" {
         forest_event(g, tag)
     }
@@ -377,6 +515,9 @@ dae story_tick(g) {
     gin story_id(g) == "tower" {
         tower_tick(g)
     }
+    gin story_id(g) == "lab" {
+        lab_tick(g)
+    }
     gin story_id(g) == "test" {
         gin g["story"]["countdown"] > 0 {
             g["story"]["countdown"] = g["story"]["countdown"] - 1
@@ -398,6 +539,9 @@ dae story_use(g, a) {
     }
     gin story_id(g) == "tower" {
         gie tower_use(g, a)
+    }
+    gin story_id(g) == "lab" {
+        gie lab_use(g, a)
     }
     gin story_id(g) == "test" {
         gin a["kind"] == 50 an nae contains(g["story"], "asked") {
@@ -436,7 +580,7 @@ dae story_use_target(g) {
     ken best = naething
     ken best_d2 = 4097
     fer a in g["actors"] {
-        gin a["active"] an bogle_is_usable(a["kind"]) {
+        gin a["active"] an bogle_usable_now(a) {
             ken dx = (a["x"] - g["x"]) / 65536
             ken dy = (a["y"] - g["y"]) / 65536
             ken d2 = dx * dx + dy * dy

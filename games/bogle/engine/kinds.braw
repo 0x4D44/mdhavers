@@ -27,10 +27,15 @@ dae bogle_is_walker(kind) {
     gie bogle_is_target(kind) an kind != 4 an kind != 5
 }
 
-# Story things that take E: not Wullie, the graves or the wood's beasts, so
-# walking past them never steals a press meant for an organ stop or a sign.
+# Story things that take E: not Wullie, the graves, the wood's beasts or
+# Ailsa, so walking past them never steals a press meant for an organ stop,
+# a sign or a lever. The contraption takes E only once it has slumped.
 dae bogle_is_usable(kind) {
-    gie bogle_is_story_thing(kind) an kind != 40 an kind != 41 an nae (kind >= 42 an kind <= 45)
+    gie bogle_is_story_thing(kind) an kind != 40 an kind != 41 an nae (kind >= 42 an kind <= 45) an kind != 48
+}
+
+dae bogle_usable_now(a) {
+    gie bogle_is_usable(a["kind"]) an (a["kind"] != 49 or a["state"] == "slumped")
 }
 
 # What a weapon can strike right now: a thistle hiding as a tuft and the
