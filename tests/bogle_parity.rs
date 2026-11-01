@@ -430,7 +430,10 @@ fn campaign_frontend_replay_matches_native_rc_modes_and_interpreter_prefix() {
         "campaign.hashes must contain one row for each frame"
     );
     assert_eq!(
-        expected_text.lines().last().and_then(|line| line.split(' ').nth(1)),
+        expected_text
+            .lines()
+            .last()
+            .and_then(|line| line.split(' ').nth(1)),
         Some("ending"),
         "the campaign replay must finish on the ending screen"
     );
