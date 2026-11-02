@@ -535,7 +535,8 @@ mod tests {
     }
 
     /// Uses the runtime helpers codegen declares only on first use: division (by
-    /// zero), indexing (out of bounds), `hurl` with a line and split's string copy.
+    /// zero), indexing (out of bounds), `hurl` with a line, split's string copy and
+    /// the screen loop.
     const LAZY_DECLS: &str = r#"
 dae f(xs, n) {
     gin n == 0 {
@@ -548,6 +549,7 @@ blether join(["a"], ",")
 blether aw([1], |x| x)
 mak_siccar 1 == 1, "one"
 screen_clear("black")
+screen_loop(|t| t)
 blether sclaff([[1]])
 blether split("a,b", ",")
 blether assert_equal(1, 1)
