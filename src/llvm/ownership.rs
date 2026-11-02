@@ -632,7 +632,6 @@ blether Pot().n
             include_str!("../../runtime/gc_stub.c")
         );
         let rust_runtime = [
-            include_str!("../../runtime/mdh_runtime_core/src/lib.rs"),
             include_str!("../../runtime/mdh_runtime_rs/src/lib.rs"),
             include_str!("../../runtime/mdh_runtime_rs/src/tri_runtime.rs"),
             include_str!("../../runtime/mdh_runtime_rs/src/audio.rs"),
@@ -646,7 +645,9 @@ blether Pot().n
                     && (line.contains(&call) || line.contains(&ptr_call))
                     && !line.trim_end().ends_with(';')
             });
-            let fn_def = format!("fn {name}(");
+            // A Rust definition is an `extern "C" fn` item; a bare `fn name(`
+            // would also match a declaration inside an `extern "C" { }` block.
+            let fn_def = format!("extern \"C\" fn {name}(");
             in_c || rust_runtime.iter().any(|src| src.contains(&fn_def))
         };
         let missing: Vec<&str> = RUNTIME_OWNERSHIP

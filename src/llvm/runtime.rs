@@ -1,6 +1,11 @@
 //! Runtime Function Declarations
 //!
 //! Declares the native runtime's C ABI, implemented by both C and Rust.
+//!
+//! Codegen builds nil/bool/int/float values and reads tags inline as
+//! `{ i8, i64 }` structs, so it never calls `__mdh_make_nil/bool/int/float` or
+//! `__mdh_get_tag`, whose definitions now live in the Rust core. Those
+//! declarations are exercised only by this file's own layout test.
 
 use inkwell::module::Module;
 use inkwell::values::FunctionValue;

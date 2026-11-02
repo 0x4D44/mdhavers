@@ -64,7 +64,8 @@ const _: () = {
     assert!(core::mem::offset_of!(MdhRsResult, error) == 24);
 };
 
-#[no_mangle]
+#[cfg_attr(not(target_os = "emscripten"), no_mangle)]
+#[cfg_attr(target_os = "emscripten", export_name = "__mdh_make_nil__rsabi")]
 pub extern "C" fn __mdh_make_nil() -> MdhValue {
     MdhValue {
         tag: MDH_TAG_NIL,
@@ -72,7 +73,8 @@ pub extern "C" fn __mdh_make_nil() -> MdhValue {
     }
 }
 
-#[no_mangle]
+#[cfg_attr(not(target_os = "emscripten"), no_mangle)]
+#[cfg_attr(target_os = "emscripten", export_name = "__mdh_make_bool__rsabi")]
 pub extern "C" fn __mdh_make_bool(value: bool) -> MdhValue {
     MdhValue {
         tag: MDH_TAG_BOOL,
@@ -80,7 +82,8 @@ pub extern "C" fn __mdh_make_bool(value: bool) -> MdhValue {
     }
 }
 
-#[no_mangle]
+#[cfg_attr(not(target_os = "emscripten"), no_mangle)]
+#[cfg_attr(target_os = "emscripten", export_name = "__mdh_make_int__rsabi")]
 pub extern "C" fn __mdh_make_int(value: i64) -> MdhValue {
     MdhValue {
         tag: MDH_TAG_INT,
@@ -88,7 +91,8 @@ pub extern "C" fn __mdh_make_int(value: i64) -> MdhValue {
     }
 }
 
-#[no_mangle]
+#[cfg_attr(not(target_os = "emscripten"), no_mangle)]
+#[cfg_attr(target_os = "emscripten", export_name = "__mdh_make_float__rsabi")]
 pub extern "C" fn __mdh_make_float(value: f64) -> MdhValue {
     // Preserve the entire IEEE-754 representation, including -0 and NaN payloads.
     // A numeric cast or a byte-order-dependent reinterpretation would change the ABI.
@@ -98,7 +102,8 @@ pub extern "C" fn __mdh_make_float(value: f64) -> MdhValue {
     }
 }
 
-#[no_mangle]
+#[cfg_attr(not(target_os = "emscripten"), no_mangle)]
+#[cfg_attr(target_os = "emscripten", export_name = "__mdh_get_tag__rsabi")]
 pub extern "C" fn __mdh_get_tag(value: MdhValue) -> u8 {
     // A borrowed read of the carrier, even for heap or unknown tags; never dereference.
     value.tag

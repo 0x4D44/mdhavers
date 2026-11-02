@@ -37,7 +37,6 @@ fn main() {
     println!("cargo:rerun-if-changed=runtime/mdh_runtime_rs/src/net_stub.rs");
     println!("cargo:rerun-if-changed=runtime/mdh_runtime_rs/src/audio_stub.rs");
     println!("cargo:rerun-if-changed=runtime/mdh_runtime_rs/src/audio.rs");
-    println!("cargo:rerun-if-changed=runtime/mdh_runtime_rs/src/audio_stub.rs");
     println!("cargo:rerun-if-changed=runtime/mdh_runtime_rs/src/tri_runtime.rs");
     println!("cargo:rerun-if-changed=runtime/mdh_runtime_rs/src/tri_engine.rs");
     // The dependency-free core supplies the value ABI used by both runtimes.

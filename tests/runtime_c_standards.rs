@@ -48,3 +48,29 @@ fn runtime_has_no_c23_extensions_under_clang() {
         String::from_utf8_lossy(&out.stderr)
     );
 }
+
+/// The browser build's ABI bridge must compile against the shared runtime header without
+/// emcc: a type it redefines (as MdhRsResult once was) breaks every browser build. Host
+/// clang or gcc with `__EMSCRIPTEN__` defined reads the same declarations.
+#[test]
+fn wasm_abi_bridge_compiles_against_the_runtime_header() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let out = Command::new(compiler())
+        .current_dir(root)
+        .args([
+            "-std=gnu17",
+            "-fsyntax-only",
+            "-D__EMSCRIPTEN__",
+            "-Iruntime",
+            "-Iruntime/platform",
+            "runtime/platform/wasm_abi.c",
+        ])
+        .stdin(Stdio::null())
+        .output()
+        .expect("run the C compiler");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        out.status.success() && stderr.is_empty(),
+        "wasm_abi.c does not compile cleanly against mdh_runtime.h:\n{stderr}"
+    );
+}

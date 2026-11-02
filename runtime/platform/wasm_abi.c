@@ -8,8 +8,11 @@
  * LLVM backend emits. Rust has no such ABI: on Emscripten the Rust runtime keeps the
  * standard one and names each entry that carries an MdhValue `<name>__rsabi` (see
  * `export_name`/`link_name` in runtime/mdh_runtime_rs). This file, built with the
- * multivalue ABI like the rest of the C runtime, joins the two: the standard ABI's form
- * of `T f(MdhValue a)` is `void f(T *out, MdhValue *a)`, which reads the same in both.
+ * multivalue ABI like the rest of the C runtime, joins the two in both directions: Rust
+ * calling C runtime entries, and C (compiled code and the C runtime) calling Rust ones,
+ * including the scalar value constructors that runtime/mdh_runtime_core defines. The
+ * standard ABI's form of `T f(MdhValue a)` is `void f(T *out, MdhValue *a)` when T is a
+ * struct, and `T f(MdhValue *a)` when T is a scalar; that form reads the same in both.
  */
 
 #ifdef __EMSCRIPTEN__
@@ -18,12 +21,6 @@
 #include <stdint.h>
 
 #include "../mdh_runtime.h"
-
-typedef struct {
-    uint8_t ok;
-    MdhValue value;
-    MdhValue error;
-} MdhRsResult;
 
 /* ---- 64-bit multiplies that check for overflow ----
  *
@@ -65,10 +62,6 @@ int32_t __mdh_kv_densify(MdhValue v);
 
 void __mdh_stack_overflow_message__rsabi(MdhValue *out) { *out = __mdh_stack_overflow_message(); }
 void __mdh_out_of_memory_message__rsabi(MdhValue *out) { *out = __mdh_out_of_memory_message(); }
-void __mdh_make_nil__rsabi(MdhValue *out) { *out = __mdh_make_nil(); }
-void __mdh_make_bool__rsabi(MdhValue *out, bool value) { *out = __mdh_make_bool(value); }
-void __mdh_make_int__rsabi(MdhValue *out, int64_t value) { *out = __mdh_make_int(value); }
-void __mdh_make_float__rsabi(MdhValue *out, double value) { *out = __mdh_make_float(value); }
 
 int32_t __mdh_list_push_owned_try__rsabi(const MdhValue *list, const MdhValue *value) {
     return __mdh_list_push_owned_try(*list, *value);
@@ -91,6 +84,43 @@ int32_t __mdh_to_string_checked__rsabi(const MdhValue *value, MdhValue *out) {
 int32_t __mdh_kv_densify__rsabi(const MdhValue *value) { return __mdh_kv_densify(*value); }
 void __mdh_release__rsabi(const MdhValue *value) { __mdh_release(*value); }
 void __mdh_hurl__rsabi(const MdhValue *value) { __mdh_hurl(*value); }
+
+/* ---- Compiled code and the C runtime call the Rust core's scalar values ----
+ *
+ * runtime/mdh_runtime_core defines these and, on Emscripten, exports them as
+ * `<name>__rsabi` with the standard ABI. Rust callers use them as Rust items directly. */
+
+void __mdh_make_nil__rsabi(MdhValue *out);
+void __mdh_make_bool__rsabi(MdhValue *out, bool value);
+void __mdh_make_int__rsabi(MdhValue *out, int64_t value);
+void __mdh_make_float__rsabi(MdhValue *out, double value);
+uint8_t __mdh_get_tag__rsabi(const MdhValue *value);
+
+MdhValue __mdh_make_nil(void) {
+    MdhValue r;
+    __mdh_make_nil__rsabi(&r);
+    return r;
+}
+
+MdhValue __mdh_make_bool(bool value) {
+    MdhValue r;
+    __mdh_make_bool__rsabi(&r, value);
+    return r;
+}
+
+MdhValue __mdh_make_int(int64_t value) {
+    MdhValue r;
+    __mdh_make_int__rsabi(&r, value);
+    return r;
+}
+
+MdhValue __mdh_make_float(double value) {
+    MdhValue r;
+    __mdh_make_float__rsabi(&r, value);
+    return r;
+}
+
+uint8_t __mdh_get_tag(MdhValue value) { return __mdh_get_tag__rsabi(&value); }
 
 /* ---- The C runtime calls Rust (JSON, regex, and the network stubs) ---- */
 

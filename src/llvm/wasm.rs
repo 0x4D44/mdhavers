@@ -8,8 +8,10 @@
 //!   wasm32 the standard C ABI passes such a struct by pointer, so the target machine
 //!   here, and the C runtime when built for the browser, both use the multivalue ABI
 //!   (`experimental-mv`), under which struct arguments are flattened and struct results
-//!   returned as several values. The Rust runtime keeps the standard ABI and is reached
-//!   through `runtime/platform/wasm_abi.c`.
+//!   returned as several values. The Rust runtime (including the scalar value
+//!   constructors in `runtime/mdh_runtime_core`) keeps the standard ABI, exports its
+//!   `MdhValue` entries as `<name>__rsabi`, and is joined to C in both directions by
+//!   `runtime/platform/wasm_abi.c`.
 //! - **`size_t` is 32 bits.** Codegen declares the C functions that take or return a
 //!   `size_t` with `i64`; `legalize_size_t` narrows those declarations and their calls.
 //!

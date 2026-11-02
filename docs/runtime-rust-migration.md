@@ -19,11 +19,19 @@ Rust definition of `MdhValue`, its tag constants, and these C ABI symbols:
 | `__mdh_get_tag(MdhValue)` | The input's raw one-byte tag | Borrowed observation; no pointer dereference, retain, or release |
 
 The existing `mdh_runtime_rs` static library includes the core crate and uses its
-constructors directly. C and generated code keep the same symbol names and
-declarations. The corresponding C definitions are removed; no compatibility
+constructors directly. C and Rust callers keep the same symbol names and
+declarations; generated LLVM code builds these values inline and does not call
+them. The corresponding C definitions are removed; no compatibility
 stub should provide a second implementation. Standalone C regression drivers
 can compile the same core source to a Rust object and link it without building
 the networking, audio, or graphics runtime.
+
+The browser build (`--target wasm32-emscripten`, `src/llvm/wasm.rs`) is the one
+place the symbols are not plain: compiled code and the C runtime use the wasm
+multivalue ABI there, Rust the standard one. On Emscripten the core exports each
+function as `<name>__rsabi`, and `runtime/platform/wasm_abi.c` defines the plain
+names over them. `tests/llvm_wasm_target.rs` runs that build under node, and
+`runtime_c_standards` compiles the bridge against the shared header on any host.
 
 These functions cannot raise a language error or call back into C. They need no
 `RustFrames` guard because their complete call graph contains no raising call,
@@ -42,8 +50,10 @@ The three representations that must agree are:
 
 - C: `MdhValue` in `runtime/mdh_runtime.h`.
 - Rust: `#[repr(C)] MdhValue` in `runtime/mdh_runtime_core`.
-- Generated LLVM IR: the unpacked `{ i8, i64 }` in `src/llvm/types.rs`, with
-  declarations in `src/llvm/runtime.rs`.
+- Generated LLVM IR: the unpacked `{ i8, i64 }` in `src/llvm/types.rs`. Codegen
+  builds the five migrated values inline; the `src/llvm/runtime.rs`
+  declarations of them are used only by that file's layout test. The layout
+  still matters because every other runtime call passes and returns `MdhValue`.
 
 On the currently assumed 64-bit layouts, `MdhValue` has size 16, alignment 8,
 `tag` at offset 0, and `data` at offset 8. The intervening bytes are padding,
@@ -230,8 +240,10 @@ Useful existing regression suites include `backend_parity`,
 `llvm_safety_regressions`, `llvm_rc_runtime`, `llvm_rc_intern_runtime`,
 `llvm_rc_terminal_runtime`, `runtime_c_chunks_overflow`, and
 `runtime_dtls_fd_ownership`. The dedicated core tests and cross-language ABI
-test cover the five migrated leaf functions directly; many ordinary literals
-are built inline by codegen and would not prove those exported functions work.
+test cover the five migrated leaf functions directly; generated code builds
+ordinary literals inline and never calls them, so compiled programs would not
+prove those exported functions work. Their real callers are
+`runtime/mdh_runtime.c` and `runtime/mdh_runtime_rs`.
 
 ## Windows and future SPARC work
 
@@ -259,7 +271,9 @@ Additional gates are:
 
 - Prove C, Rust, and generated LLVM argument/return lowering for aggregates and
   booleans. `#[repr(C)]` fixes field layout; it does not automatically rewrite
-  hand-declared LLVM function signatures to every target's C ABI.
+  hand-declared LLVM function signatures to every target's C ABI. The five
+  migrated symbols are not called from generated code, but every other runtime
+  call passes `MdhValue`, so this gate still applies.
 - Audit hard-coded 16-byte values, alignment, pointer-to-`i64` conversions, and
   pointer-sized private handles. The Rust JSON walker currently reads dict
   handle fields through `*const i64`, whereas C uses `intptr_t`: that assumption
@@ -354,7 +368,7 @@ debug allocation-fault and Rust-frame diagnostics enabled.
 | --- | --- |
 | C/Rust ABI without LLVM enabled | 1 test passed |
 | C/Rust ABI plus LLVM native layout/tags | 2 tests passed |
-| Runtime ownership declaration/definition table | 5 tests passed |
+| Runtime ownership declaration/definition table | 5 tests passed (covers the existing ownership table; the five migrated symbols have no entry in it) |
 | Existing `backend_parity` | 109 tests passed |
 | Existing interpreter golden suite | 268 cases passed; 2 skipped by the existing harness |
 | Existing native golden suite | 205 cases passed; 65 skipped by the existing harness |
@@ -389,6 +403,11 @@ temporary adapter to GNU `timeout`. The production build still reports existing
 C warnings in dictionary removal and the Unix socket wrapper; these were not
 introduced or suppressed by this migration.
 
-The new core is tested for ABI and behavior, not benchmarked for speed. C calls
-to migrated constructors now cross a compiled-object boundary; do not claim a
-performance improvement from this first slice alone.
+C calls to migrated constructors now cross a compiled-object boundary: built at
+-O2, mdh_runtime.c went from 0 to 309 out-of-line calls to them, where it used to
+inline them. Measured on an Apple Silicon Mac (2026-11-02, native release builds
+of trunk and this slice, interleaved runs), the cost does not show: a 120M
+iteration int/float loop ran at 1.01x of trunk (median 0.994s against 0.986s), and
+the Bogle Castle campaign replay at 1.00x (2.925s against 2.928s), with identical
+output. One host and a few percent of noise; do not claim a performance
+improvement from this slice either.
