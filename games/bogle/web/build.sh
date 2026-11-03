@@ -8,6 +8,8 @@
 #   --jspi     also build bogle_jspi.* from the blocking shell (native.braw, whose
 #              snooze suspends through JSPI); the page loads it with ?jspi
 #   --out DIR  output directory (default target/bogle-web in the repository)
+# The build runs inside the output directory, so give any path in the extra
+# arguments as an absolute one.
 # Needs emcc (Emscripten) on PATH and a built compiler: $MDHAVERS, else
 # target/release/mdhavers (cargo build --release).
 set -euo pipefail
@@ -31,19 +33,21 @@ fi
 mkdir -p "$out"
 out=$(cd "$out" && pwd)
 
-# The game reads its data relative to the repository root, so build from there with
-# the data preloaded at the same paths.
-cd "$repo"
+# The game reads its data relative to the repository root, so preload it at those
+# paths. Build from inside the output directory with a bare --output name: emcc writes
+# the .data path it was given into bogle.js, and an absolute one would carry this
+# machine's folders onto the page.
+cd "$out"
 export MDHAVERS_HOME=${MDHAVERS_HOME:-$repo}
 preload=(
-  --emcc-arg=--preload-file --emcc-arg=games/bogle/data@games/bogle/data
-  --emcc-arg=--preload-file --emcc-arg=games/bogle/art/palette.txt@games/bogle/art/palette.txt
+  --emcc-arg=--preload-file --emcc-arg="$repo/games/bogle/data@games/bogle/data"
+  --emcc-arg=--preload-file --emcc-arg="$repo/games/bogle/art/palette.txt@games/bogle/art/palette.txt"
 )
-"$mdhavers" build --target wasm32-emscripten games/bogle/shell/web.braw \
-  --output "$out/bogle.js" "${preload[@]}" "$@"
+"$mdhavers" build --target wasm32-emscripten "$repo/games/bogle/shell/web.braw" \
+  --output bogle.js "${preload[@]}" "$@"
 if [ "$jspi" = 1 ]; then
-  "$mdhavers" build --target wasm32-emscripten games/bogle/shell/native.braw \
-    --output "$out/bogle_jspi.js" "${preload[@]}" --emcc-arg=-sJSPI "$@"
+  "$mdhavers" build --target wasm32-emscripten "$repo/games/bogle/shell/native.braw" \
+    --output bogle_jspi.js "${preload[@]}" --emcc-arg=-sJSPI "$@"
 fi
 cp "$web/index.html" "$out/index.html"
 echo "Bogle's page is in $out: serve it wi' python3 -m http.server -d \"$out\" 8000"
