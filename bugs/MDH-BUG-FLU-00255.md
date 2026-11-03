@@ -1,26 +1,25 @@
 # MDH-BUG-FLU-00255 — Trunk red: ownership arity test fails on __mdh_screen_loop (no LAZY_DECLS call)
 
-- **State:** Fixed
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** llvm-ownership
 - **Raised:** 2026-11-02T06:17:22Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** verify
-- **Owner run:** verify-20261103T162915Z-99e45fbf
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00255-run-verify-20261103T162915Z-99e45fbf
-- **Owner base:** 5cf079a745c3243c2deab6c64240b0dc2e35308f
-- **Owner fingerprint:** sha256:5200b033a7e6d7cf42b2bbdb61e43c2f3165e47de625ed89711165b7e39f39f1
-- **Owner since:** 2026-11-03T16:29:15Z
-- **Owner until:** 2026-11-03T20:29:15Z
-- **Owner session:** flux/2a9090d7-08f7-48c7-bee8-7b7d1d963ab2 (run verify-20261103T162915Z-99e45fbf)
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
+- **Owner fingerprint:** -
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-11-02T06:17:22Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-11-02T06:19:31Z, deltic:auto role=fix run=fix-20261102T061730Z-d997f72a branch=task/bug-MDH-BUG-FLU-00255-run-fix-20261102T061730Z-d997f72a code=e2d604a587ca05a685dc13aea0123bfb6e21a1e7 gate=manual)
+- **State history:** Open (2026-11-02T06:17:22Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-11-02T06:19:31Z, deltic:auto role=fix run=fix-20261102T061730Z-d997f72a branch=task/bug-MDH-BUG-FLU-00255-run-fix-20261102T061730Z-d997f72a code=e2d604a587ca05a685dc13aea0123bfb6e21a1e7 gate=manual) -> Closed (2026-11-03T16:35:33Z, deltic:manual role=verify run=verify-20261103T162915Z-99e45fbf verified_fix_run=fix-20261102T061730Z-d997f72a verdict=close)
 
 ## Observation
 
@@ -32,5 +31,9 @@ Evidence fingerprint: `trunk-red:v2:mdhavers-trunk-red-ownership-arity-test-fail
 ## Fix
 
 <unfixed — raised only>
+
+### Verification summary (2026-11-03T16:35:33Z, deltic:manual run=verify-20261103T162915Z-99e45fbf verified_fix_run=fix-20261102T061730Z-d997f72a verdict=close)
+
+Verifier note: Manual verify: Verified on origin/master 5cf079a (contains e2d604a): cargo test --lib ownership -> 5 passed, every_declared_runtime_symbol_has_an_entry_with_its_arity ok. Fails-before (method B, throwaway worktree): removed 'screen_loop(|t| t)' from LAZY_DECLS -> 4 passed 1 failed, panicked at src/llvm/ownership.rs:622 '__mdh_screen_loop: entry for a symbol codegen does not declare' (the recorded observation). Restored (git diff empty) -> 5 passed. Root cause (test program never declared the screen loop) addressed; RUNTIME_OWNERSHIP row is now exercised.
 
 ## Notes
